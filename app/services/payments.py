@@ -22,6 +22,7 @@ from ..models.harvest import Harvest, HarvestStatus
 from ..models.user import User
 from ..params import P
 from .trx_code import next_seq, party_code, yymm
+from .locks import lock_row
 
 PAID_STATES = {HarvestStatus.VERIFIED.value, HarvestStatus.COLLECTED.value, HarvestStatus.DELIVERED.value,
                HarvestStatus.CONVERTED.value}
@@ -58,6 +59,9 @@ async def pay_farmer(db: AsyncSession, collector: User, harvest_id: int, method:
                 raise HTTPException(409, "client_event_id sudah dipakai.")
             return {**payment_dict(prev), "replayed": True}
 
+    # DP & pelunasan lot yang sama diserialkan lewat kunci baris harvest (PG & SQLite): tanpa ini DP yang belum
+    # ter-commit tidak terlihat → petani menerima DP + pelunasan penuh (audit fase 5)
+    await lock_row(db, Harvest, harvest_id)
     h = (await db.execute(select(Harvest).where(Harvest.id == harvest_id))).scalar_one_or_none()
     if h is None:
         raise HTTPException(404, "Harvest tidak ditemukan")
@@ -126,6 +130,7 @@ async def pay_down_payment(db: AsyncSession, collector: User, harvest_id: int, a
             if prev.collector_id != collector.id:
                 raise HTTPException(409, "client_event_id sudah dipakai.")
             return {**dp_dict(prev), "replayed": True}
+    await lock_row(db, Harvest, harvest_id)
     h = (await db.execute(select(Harvest).where(Harvest.id == harvest_id).with_for_update())).scalar_one_or_none()
     if h is None or h.collector_id != collector.id:
         raise HTTPException(404, "Lot tidak ditemukan pada pembelian Anda (DP hanya untuk lot yang sudah Anda ikat).")

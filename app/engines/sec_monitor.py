@@ -72,13 +72,26 @@ def analyse(req: OpsAnalysisRequest) -> dict:
                   for l in logs])
     H = np.array([l.operating_hours for l in logs])
     T = np.array([l.product_ton for l in logs])
-    W = np.array([_water_t(l.product_ton, l.feed_moisture_pct, req.product_moisture_pct) for l in logs])
+    # Kadar air umpan tidak diukur → isi median log acuan yang terukur (bukan 0: 0 berarti "tanpa air", membutakan detektor)
+    measured = [l.feed_moisture_pct for l in logs[:nb] if l.feed_moisture_pct is not None] or                [l.feed_moisture_pct for l in logs if l.feed_moisture_pct is not None]
+    mc_fill = median(measured) if measured else None
+    mc_used = [l.feed_moisture_pct if l.feed_moisture_pct is not None else mc_fill for l in logs]
+    W = np.array([_water_t(l.product_ton, mc, req.product_moisture_pct) for l, mc in zip(logs, mc_used)])
+    notes = []
+    if mc_fill is not None and any(l.feed_moisture_pct is None for l in logs):
+        notes.append(f"{sum(1 for l in logs if l.feed_moisture_pct is None)} log tanpa kadar air umpan: diisi median "
+                     f"{mc_fill:g} % (ditandai) — ukur MC tiap shift agar normalisasi pengering akurat.")
     # β_w dari fisika pengeringan (bukan regresi): kadar air acuan jarang bervariasi cukup untuk diestimasi
     beta_w = req.drying_mj_per_kg_water * 1000                      # MJ per ton air
-    use_w = bool(W.any())
     E_adj = E - beta_w * W
+    if W[:nb].any() and np.mean(E_adj[:nb] <= 0) > 0.2:
+        # energi pengering tidak masuk E (pengering surya / tungku biomassa yang bahan bakarnya tidak dicatat)
+        beta_w, E_adj = 0.0, E.copy()
+        notes.append("Energi tercatat lebih kecil dari kebutuhan pengeringan → bahan bakar pengering tidak dicatat di log "
+                     "(mis. penjemuran matahari atau tungku sekam). Pengering dikeluarkan dari model (β_w = 0); catat "
+                     "bahan bakar pengering agar indikator bahan basah aktif.")
+    use_w = beta_w > 0 and bool(W.any())
     util_cv = float(np.std(T[:nb] / H[:nb]) / np.mean(T[:nb] / H[:nb]))
-    notes = []
     if req.idle_kw is not None:                                       # beban tetap terukur → hanya β_t yang difit
         beta_h = req.idle_kw * KWH_MJ
         beta_t = max(0.0, float(np.sum((E_adj[:nb] - beta_h * H[:nb]) * T[:nb]) / np.sum(T[:nb] ** 2)))
@@ -87,20 +100,21 @@ def analyse(req: OpsAnalysisRequest) -> dict:
         (beta_h, beta_t), _ = nnls(np.column_stack([H[:nb], T[:nb]]), E_adj[:nb])
         split = "regresi (utilisasi acuan bervariasi)"
     else:
-        beta_h, beta_t = 0.0, float(np.sum(E_adj[:nb]) / np.sum(T[:nb]))
+        beta_h, beta_t = 0.0, max(0.0, float(np.sum(E_adj[:nb]) / np.sum(T[:nb])))
         split = "tidak teridentifikasi"
         notes.append("Utilisasi di periode acuan hampir konstan dan daya idle tidak diisi: beban tetap tidak bisa dipisah, "
                      "sehingga log beban parsial bisa memicu alarm palsu. Ukur daya mesin saat jalan kosong (tang ampere) "
                      "dan isi 'daya idle', atau sertakan hari beban rendah di periode acuan.")
     beta = np.array([beta_h, beta_t, beta_w])
     expected = beta_h * H + beta_t * T + beta_w * W
+    if not np.all(expected[:nb] > 1e-9):
+        raise ValueError("Model energi acuan bernilai nol/negatif — periksa satuan kWh/ton dan daya idle pada log acuan.")
     expected = np.where(expected > 1e-9, expected, np.nan)
     rel = E / expected - 1
     base_sd = float(np.nanstd(rel[:nb], ddof=1)) or 0.01
     base_r2 = 1 - float(np.nansum((E[:nb] - expected[:nb]) ** 2)) / float(np.sum((E[:nb] - E[:nb].mean()) ** 2) or 1)
 
-    mc_list = [l.feed_moisture_pct for l in logs[:nb] if l.feed_moisture_pct is not None]
-    mc_ref = req.reference_feed_moisture_pct if req.reference_feed_moisture_pct is not None else (median(mc_list) if mc_list else None)
+    mc_ref = req.reference_feed_moisture_pct if req.reference_feed_moisture_pct is not None else mc_fill
     hm = [l.kwh_hammer_mill / l.product_ton for l in logs[:nb] if l.kwh_hammer_mill is not None]
     hm_ref = median(hm) if hm else None
 
@@ -141,9 +155,12 @@ def analyse(req: OpsAnalysisRequest) -> dict:
                                         " — kadar air normal: indikasi hammer tumpul, saringan sobek/tersumbat, bearing/sabuk aus")})
         if cusum > h and persistent and not any(a["code"] == "cusum_drift" for a in alerts):
             causes.append({"code": "cusum_drift", "detail": f"CUSUM residual melewati h = 5σ: pergeseran efisiensi persisten sejak ±{logs[max(nb, i - req.window)].label}"})
-        row = {"label": l.label, "energy_mj": round(float(E[i]), 1), "expected_mj": round(float(expected[i]), 1),
-               "sec_mj_per_t": round(float(E[i] / T[i]), 1), "sec_expected_mj_per_t": round(float(expected[i] / T[i]), 1),
-               "enpi": round(float(E[i] / expected[i]), 3), "residual_pct": round(r * 100, 2),
+        exp_ok = not np.isnan(expected[i])
+        row = {"label": l.label, "energy_mj": round(float(E[i]), 1), "expected_mj": round(float(expected[i]), 1) if exp_ok else None,
+               "sec_mj_per_t": round(float(E[i] / T[i]), 1),
+               "sec_expected_mj_per_t": round(float(expected[i] / T[i]), 1) if exp_ok else None,
+               "enpi": round(float(E[i] / expected[i]), 3) if exp_ok else None, "residual_pct": round(r * 100, 2),
+               "feed_moisture_imputed": l.feed_moisture_pct is None and mc_fill is not None,
                "band_warn_pct": round((ma + req.sigma_warn * sd) * 100, 2), "band_action_pct": round((ma + req.sigma_action * sd) * 100, 2),
                "moving_avg_pct": round(ma * 100, 2), "cusum": round(cusum, 4), "utilization": round(util, 3) if util is not None else None,
                "feed_moisture_pct": l.feed_moisture_pct, "wet_feed_mj": round(wet_mj, 1),

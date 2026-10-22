@@ -44,8 +44,12 @@ def test_decision_tree_routes_match_field_practice():
     assert run("serbuk_sengon", 1500, mc=20, km=400)["decision"]["route"] != "cofiring"     # terlalu jauh dari PLTU
     assert run("serbuk_sengon", 1500, mc=45, km=40)["decision"]["route"] != "cofiring"      # basah: gagal spek TM ≤ 25 %
     assert run("ampas_tebu", 3000)["decision"]["route"] == "pembakaran"                     # boiler pabrik gula
-    corn = run("tongkol_jagung", 300)
-    assert corn["decision"]["route"] == "gasifikasi" and any("alkali" in w for w in corn["warnings"])
+    corn = run("tongkol_jagung", 300)                                                        # AI 0,40 > 0,34
+    assert corn["decision"]["route"] not in ("gasifikasi", "pembakaran", "cofiring")
+    assert any("alkali" in w for w in corn["warnings"])
+    coir = run("sabut_kelapa", 1500)                                                         # Cl 0,8 %: korosi
+    assert coir["decision"]["route"] == "pembakaran_kecil" and any("Klorin" in w for w in coir["warnings"])
+    assert run("serbuk_karet", 200, mc=15)["decision"]["route"] == "gasifikasi"            # kering, abu & alkali rendah
     path = sawdust["decision"]["path"]
     assert path[0]["answer"] == "tidak" and path[-1]["route"] == "cofiring"
 
@@ -56,3 +60,12 @@ def test_endpoint_uses_master_and_roles(env):
     assert env.call("auditor", "POST", "/factory/conversion/analyse", {"code": "sekam_padi", "ton_per_month": 5}).status_code == 200
     assert env.call("petani", "POST", "/factory/conversion/analyse", {"code": "sekam_padi", "ton_per_month": 5}).status_code == 403
     assert env.call("pabrik", "POST", "/factory/conversion/analyse", {"code": "x", "ton_per_month": 5}).status_code == 422
+
+
+def test_drying_not_double_counted():
+    """Audit: energi bersih rute = E_th(ar) + 2,443·air diuapkan − energi pengering (panas laten tidak dihitung dua kali)."""
+    a = run("ampas_tebu", 1000, mc=50)
+    gas = next(r for r in a["routes"] if r["route"] == "gasifikasi")
+    water = 1000 * 0.5 - 500 * 15 / 85
+    net = a["energy"]["thermal_gj_per_month"] + 2.443 * water - water * 3.0
+    assert abs(gas["electricity_mwh_per_month"] - net * 0.28 / 3.6) < 0.5

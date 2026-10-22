@@ -50,9 +50,11 @@ async def list_biomass(db: AsyncSession, active_only: bool = True) -> list[dict]
     return [biomass_dict(b) for b in (await db.execute(q)).scalars()]
 
 
-async def get_biomass(db: AsyncSession, code: str | None) -> BiomassParameter:
+async def get_biomass(db: AsyncSession, code: str | None, allow_inactive: bool = False) -> BiomassParameter:
+    """allow_inactive=True untuk stok/lot yang SUDAH ada (keluar gudang, verifikasi lot lama): menonaktifkan komoditas
+    hanya menutup transaksi baru, tidak boleh menjebak stok."""
     b = await db.get(BiomassParameter, code or "sekam_padi")
-    if b is None or not b.is_active:
+    if b is None or (not b.is_active and not allow_inactive):
         raise HTTPException(422, f"Komoditas '{code}' tidak dikenal atau nonaktif.")
     return b
 
@@ -133,13 +135,15 @@ async def add_movement(db: AsyncSession, user: User, warehouse_id: int, d: dict)
         prev = (await db.execute(select(WarehouseStockMovement)
                                  .where(WarehouseStockMovement.client_event_id == d["client_event_id"]))).scalar_one_or_none()
         if prev is not None:
+            if prev.created_by_id != user.id:          # kunci milik pengguna lain → 409, jangan bocorkan catatannya
+                raise HTTPException(409, "client_event_id sudah dipakai.")
             return {**movement_dict(prev), "replayed": True}
     w = (await db.execute(select(CollectorWarehouse).where(CollectorWarehouse.id == warehouse_id)
                           .with_for_update())).scalar_one_or_none()          # kunci: mutasi per gudang berurutan
     if w is None or w.collector_id != user.id:
         raise HTTPException(404, "Gudang tidak ditemukan.")
-    b = await get_biomass(db, d["commodity"])
     kind, kg = d["movement"], float(d["kg"])
+    b = await get_biomass(db, d["commodity"], allow_inactive=kind != "masuk")     # stok lama tetap bisa dikeluarkan
     if kg <= 0:
         raise HTTPException(422, "Berat harus > 0.")
     basis, pay, refr = None, 0.0, 0.0
@@ -150,6 +154,14 @@ async def add_movement(db: AsyncSession, user: User, warehouse_id: int, d: dict)
                 raise HTTPException(404, "Lot tidak ditemukan pada pembelian Anda.")
             if (h.commodity or "sekam_padi") != b.code:
                 raise HTTPException(422, f"Komoditas lot ({h.commodity}) berbeda dengan {b.code}.")
+            if h.verified_kg is None:
+                raise HTTPException(409, "Lot belum ditimbang/diverifikasi — verifikasi dulu sebelum masuk gudang.")
+            if kg > h.verified_kg * 1.02 + 1e-6:                 # toleransi timbangan 2 %
+                raise HTTPException(422, f"Berat masuk {kg:g} kg melebihi timbangan verifikasi {h.verified_kg:g} kg.")
+            booked = (await db.execute(select(WarehouseStockMovement.id).where(
+                WarehouseStockMovement.harvest_id == h.id, WarehouseStockMovement.movement == "masuk"))).first()
+            if booked:
+                raise HTTPException(409, f"Lot #{h.id} sudah tercatat masuk gudang.")
         r = refract(kg, d.get("moisture_pct"), d.get("contaminant_pct"), b.moisture_ref_pct, b.moisture_reject_pct,
                     b.contaminant_tol_pct, accept_wet=bool(d.get("accept_wet")))
         if not r["accepted"]:

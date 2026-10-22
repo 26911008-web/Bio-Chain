@@ -579,5 +579,11 @@ async def record_goods_movement(db: AsyncSession, actor: User, product: str, mov
                               reference=reference, note=note, actor_id=actor.id)
     db.add(m)
     await db.flush()
+    if qty < 0 and db.bind.dialect.name != "postgresql":
+        # SQLite: tidak ada advisory lock & cek awal bisa lolos serentak → periksa ulang setelah tulis (transaksi sama)
+        after = (await inventory_balance(db))[product]
+        if after < -1e-9:
+            await db.rollback()
+            raise TransitionConflict(f"Stok {product} tidak cukup (diambil transaksi lain bersamaan).")
     return {"id": m.id, "product": product, "movement": movement, "quantity_kg": qty,
             "balance_kg": round(bal + qty, 3)}

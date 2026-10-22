@@ -73,6 +73,10 @@ class BlendFeed(BaseModel):
         return self.hhv_db_mj_kg or self.lhv_db_mj_kg + 1.2          # LHV_d ≈ HHV_d − 1,1…1,3 (docs/15 §1a)
 
     @property
+    def alkali_known(self) -> bool:
+        return self.k2o_pct_ash is not None                                # Na₂O kecil; boleh kosong (dianggap 0)
+
+    @property
     def alkali(self) -> float:
         return (self.k2o_pct_ash or 0) + (self.na2o_pct_ash or 0)
 
@@ -129,10 +133,12 @@ def evaluate(feeds: list[BlendFeed], dry_kg: list[float], product_moisture_pct: 
     cl = sum(wi * (f.chlorine_pct_db or 0) for wi, f in zip(w, feeds))
     s = sum(wi * (f.sulfur_pct_db or 0) for wi, f in zip(w, feeds))
     alk_kg_per_kg = sum(wi * f.ash_pct_db * f.alkali / 1e4 for wi, f in zip(w, feeds))
-    ai = alk_kg_per_kg / (hhv_d / 1000) if hhv_d > 0 else None
+    # K₂O tidak diketahui pada bahan yang dipakai → indeks "tidak diketahui", BUKAN 0 (gagal-terbuka berbahaya)
+    alkali_known = all(f.alkali_known for wi, f in zip(w, feeds) if wi > 1e-9)
+    ai = alk_kg_per_kg / (hhv_d / 1000) if hhv_d > 0 and alkali_known else None
     ash_mass = [wi * f.ash_pct_db for wi, f in zip(w, feeds)]
-    oxide_known = all(getattr(f, "sio2_pct_ash") is not None for f in feeds)
-    ox = {o: (sum(a * (getattr(f, f"{o}_pct_ash") or 0) for a, f in zip(ash_mass, feeds)) / sum(ash_mass))
+    oxide_known = all(f.sio2_pct_ash is not None and f.k2o_pct_ash is not None for wi, f in zip(w, feeds) if wi > 1e-9)
+    ox = {o: (sum(a * (getattr(f, f"{o}_pct_ash") or 0) for a, f in zip(ash_mass, feeds) if a > 0) / sum(ash_mass))
           if sum(ash_mass) > 0 and oxide_known else None for o in OXIDES}
     ba = rs = fu = si_al = g = None
     if oxide_known and sum(ash_mass) > 0:
@@ -149,6 +155,9 @@ def evaluate(feeds: list[BlendFeed], dry_kg: list[float], product_moisture_pct: 
     indices = {"alkali_index": ai, "base_acid": ba, "slagging_rs": rs, "fouling_fu": fu, "chlorine_pct": cl}
     levels = {k: _level(k, v) for k, v in indices.items()}
     warnings = []
+    if levels["alkali_index"] == "tidak_diketahui":
+        warnings.append("Indeks alkali tidak diketahui: K₂O abu belum diisi untuk bahan yang dipakai — uji XRF/AAS abu "
+                        "sebelum dibakar di boiler (risiko terak tidak bisa dinilai).")
     if levels["alkali_index"] == "tinggi":
         warnings.append("Risiko Tinggi Terak/Slagging pada Boiler Industri (indeks alkali > 0,34 kg/GJ)")
     elif levels["alkali_index"] == "sedang":
@@ -175,7 +184,7 @@ def evaluate(feeds: list[BlendFeed], dry_kg: list[float], product_moisture_pct: 
         "warnings": warnings,
         "slagging_verdict": "BAHAYA" if levels["alkali_index"] == "tinggi" else
                             ("WASPADA" if "sedang" in (levels["alkali_index"], levels["base_acid"], levels["chlorine_pct"])
-                             or levels["chlorine_pct"] == "tinggi" else "AMAN"),
+                             or levels["chlorine_pct"] == "tinggi" or levels["alkali_index"] == "tidak_diketahui" else "AMAN"),
     }
 
 
@@ -199,6 +208,10 @@ def _rows(feeds: list[BlendFeed], spec: BlendSpec, D: float, skip: str | None = 
         add("s_max", [(f.sulfur_pct_db or 0) - spec.s_max_pct for f in feeds], 0.0)
     if spec.ai_max is not None:
         add("alkali_index_max", [f.ash_pct_db * f.alkali / 1e4 - spec.ai_max * f.hhv / 1000 for f in feeds], 0.0)
+        for i, f in enumerate(feeds):                       # K₂O tak diketahui → tidak boleh dipakai saat batas terak aktif
+            if not f.alkali_known:
+                row = [0.0] * len(feeds); row[i] = 1.0
+                add(f"alkali_unknown:{f.code}", row, 0.0)
     for i, f in enumerate(feeds):
         if f.min_share_pct > 0:
             row = [0.0] * len(feeds); row[i] = -1.0
@@ -275,9 +288,18 @@ def _card(props: dict, spec: BlendSpec) -> dict:
     if spec.cl_max_pct is not None:
         chk("Klorin", props["chlorine_pct_db"] <= spec.cl_max_pct + 1e-6, f"{props['chlorine_pct_db']} % vs maks {spec.cl_max_pct}")
     ai = props["indices"]["alkali_index"]
-    chk("Indeks alkali", ai is not None and ai <= 0.34, f"{ai} kg/GJ ({props['risk_levels']['alkali_index']})")
-    verdict = "LAYAK" if all(c["ok"] for c in checks) and props["slagging_verdict"] != "BAHAYA" else "TIDAK LAYAK"
-    return {"verdict": verdict, "slagging": props["slagging_verdict"], "checks": checks,
-            "recommendation": ("Uji AFT (ISO 21404) & durabilitas pelet sebelum produksi rutin; indeks abu turunan "
-                               "kriteria batu bara hanya penyaring awal (Zhu 2014; Lachman 2021).")}
+    if spec.ai_max is not None:                             # sama dengan batas yang dipakai optimizer (parameter)
+        chk("Indeks alkali", ai is not None and ai <= spec.ai_max + 1e-6,
+            f"{ai if ai is not None else 'tidak diketahui'} kg/GJ vs maks {spec.ai_max:g} ({props['risk_levels']['alkali_index']})")
+    if spec.s_max_pct is not None:
+        chk("Sulfur", props["sulfur_pct_db"] <= spec.s_max_pct + 1e-6, f"{props['sulfur_pct_db']} % vs maks {spec.s_max_pct}")
+    # Vonis = cek terhadap batas yang SAMA dengan optimizer (parameter). Bila pengguna sengaja melonggarkan batas alkali
+    # (mis. memakai aditif kaolin), risiko terak tetap ditampilkan terpisah & tegas — tidak disembunyikan.
+    verdict = "LAYAK" if all(c["ok"] for c in checks) else "TIDAK LAYAK"
+    rec = ("Uji AFT (ISO 21404) & durabilitas pelet sebelum produksi rutin; indeks abu turunan kriteria batu bara hanya "
+           "penyaring awal (Zhu 2014; Lachman 2021).")
+    if props["slagging_verdict"] == "BAHAYA":
+        rec = ("PERINGATAN: indeks alkali > 0,34 kg/GJ (hampir pasti terak) — hanya untuk tungku dengan aditif "
+               "pengikat alkali (kaolin/zeolit) atau suhu bed rendah. " + rec)
+    return {"verdict": verdict, "slagging": props["slagging_verdict"], "checks": checks, "recommendation": rec}
 

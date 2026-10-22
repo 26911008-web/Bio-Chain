@@ -717,9 +717,16 @@ async def waive_charge(
         raise HTTPException(404, "Potongan tidak ditemukan")
     if c.status != "terbuka":
         raise HTTPException(409, f"Potongan sudah {c.status}.")
-    c.status, c.resolved_at = "dibebaskan", datetime.now(timezone.utc)
-    c.reason = f"{c.reason or ''} · dibebaskan oleh #{user.id}: {body.reason}".strip(" ·")
+    from sqlalchemy import update as _update
+    res = await db.execute(_update(LogisticsCharge).where(LogisticsCharge.id == c.id, LogisticsCharge.status == "terbuka")
+                           .values(status="dibebaskan", resolved_at=datetime.now(timezone.utc),
+                                   reason=f"{c.reason or ''} · dibebaskan oleh #{user.id}: {body.reason}".strip(" ·"))
+                           .execution_options(synchronize_session=False))
+    if res.rowcount != 1:                      # baru saja dipotong saat pelunasan tagihan → jangan klaim "dibebaskan"
+        await db.rollback()
+        raise HTTPException(409, "Potongan ini baru saja dipotong pada pelunasan tagihan.")
     await db.commit()
+    await db.refresh(c)
     return charge_dict(c)
 
 

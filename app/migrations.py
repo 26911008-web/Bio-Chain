@@ -86,6 +86,9 @@ ADDED_INDEXES = [
     "DROP INDEX IF EXISTS uq_route_stops_harvest",
     "CREATE UNIQUE INDEX IF NOT EXISTS uq_route_stops_harvest_live ON route_stops (harvest_id) "
     "WHERE harvest_id IS NOT NULL AND stop_status IN ('pending', 'picked_up')",
+    # 020: satu lot pembelian hanya sekali masuk gudang
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_wsm_harvest_in ON warehouse_stock_movements (harvest_id) "
+    "WHERE movement = 'masuk' AND harvest_id IS NOT NULL",
 ]
 
 

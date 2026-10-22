@@ -63,8 +63,8 @@ def test_multi_commodity_report_verify_and_auction(env):
     v = env.ok("pengepul", "POST", "/collector/verify", {"harvest_id": h["id"], "weighed_kg": 800, "moisture": 18,
                                                           "contamination": 1})
     assert v["commodity"] == "tongkol_jagung" and v["grade"] == "B"
-    # basis kering terhadap MC acuan 15 %: 800 × (1−0,01) × 0,82/0,85 × 650
-    assert abs(v["total_price"] - 800 * 0.99 * (0.82 / 0.85) * 650) < 2
+    # basis kering terhadap MC acuan 15 %: 800 × 0,82/0,85 × 650 (kotoran dalam toleransi)
+    assert abs(v["total_price"] - 800 * (0.82 / 0.85) * 650) < 2           # kotoran 1 % ≤ toleransi 2 %: tidak dipotong
     # sekam tetap lewat jalur lama (kurva mutu Engine ②)
     s = env.ok("petani", "POST", "/farmer/harvest", {"quantity_kg": 500, "mill_id": env.mill["M02"]}, status=201)
     assert s["commodity"] == "sekam_padi"

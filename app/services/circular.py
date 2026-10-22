@@ -15,6 +15,7 @@ from ..models.circular import BiocharRedemption
 from ..models.ledger import BiocharLedgerEntry
 from ..models.user import User
 from .custody import wallet_balance
+from .locks import lock_row
 
 
 def redemption_dict(r: BiocharRedemption, farmer_name: str | None = None) -> dict:
@@ -34,8 +35,8 @@ async def pending_kg(db: AsyncSession, farmer_id: int) -> float:
 async def request_redemption(db: AsyncSession, farmer: User, kg: float, land_area_ha: float | None,
                              pickup_point: str, note: str | None) -> dict:
     from ..engines.biochar_field import estimate
-    # Kunci baris petani agar dua pengajuan serentak tidak sama-sama lolos cek saldo (PostgreSQL; SQLite serial)
-    await db.execute(select(User.id).where(User.id == farmer.id).with_for_update())
+    # Kunci baris petani agar dua pengajuan serentak tidak sama-sama lolos cek saldo (PG & SQLite — audit fase 5)
+    await lock_row(db, User, farmer.id)
     available = await wallet_balance(db, farmer.id) - await pending_kg(db, farmer.id)
     if kg > available + 1e-6:
         raise HTTPException(409, f"Saldo biochar tersedia {max(0.0, available):.1f} kg (sebagian mungkin sedang diajukan).")
@@ -55,8 +56,13 @@ async def cancel_redemption(db: AsyncSession, actor: User, redemption_id: int, r
         raise HTTPException(404, "Permintaan tidak ditemukan")
     if r.status != "diajukan":
         raise HTTPException(409, f"Permintaan sudah {r.status}.")
-    r.status, r.cancel_reason = "dibatalkan", reason
+    res = await db.execute(update(BiocharRedemption).where(BiocharRedemption.id == r.id, BiocharRedemption.status == "diajukan")
+                           .values(status="dibatalkan", cancel_reason=reason).execution_options(synchronize_session=False))
+    if res.rowcount != 1:                       # baru saja diserahkan petugas → jangan tandai batal (dompet sudah terpotong)
+        await db.rollback()
+        raise HTTPException(409, "Permintaan ini baru saja diserahkan; tidak bisa dibatalkan.")
     await db.commit()
+    await db.refresh(r)
     return redemption_dict(r)
 
 
@@ -78,6 +84,7 @@ async def handover(db: AsyncSession, operator: User, redemption_id: int, kg: flo
     out_kg = round(kg if kg is not None else r.kg, 2)
     if out_kg > r.kg + 1e-6:
         raise HTTPException(422, "Kg diserahkan tidak boleh melebihi yang diajukan.")
+    await lock_row(db, User, r.farmer_id)          # serah-terima beberapa permintaan petani yang sama → cek saldo berurutan
     if out_kg > await wallet_balance(db, r.farmer_id) + 1e-6:
         raise HTTPException(409, "Saldo dompet petani tidak cukup (cek penyesuaian ledger).")
     now = datetime.now(timezone.utc)

@@ -56,13 +56,16 @@ def lhv_ar(lhv_db: float, mc_pct: float) -> float:
     return lhv_db * (1 - mc) - LATENT * mc
 
 
-def _drying_gj(t_ar: float, mc_from: float, mc_to: float) -> float:
-    """GJ untuk mengeringkan t_ar ton dari mc_from ke mc_to (%)."""
+def _water_removed_t(t_ar: float, mc_from: float, mc_to: float) -> float:
     if mc_from <= mc_to:
         return 0.0
     dry_t = t_ar * (1 - mc_from / 100)
-    water_t = t_ar * mc_from / 100 - dry_t * mc_to / (100 - mc_to)
-    return water_t * P("limbah.drying_mj_per_kg_water")                  # t × MJ/kg = GJ
+    return t_ar * mc_from / 100 - dry_t * mc_to / (100 - mc_to)
+
+
+def _drying_gj(t_ar: float, mc_from: float, mc_to: float) -> float:
+    """GJ untuk mengeringkan t_ar ton dari mc_from ke mc_to (%)."""
+    return _water_removed_t(t_ar, mc_from, mc_to) * P("limbah.drying_mj_per_kg_water")   # t × MJ/kg = GJ
 
 
 def analyse(x: ConversionInput) -> dict:
@@ -83,6 +86,14 @@ def analyse(x: ConversionInput) -> dict:
     # ---------------- syarat tiap rute (cek eksplisit agar pohon bisa ditampilkan)
     def check(label, ok, detail):
         return {"check": label, "ok": bool(ok), "detail": detail}
+    def cl_check(lim, why):
+        return check("Klorin", cl is None or cl <= lim,
+                     f"{cl if cl is not None else 'tidak diketahui'} % (≤ {lim:g}: {why})")
+
+    def ai_check(why):
+        return check("Indeks alkali", ai is None or ai <= 0.34,
+                     f"{round(ai, 3) if ai is not None else 'tidak diketahui'} kg/GJ (≤ 0,34: {why}) — campur dulu (Prototipe 1) bila lebih")
+
     silica_rich = (x.sio2_pct_ash or 0) >= 85 and x.ash_pct_db >= 12
     carbon_rich = (x.fixed_carbon_pct_db or 0) >= 20 and x.ash_pct_db <= 3
     cof_max_km = P("limbah.cofiring_max_km")
@@ -100,10 +111,12 @@ def analyse(x: ConversionInput) -> dict:
                            f"{x.distance_to_pltu_km if x.distance_to_pltu_km is not None else 'tidak diisi'} km (≤ {cof_max_km:g})")],
         "pembakaran": [check("Skala", t_day >= 50, f"{t_day:,.1f} t/hari (≥ 50 untuk turbin uap 1–10 MWe)"),
                        check("Kadar air", x.moisture_pct <= 55, f"{x.moisture_pct:g} % (grate ≤ 55)"),
-                       check("Abu", x.ash_pct_db <= 20, f"{x.ash_pct_db:g} % (≤ 20, grate bergerak)")],
+                       check("Abu", x.ash_pct_db <= 20, f"{x.ash_pct_db:g} % (≤ 20, grate bergerak)"),
+                       cl_check(0.3, "korosi HCl/KCl superheater"), ai_check("terak di grate/superheater")],
         "gasifikasi": [check("Kadar air (setelah pengering)", x.moisture_pct <= 35, f"{x.moisture_pct:g} % → keringkan ke < 20 %"),
                        check("Abu", x.ash_pct_db <= 6, f"{x.ash_pct_db:g} % (≤ 6 downdraft: clinker/bridging)"),
-                       check("Skala", 2 <= t_day <= 25, f"{t_day:,.1f} t/hari (2–25)")],
+                       check("Skala", 2 <= t_day <= 25, f"{t_day:,.1f} t/hari (2–25)"),
+                       cl_check(0.3, "korosi & HCl di syngas"), ai_check("aglomerasi/clinker di zona oksidasi")],
         "pembakaran_kecil": [check("Selalu tersedia", True, "boiler panas proses; listrik tidak ekonomis di skala kecil")],
     }
     path, choice = [], None
@@ -126,7 +139,9 @@ def analyse(x: ConversionInput) -> dict:
         out = {"route": key, "label": label, "feasible": all(c["ok"] for c in checks[key]), "checks": checks[key],
                "drying_gj_per_month": round(dry_gj, 1)}
         if key in route_eta:
-            net_gj = max(0.0, th_gj - dry_gj)
+            # setelah dikeringkan LHV naik: energi = massa_kering_rute × LHV(MC_rute) − energi pengering
+            #  = E_th(ar) + 2,443 × air diuapkan − energi pengering  (tanpa menghitung panas laten dua kali)
+            net_gj = max(0.0, th_gj + LATENT * _water_removed_t(t, x.moisture_pct, route_mc[key]) - dry_gj)
             mwh = net_gj * route_eta[key] / 3.6
             out.update({"eta_el": route_eta[key], "electricity_mwh_per_month": round(mwh, 1),
                         "co2_avoided_t_per_month": round(mwh * ef, 2)})
@@ -139,7 +154,8 @@ def analyse(x: ConversionInput) -> dict:
                         "product": "biochar + bio-silika" if silica_rich else ("arang / karbon aktif" if carbon_rich else "biochar"),
                         "note": "Panas volatil/syngas memasok pengering; karbon biochar → klaim removal (F11), bukan emisi dihindari."})
         else:
-            out.update({"process_heat_gj_per_month": round(max(0.0, th_gj - dry_gj) * P("limbah.eta_boiler_heat"), 1)})
+            heat_gj = max(0.0, th_gj + LATENT * _water_removed_t(t, x.moisture_pct, route_mc[key]) - dry_gj)
+            out.update({"process_heat_gj_per_month": round(heat_gj * P("limbah.eta_boiler_heat"), 1)})
         routes.append(out)
 
     best = next(r for r in routes if r["route"] == choice)
@@ -150,6 +166,9 @@ def analyse(x: ConversionInput) -> dict:
         warnings.append(f"MC {x.moisture_pct:g} %: energi pengeringan besar — pertimbangkan pengeringan matahari di gudang pengepul.")
     if ai is not None and ai > 0.34:
         warnings.append("Indeks alkali > 0,34 kg/GJ: pembakaran/co-firing berisiko terak — campur dengan bahan rendah alkali (Prototipe 1).")
+    if cl is not None and cl > 0.3:
+        warnings.append(f"Klorin {cl:g} % > 0,3 %: korosi HCl/KCl — rute listrik/gasifikasi tidak disarankan tanpa pencampuran "
+                        "atau pencucian (leaching) bahan.")
     return {
         "commodity": x.code, "name": x.name,
         "inputs": {"ton_per_month": t, "moisture_pct": x.moisture_pct, "ash_pct_db": x.ash_pct_db, "t_per_day": round(t_day, 2)},

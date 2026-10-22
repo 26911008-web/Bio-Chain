@@ -9,7 +9,7 @@ Prinsip lapangan:
 from datetime import datetime, timezone
 
 from sqlalchemy import (JSON, Boolean, CheckConstraint, Column, DateTime, Double, ForeignKey, Integer, String, Text,
-                        event, func, true,
+                        Index, event, func, text, true,
                         UniqueConstraint)
 
 from ..database import Base
@@ -91,6 +91,10 @@ class WarehouseStockMovement(Base):
         CheckConstraint("refraction_kg >= 0 AND (movement <> 'masuk' OR payable_kg <= gross_kg)", name="ck_wsm_refr"),
         CheckConstraint("(moisture_pct IS NULL OR moisture_pct BETWEEN 0 AND 95) AND "
                         "(contaminant_pct IS NULL OR contaminant_pct BETWEEN 0 AND 100)", name="ck_wsm_quality"),
+        # satu lot pembelian hanya boleh dibukukan masuk gudang sekali (audit: lot bisa dicatat berulang)
+        Index("uq_wsm_harvest_in", "harvest_id", unique=True,
+              postgresql_where=text("movement = 'masuk' AND harvest_id IS NOT NULL"),
+              sqlite_where=text("movement = 'masuk' AND harvest_id IS NOT NULL")),
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)

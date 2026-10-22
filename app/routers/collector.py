@@ -31,7 +31,7 @@ router = APIRouter()
 class VerifyHarvestRequest(BaseModel):
     harvest_id: int
     weighed_kg: float = Field(..., gt=0, le=50000, description="Hasil timbangan pengepul (dasar harga)")
-    moisture: float = Field(..., ge=0, le=60)
+    moisture: float = Field(..., ge=0, le=95)     # bagasse/serbuk segar 50–70 %: tetap bisa "beli untuk dikeringkan"
     # F9: hanya kadar air (moisture meter) wajib di lapangan; abu/VM/FC diisi bila ada uji lab/NIR
     ash: float | None = Field(None, ge=0, le=40)
     volatile_matter: float | None = Field(None, ge=0, le=100)
@@ -159,7 +159,7 @@ async def verify_harvest(
     if harvest.collector_id is not None and harvest.collector_id != user.id:
         raise HTTPException(403, "Harvest ini hasil lelang pengepul lain.")
 
-    bio = await _biomass.get_biomass(db, harvest.commodity)
+    bio = await _biomass.get_biomass(db, harvest.commodity, allow_inactive=True)   # lot lama tetap bisa diproses
     if bio.code == "sekam_padi":
         quality = score_sample(FeedstockSample(
             moisture=req.moisture, ash=req.ash, volatile_matter=req.volatile_matter, fixed_carbon=req.fixed_carbon,
@@ -183,7 +183,9 @@ async def verify_harvest(
         listing = await db.get(StockListing, harvest.listing_id) if harvest.listing_id else None
         base_price = harvest.agreed_price_per_kg
         pricing = farmgate_price(base_price, req.weighed_kg, req.moisture, req.contamination, price_grade, 1.0,
-                                 reference_moisture=listing.moisture_pct if listing and listing.moisture_pct else None,
+                                 # tanpa MC di iklan: acuan komoditas (bukan acuan sekam 12 % — memotong bagasse ±43 %)
+                                 reference_moisture=(listing.moisture_pct if listing and listing.moisture_pct is not None
+                                                     else bio.moisture_ref_pct),
                                  wetter_only=True, method="basis_kering" if off_spec else None)
     elif bio.code == "sekam_padi":
         base_price = _biomass.base_price_for(bio)
@@ -193,7 +195,9 @@ async def verify_harvest(
         base_price = _biomass.base_price_for(bio)
         if base_price is None:
             raise HTTPException(422, f"Harga dasar {bio.name} belum diisi pabrik (menu Multi-biomassa → harga dasar).")
-        pricing = farmgate_price(base_price, req.weighed_kg, req.moisture, req.contamination, price_grade, 1.0,
+        # kotoran ≤ toleransi komoditas tidak dipotong — sama dengan pratinjau refraksi yang ditunjukkan ke petani
+        pricing = farmgate_price(base_price, req.weighed_kg, req.moisture,
+                                 max(0.0, req.contamination - bio.contaminant_tol_pct), price_grade, 1.0,
                                  reference_moisture=bio.moisture_ref_pct, wetter_only=True, method="basis_kering")
     if off_spec:
         note = "; ".join(x for x in (note, "Dibeli di bawah spek untuk dikeringkan/disortir pengepul") if x)
@@ -761,6 +765,8 @@ async def proxy_harvest(req: ProxyHarvestRequest, db: Annotated[AsyncSession, De
     replay = await find_replay(db, req.client_event_id)
     if replay is not None:
         h = (await db.execute(select(Harvest).where(Harvest.id == replay.harvest_id))).scalar_one()
+        if h.collector_id != uid:                       # kunci idempotensi milik orang lain → jangan bocorkan lotnya
+            raise HTTPException(409, "client_event_id sudah dipakai.")
         return {"id": h.id, "qr_code": h.qr_code, "quantity_kg": h.quantity_kg, "farmer_id": h.farmer_id,
                 "replayed": True, "message": "ℹ️ Laporan ini sudah tercatat sebelumnya."}
     farmer = await db.get(User, req.farmer_id)
@@ -790,6 +796,8 @@ async def proxy_harvest(req: ProxyHarvestRequest, db: Annotated[AsyncSession, De
         if replay is None:
             raise
         h = (await db.execute(select(Harvest).where(Harvest.id == replay.harvest_id))).scalar_one()
+        if h.collector_id != uid:
+            raise HTTPException(409, "client_event_id sudah dipakai.")
         return {"id": h.id, "qr_code": h.qr_code, "quantity_kg": h.quantity_kg, "farmer_id": h.farmer_id,
                 "replayed": True, "message": "ℹ️ Laporan ini sudah tercatat sebelumnya."}
     return {"id": h.id, "qr_code": h.qr_code, "quantity_kg": h.quantity_kg, "farmer_id": farmer.id,

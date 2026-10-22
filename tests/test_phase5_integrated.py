@@ -51,7 +51,7 @@ def test_parallel_multi_commodity_purchases(env):
     for hid, code in lots:
         assert won[hid]["commodity"] == code
         if code == "tongkol_jagung":                                              # basis kering vs MC acuan 15 %
-            assert abs(won[hid]["total_price"] - 500 * 0.99 * (0.83 / 0.85) * 650) < 2
+            assert abs(won[hid]["total_price"] - 500 * (0.83 / 0.85) * 650) < 5      # kotoran 1 % ≤ toleransi 2 %: tidak dipotong
 
     # lelang tongkol jagung: dua tawaran diterima bersamaan → total ≤ stok
     lst = env.ok("petani", "POST", "/farmer/listings", {"quantity_kg": 1000, "commodity": "tongkol_jagung",

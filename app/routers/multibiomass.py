@@ -284,6 +284,9 @@ async def _blend_feeds(db: AsyncSession, items: list[FuelFeedInput]):
     from ..engines.fuel_blend import BlendFeed
     from ..models.biomass import OXIDES
     from fastapi import HTTPException
+    codes = [it.code for it in items]
+    if len(set(codes)) != len(codes):
+        raise HTTPException(422, "Komoditas ganda dalam daftar bahan — gabungkan stoknya dalam satu baris.")
     feeds = []
     for it in items:
         b = await svc.get_biomass(db, it.code)
@@ -335,7 +338,10 @@ async def fuel_blend_optimize(req: FuelBlendRequest, db: DB, user: Annotated[Use
         s_max_pct=req.s_max_pct if req.s_max_pct is not None else base.get("s_max_pct"),
         ai_max=req.ai_max if req.ai_max is not None else P("blending.ai_max_kg_gj"),
         drying_cost_rp_per_kg_water=P("blending.drying_cost_rp_per_kg_water"))
-    out = optimize(BlendOptimizeRequest(feeds=await _blend_feeds(db, req.feeds), spec=spec))
+    try:
+        out = optimize(BlendOptimizeRequest(feeds=await _blend_feeds(db, req.feeds), spec=spec))
+    except ValueError as e:                               # validasi pydantic internal → 422, bukan 500
+        raise HTTPException(422, str(e))
     if spec.drying_cost_rp_per_kg_water is None:
         out.setdefault("notes", []).append("Biaya pengeringan belum dihitung: isi parameter 'Biaya pengeringan per kg "
                                            "air diuapkan' agar bahan basah (mis. ampas tebu) tidak tampak murah.")
@@ -351,7 +357,10 @@ async def fuel_blend_evaluate(req: FuelEvaluateRequest, db: DB, user: Annotated[
     shares = [max(0.0, req.shares_pct.get(f.code, 0.0)) for f in feeds]
     if sum(shares) <= 0:
         raise HTTPException(422, "Porsi campuran masih kosong.")
-    return evaluate(feeds, shares, req.product_moisture_pct)
+    try:
+        return evaluate(feeds, shares, req.product_moisture_pct)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
 
 
 # ---------------------------------------------------------------- Prototipe 2: energi riil & rute konversi (fase 3)
