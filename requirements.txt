@@ -16,6 +16,7 @@ scipy>=1.11
 ortools>=9.15  # Engine ⑤b: CVRP armada & rute rendah emisi (wheel cp312–cp314)
 numpy>=1.26
 openpyxl>=3.1
+python-docx>=1.1  # ekspor data pribadi (UU PDP) ke DOCX — app/services/privacy.py
 
 # Auth
 PyJWT>=2.8
