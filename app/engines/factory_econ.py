@@ -31,7 +31,8 @@ from .quality import biochar_yield_db
 
 PRODUCTS = ("bio_pellet", "biochar", "bio_silika")
 PRODUCT_LABEL = {"bio_pellet": "Bio-pellet", "biochar": "Biochar", "bio_silika": "Bio-silika"}
-LOSS_KINDS = ("air", "volatil_syngas", "gas_pembakaran", "residu_ekstraksi", "susut_proses")
+# bio_oil = kondensat/tar pirolisis (bisa dijual sebagai asap cair) — dicatat di neraca massa agar BOM lengkap
+LOSS_KINDS = ("air", "volatil_syngas", "gas_pembakaran", "bio_oil", "residu_ekstraksi", "susut_proses")
 SILICA_ROUTES = ("biochar", "abu_pembakaran", "sekam_langsung")
 _PRICE_KEYS = {"bio_pellet": "pabrik.price_pellet_per_kg", "biochar": "pabrik.price_biochar_per_kg",
                "bio_silika": "pabrik.price_silica_per_kg"}

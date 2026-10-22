@@ -3,19 +3,41 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, func
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..concurrency import run_cpu
 from ..database import get_db
 from ..dependencies import require_role
-from ..models.user import User, UserRole
+from ..models.user import User, UserRole, IncentiveTier
 from ..models.harvest import Harvest
 from ..models.route import Route
 from ..models.harvest import Mill
+from ..routers.auth import hash_password
+from ..services.phone import require_phone
 
 router = APIRouter()
 
 _admin_dep = require_role(UserRole.ADMIN)
+
+
+class AdminCreateUserRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)        # "   " tidak lolos min_length
+
+    username: str | None = Field(None, min_length=3, max_length=50, pattern=r"^[A-Za-z0-9_.-]+$")
+    email: str | None = Field(None, max_length=100, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    phone: str = Field(..., min_length=8, max_length=20, description="Nomor telepon")
+    password: str = Field(..., min_length=6, max_length=100)
+    full_name: str = Field(..., min_length=2, max_length=100)
+    role: str = Field("petani", pattern="^(petani|pengepul|driver|pabrik|admin|auditor)$")
+    kecamatan: str | None = Field(None, max_length=100)
+    kabupaten: str | None = Field("Sleman", max_length=100)
+    is_active: bool = True
+    lat: float | None = Field(None, ge=-11, le=6)
+    lon: float | None = Field(None, ge=95, le=141)
+
+    _phone = field_validator("phone")(require_phone)
 
 
 @router.get("/users")
@@ -28,21 +50,77 @@ async def list_users(
     query = select(User).order_by(User.created_at.desc())
     if role:
         query = query.where(User.role == role)
-    result = await db.execute(query.limit(100))
+    result = await db.execute(query.limit(200))
     users = result.scalars().all()
     return [
         {
             "id": u.id,
+            "username": u.username,
             "phone": u.phone,
+            "email": u.email,
             "full_name": u.full_name,
-            "role": u.role.value if hasattr(u.role, 'value') else u.role,
+            "role": u.role.value if hasattr(u.role, 'value') else str(u.role),
             "is_active": u.is_active,
             "kecamatan": u.kecamatan,
+            "kabupaten": u.kabupaten,
             "xp_total": u.xp_total,
+            "incentive_tier": u.incentive_tier.value if hasattr(u.incentive_tier, 'value') else str(u.incentive_tier),
             "created_at": u.created_at.isoformat() if u.created_at else None,
         }
         for u in users
     ]
+
+
+@router.post("/users", status_code=201)
+async def create_user(
+    req: AdminCreateUserRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(_admin_dep)],
+):
+    """Admin membuat user baru secara langsung (semua role, langsung aktif atau nonaktif)."""
+    role_val = req.role.lower()
+    try:
+        role_enum = UserRole(role_val)
+    except ValueError:
+        raise HTTPException(400, f"Role tidak valid. Pilihan: {', '.join(r.value for r in UserRole)}")
+
+    conds = [User.phone == req.phone]
+    if req.username:
+        conds.append(User.username == req.username)
+    if req.email:
+        conds.append(User.email == req.email)
+
+    existing = await db.execute(select(User).where(or_(*conds)))
+    if existing.scalar_one_or_none():
+        raise HTTPException(409, "Nomor telepon, username, atau email sudah terdaftar")
+
+    new_user = User(
+        username=req.username,
+        email=req.email,
+        phone=req.phone,
+        password_hash=await run_cpu(hash_password, req.password),
+        full_name=req.full_name,
+        role=role_enum,
+        is_active=req.is_active,
+        kecamatan=req.kecamatan,
+        kabupaten=req.kabupaten or "Sleman",
+        lat=req.lat,
+        lon=req.lon,
+        xp_total=0,
+        incentive_tier=IncentiveTier.PEMULA,
+    )
+    db.add(new_user)
+    await db.flush()
+    return {
+        "id": new_user.id,
+        "phone": new_user.phone,
+        "username": new_user.username,
+        "full_name": new_user.full_name,
+        "role": new_user.role.value if hasattr(new_user.role, 'value') else str(new_user.role),
+        "is_active": new_user.is_active,
+        "kecamatan": new_user.kecamatan,
+        "message": f"User {new_user.full_name} berhasil dibuat",
+    }
 
 
 @router.post("/users/{user_id}/activate")
@@ -57,7 +135,25 @@ async def activate_user(
     if not target:
         raise HTTPException(404, "User tidak ditemukan")
     target.is_active = True
-    return {"message": f"User {target.full_name} berhasil diaktifkan"}
+    return {"message": f"User {target.full_name} berhasil diaktifkan", "is_active": True}
+
+
+@router.post("/users/{user_id}/toggle-active")
+async def toggle_user_active(
+    user_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(_admin_dep)],
+):
+    """Toggle status aktif/nonaktif user."""
+    result = await db.execute(select(User).where(User.id == user_id))
+    target = result.scalar_one_or_none()
+    if not target:
+        raise HTTPException(404, "User tidak ditemukan")
+    if target.id == admin.id:
+        raise HTTPException(400, "Tidak dapat menonaktifkan akun sendiri")
+    target.is_active = not target.is_active
+    status_str = "diaktifkan" if target.is_active else "dinonaktifkan"
+    return {"message": f"User {target.full_name} berhasil {status_str}", "is_active": target.is_active}
 
 
 @router.get("/stats")
@@ -94,7 +190,39 @@ async def seed_demo_data(
     admin: Annotated[User, Depends(_admin_dep)],
     force_reset: bool = False,
 ):
-    """Seed data demo lengkap (users, mills, harvests, routes, conversions) via seed.py."""
+    """Seed data demo lengkap (users, mills, harvests, routes, conversions) via seed.py — hanya DEMO_MODE."""
+    from ..config import settings
+    if not settings.DEMO_MODE:
+        raise HTTPException(404, "Not Found")
     from ..seed import seed_demo_data as run_seed
     result = await run_seed(db, force_reset=force_reset)
     return result
+
+
+@router.post("/users/{user_id}/reset-password")
+async def reset_user_password(
+    user_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(_admin_dep)],
+):
+    """Reset password oleh admin (F6) — untuk petani/pengepul yang lupa password di lapangan.
+
+    Password sementara acak (10 karakter, tanpa huruf yang mirip seperti O/0, l/1) dikembalikan SEKALI ke admin
+    untuk disampaikan langsung ke pemilik akun; server hanya menyimpan hash-nya.
+    """
+    import secrets
+
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(404, "User tidak ditemukan")
+    if user.id == admin.id:
+        raise HTTPException(400, "Gunakan menu ganti password untuk akun Anda sendiri.")
+    alphabet = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789"
+    temp = "".join(secrets.choice(alphabet) for _ in range(10))
+    user.password_hash = await run_cpu(hash_password, temp)
+    user.must_change_password = True                  # pemilik akun wajib ganti saat masuk berikutnya
+    user.token_version = int(user.token_version or 0) + 1   # sesi lama (mis. HP dicuri) langsung tidak berlaku
+    await db.commit()
+    return {"user_id": user.id, "full_name": user.full_name, "username": user.username, "phone": user.phone,
+            "temporary_password": temp,
+            "note": "Sampaikan langsung ke pemilik akun (jangan lewat grup chat). Minta segera diganti setelah masuk."}

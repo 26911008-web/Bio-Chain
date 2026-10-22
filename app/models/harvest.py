@@ -90,6 +90,10 @@ class Harvest(Base):
     discrepancy_flag = Column(Boolean, default=False, nullable=False, index=True)
     discrepancy_note = Column(Text, nullable=True)
     rejected_reason = Column(Text, nullable=True)
+    reject_category = Column(String(20), nullable=True)      # basah|berjamur|kontaminan|… → defect rate per penyebab
+    # Taksiran petani (opsional). Hanya umpan balik/kalibrasi — harga tetap dari QC pengepul (moisture/grade di atas)
+    farmer_moisture_est = Column(Double, nullable=True)
+    farmer_grade_est = Column(String(1), nullable=True)
     rejected_at = Column(DateTime(timezone=True), nullable=True)
     received_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     conversion_id = Column(Integer, ForeignKey("conversions.id"), nullable=True, index=True)

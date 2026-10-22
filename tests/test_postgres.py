@@ -285,3 +285,72 @@ def test_settlement_priced_status_is_enforced_by_check(ids):
             await c.close()
     with pytest.raises(asyncpg.exceptions.CheckViolationError):
         run(go())
+
+
+def test_twenty_concurrent_accepts_never_double_allocate(ids):
+    """Chaos: 20 tawaran (100–300 kg, total 4.000 kg) atas SATU stok 1.000 kg diterima serentak lewat 20 koneksi
+    terpisah memanggil public.accept_bid_atomic (SELECT … FOR UPDATE). Harus: Σ diterima ≤ 1.000 kg, sisa ≥ 0,
+    tidak ada tawaran yang diterima dua kali, dan sisa stok = 1.000 − Σ diterima."""
+    import random
+    import uuid as _uuid
+    farmer = ids["petani_sugeng"]
+
+    async def setup():
+        c = await asyncpg.connect(DSN)
+        try:
+            async with c.transaction():
+                await as_identity(c, "system")
+                tag = _uuid.uuid4().hex[:6]
+                cols = []
+                for i in range(20):
+                    cid = await c.fetchval(
+                        "INSERT INTO users (username, phone, password_hash, full_name, role, is_active, must_change_password,"
+                        " token_version) VALUES ($1, $2, 'x', $3, 'pengepul', TRUE, FALSE, 0) RETURNING id",
+                        f"race_{tag}_{i}", f"089{_uuid.uuid4().int % 10**9:09d}", f"Race {i}")
+                    cols.append(cid)
+                lid = await c.fetchval(
+                    "INSERT INTO stock_listings (farmer_id, quantity_kg, remaining_kg, allow_jemput, allow_antar, status,"
+                    " version, ask_price_jemput) VALUES ($1, 1000, 1000, TRUE, FALSE, 'open', 1, 400) RETURNING id", farmer)
+                random.seed(7)
+                bids = []
+                for cid in cols:
+                    q = float(random.choice([100, 150, 200, 250, 300]))
+                    bid = await c.fetchval(
+                        "INSERT INTO bids (listing_id, collector_id, farmer_id, scheme, price_per_kg, quantity_kg, accepted_kg, status, created_at)"
+                        " VALUES ($1, $2, $3, 'jemput', 450, $4, 0, 'active', now()) RETURNING id", lid, cid, farmer, q)
+                    bids.append((bid, q))
+                return lid, bids
+        finally:
+            await c.close()
+
+    async def accept(lid, bid, q):
+        c = await asyncpg.connect(DSN)
+        try:
+            async with c.transaction():
+                await as_identity(c, "petani", farmer)
+                await c.fetchrow("SELECT * FROM public.accept_bid_atomic($1, $2, $3, $4)", lid, bid, farmer, q)
+            return q
+        except asyncpg.PostgresError:
+            return 0.0                              # kalah balapan: stok tidak cukup / listing tertutup
+        finally:
+            await c.close()
+
+    async def go():
+        lid, bids = await setup()
+        won = await asyncio.gather(*(accept(lid, b, q) for b, q in bids))
+        c = await asyncpg.connect(DSN)
+        try:
+            async with c.transaction():
+                await as_identity(c, "system")
+                rem = await c.fetchval("SELECT remaining_kg FROM stock_listings WHERE id = $1", lid)
+                acc = await c.fetch("SELECT id, accepted_kg FROM bids WHERE listing_id = $1 AND status = 'accepted'", lid)
+        finally:
+            await c.close()
+        return won, rem, acc
+
+    won, rem, acc = run(go())
+    total = sum(won)
+    assert total <= 1000 + 1e-6, f"alokasi ganda: {total} kg > stok 1000 kg"
+    assert rem >= -1e-6 and abs(rem - (1000 - total)) < 1e-6
+    assert abs(sum(r["accepted_kg"] for r in acc) - total) < 1e-6
+    assert len(acc) == sum(1 for w in won if w > 0) and len(acc) >= 3     # sebagian menang, sisanya ditolak rapi

@@ -82,8 +82,22 @@ class DatabaseManager:
         self._init_engine()
 
     def _init_engine(self):
-        use_sqlite = ("sqlite" in settings.DATABASE_URL.lower()) or (not _is_postgres_available(settings.DATABASE_URL))
-        self.active_db_url = SQLITE_URL if use_sqlite else settings.DATABASE_URL
+        explicit_sqlite = "sqlite" in settings.DATABASE_URL.lower()
+        pg_up = explicit_sqlite or _is_postgres_available(settings.DATABASE_URL)
+        if not pg_up and not settings.ALLOW_SQLITE_FALLBACK:
+            # Produksi: tunggu PostgreSQL (mis. container baru naik) — JANGAN diam-diam pindah ke SQLite
+            import time
+            for _ in range(30):
+                time.sleep(1)
+                if _is_postgres_available(settings.DATABASE_URL):
+                    pg_up = True
+                    break
+            if not pg_up:
+                print("❌ PostgreSQL tidak terjangkau dan ALLOW_SQLITE_FALLBACK=False — koneksi akan gagal jelas (503).")
+        use_sqlite = explicit_sqlite or (not pg_up and settings.ALLOW_SQLITE_FALLBACK)
+        # SQLite eksplisit di DATABASE_URL → pakai path itu (dulu selalu biochain.db, sehingga tes/E2E yang
+        # mengira memakai DB terpisah diam-diam menulis ke DB pengembangan). Fallback darurat tetap biochain.db.
+        self.active_db_url = (settings.DATABASE_URL if explicit_sqlite else SQLITE_URL) if use_sqlite else settings.DATABASE_URL
         self.active_driver = "sqlite" if use_sqlite else "postgresql"
         self._engine = _sqlite_engine(self.active_db_url) if use_sqlite else _postgres_engine(self.active_db_url)
         self._sessionmaker = async_sessionmaker(

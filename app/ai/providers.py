@@ -34,6 +34,8 @@ PROVIDERS: dict[str, Provider] = {p.id: p for p in [
              "MISTRAL_API_KEY", "MISTRAL_MODEL", "Paket gratis 'Experiment'"),
     Provider("groq", "Groq", "https://api.groq.com/openai/v1",
              "GROQ_API_KEY", "GROQ_MODEL", "Tier gratis berbatas laju, sangat cepat"),
+    Provider("openai", "OpenAI", "https://api.openai.com/v1",
+             "OPENAI_API_KEY", "OPENAI_MODEL", "Berbayar per token; kunci dari platform.openai.com"),
     Provider("openrouter", "OpenRouter", "https://openrouter.ai/api/v1",
              "OPENROUTER_API_KEY", "OPENROUTER_MODEL", "Pilih model berakhiran ':free'"),
 ]}
@@ -88,7 +90,7 @@ def _headers(p: Provider) -> dict:
 
 # Urutan pilihan otomatis: cloud gratis yang sudah ada kuncinya dulu (lebih cepat & akurat daripada
 # model kecil di CPU), Ollama sebagai cadangan offline.
-AUTO_ORDER = ("gemini", "groq", "mistral", "openrouter", "ollama")
+AUTO_ORDER = ("gemini", "groq", "mistral", "openrouter", "openai", "ollama")
 
 
 def resolve_default() -> str:
@@ -141,7 +143,13 @@ TRUNCATED_NOTE = "\n\n_(Jawaban terpotong karena batas panjang; minta lanjutan b
 
 def _body(p: Provider, model: str, messages: list[dict], stream: bool) -> dict:
     body = {"model": model, "messages": messages, "temperature": 0.3, "max_tokens": settings.AI_MAX_TOKENS}
-    if p.id in REASONING_LOW:
+    if p.id == "openai":
+        # API OpenAI terbaru: max_completion_tokens (max_tokens ditolak model reasoning) dan temperature
+        # bawaan saja; token reasoning ikut jatah → beri ruang lebih & usaha reasoning rendah.
+        body = {"model": model, "messages": messages, "max_completion_tokens": settings.AI_MAX_TOKENS * 3}
+        if settings.OPENAI_REASONING_EFFORT:
+            body["reasoning_effort"] = settings.OPENAI_REASONING_EFFORT
+    elif p.id in REASONING_LOW:
         body["reasoning_effort"] = "low"
     if stream:
         body["stream"] = True

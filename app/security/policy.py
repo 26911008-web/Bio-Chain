@@ -27,6 +27,8 @@ ROUTE_POLICY: list[tuple[str, frozenset[str]]] = [
     ("/api/v1/auth/register",      PUBLIC),
     ("/api/v1/auth/demo-accounts", PUBLIC),          # akun demo sengaja terbuka untuk semua penguji
     ("/api/v1/auth/me",            ANY_USER),
+    ("/api/v1/auth/change-password", ANY_USER),
+    ("/api/v1/me/",                ANY_USER),        # hak subjek data PDP — hanya data diri sendiri
     ("/api/v1/assistant/",         ANY_USER),
     ("/api/v1/reports/",           ANY_USER),        # cakupan data dibatasi per peran di server
     ("/api/reports/",              ANY_USER),        # alias sesuai spesifikasi /api/reports/monthly
@@ -36,6 +38,7 @@ ROUTE_POLICY: list[tuple[str, frozenset[str]]] = [
     ("/api/v1/uploads/",           ANY_USER),
     ("/api/v1/auth/reset-demo",    _roles(R.ADMIN)),
     ("/api/v1/farmer/",            _roles(R.PETANI)),
+    ("/api/v1/farmer/mills",       _roles(R.PETANI, R.PENGEPUL)),   # pengepul: lapor atas nama petani tanpa HP
     ("/api/v1/collector/",         _roles(R.PENGEPUL)),
     ("/api/v1/driver/",            _roles(R.DRIVER)),
     ("/api/v1/factory/",           _roles(R.PABRIK, R.ADMIN)),
@@ -43,6 +46,17 @@ ROUTE_POLICY: list[tuple[str, frozenset[str]]] = [
     ("/api/v1/factory/energy/",    _roles(R.PABRIK, R.ADMIN, R.AUDITOR)),
     ("/api/v1/factory/batches",    _roles(R.PABRIK, R.ADMIN, R.AUDITOR)),    # tulis: khusus pabrik (require_role)
     ("/api/v1/factory/qc/lots",    _roles(R.PABRIK, R.ADMIN, R.AUDITOR)),
+    ("/api/v1/factory/routes",     _roles(R.PABRIK, R.ADMIN, R.AUDITOR)),    # pantau rute & emisi (batal: khusus pabrik)
+    ("/api/v1/factory/routes/",    _roles(R.PABRIK, R.ADMIN, R.AUDITOR)),
+    ("/api/v1/factory/returns",    _roles(R.PABRIK, R.ADMIN, R.AUDITOR)),    # retur: tulis khusus pabrik
+    ("/api/v1/factory/returns/",   _roles(R.PABRIK, R.ADMIN, R.AUDITOR)),
+    ("/api/v1/factory/inventory",  _roles(R.PABRIK, R.ADMIN, R.AUDITOR)),
+    ("/api/v1/factory/inventory/", _roles(R.PABRIK, R.ADMIN, R.AUDITOR)),
+    ("/api/v1/factory/green-scorecard", _roles(R.PABRIK, R.ADMIN, R.AUDITOR)),
+    ("/api/v1/factory/esg/report", _roles(R.PABRIK, R.ADMIN, R.AUDITOR)),     # laporan ESG: baca auditor
+    ("/api/v1/factory/esg/report.csv", _roles(R.PABRIK, R.ADMIN, R.AUDITOR)),
+    ("/api/v1/factory/efficiency", _roles(R.PABRIK, R.ADMIN, R.AUDITOR)),     # register penghematan: tulis pabrik/admin
+    ("/api/v1/factory/charges",    _roles(R.PABRIK, R.ADMIN, R.AUDITOR)),     # potongan logistik: baca auditor
     ("/api/v1/factory/settlements", _roles(R.PABRIK, R.ADMIN, R.AUDITOR)),   # tulis: khusus pabrik (require_role)
     ("/api/v1/factory/settlements/", _roles(R.PABRIK, R.ADMIN, R.AUDITOR)),
     ("/api/v1/labs/",              _roles(R.PABRIK, R.ADMIN)),

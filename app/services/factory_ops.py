@@ -7,7 +7,7 @@ memakai stok yang sama dua kali.
 
 from datetime import datetime, timezone
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..engines.factory_econ import (LOSS_KINDS, PRODUCTS, PricingRequest, batch_economics,
@@ -17,7 +17,7 @@ from ..models.ledger import BiocharLedgerEntry, CustodyStage
 from .custody import allocate_grams, shrinkage_fields, transition
 from ..engines.quality import FeedstockSample, score_sample
 from ..models.factory_ops import (BatchCost, BatchInput, BatchLoss, BatchOutput, CollectorSettlement, DeliveryRequest,
-                                  InboundQC, ManufacturingBatch, NegotiationEvent, QCDecision, RequestStatus,
+                                  FinishedGoodsMovement, InboundQC, ManufacturingBatch, NegotiationEvent, QCDecision, RequestStatus,
                                   SettlementEvent, SettlementStatus)
 from ..models.user import User, UserRole
 from ..params import P
@@ -155,13 +155,23 @@ async def inbound_qc(db: AsyncSession, inspector: User, data: dict) -> InboundQC
         raise LookupError("Delivery request tidak ditemukan")
     if _v(r.status) != RequestStatus.ACCEPTED.value:
         raise TransitionConflict(f"Hanya ajuan berstatus 'accepted' yang dapat di-QC (kini '{_v(r.status)}').")
-    net = data["gross_kg"] - data["tare_kg"]
-    if net <= 0:
+    gross_net = data["gross_kg"] - data["tare_kg"]
+    if gross_net <= 0:
         raise ValueError("Berat bersih harus > 0 (bruto − tara).")
+    sorted_out = float(data.get("rejected_kg") or 0.0)
+    if sorted_out >= gross_net - 1e-9:
+        raise ValueError("Karung disortir ≥ berat bersih: tolak seluruh lot (isi kadar air/kontaminan aktual).")
+    # Sortir di gerbang: karung basah/berjamur dipisah & dikarantina; sisanya dinilai & dibayar
+    net = gross_net - sorted_out
     q = score_sample(FeedstockSample(moisture=data["moisture"], ash=data["ash"], volatile_matter=data["volatile_matter"],
                                      fixed_carbon=data["fixed_carbon"], contamination=data.get("contamination", 0)))
     rejected = q["grade"] == "TOLAK"
     payable = 0.0 if rejected else net * (1 - data.get("contamination", 0) / 100)
+    # Refraksi kadar air: berat basis kering setara kadar air acuan kontrak (harga sudah disetarakan basis kering;
+    # angka ini ditulis di nota agar petugas lapangan melihat "potongan air" dalam kg).
+    m_ref = P("pabrik.reference_moisture_pct")
+    dry_basis = net if data["moisture"] <= m_ref else net * (1 - data["moisture"] / 100) / (1 - m_ref / 100)
+    refraction = 0.0 if rejected else max(0.0, net - dry_basis)
     # Harga dibulatkan ke sen dulu, lalu total dihitung dari harga yang tertera (yang tampil = yang dibayar)
     price = 0.0 if rejected else round(contract_moisture_adjustment(r.agreed_price_per_kg, r.moisture_est,
                                                                     data["moisture"]), 2)
@@ -182,17 +192,33 @@ async def inbound_qc(db: AsyncSession, inspector: User, data: dict) -> InboundQC
                    grade=q["grade"], score=q["score"], decision=decision, final_price_per_kg=price,
                    total_payment_rp=round(payable * price), remaining_kg=0.0 if rejected else net,
                    verification_code=await new_verification_code(db, collector, inspector),
-                   evidence_photo_url=data.get("evidence_photo_url"), inspector_id=inspector.id, note=data.get("note"))
+                   evidence_photo_url=data.get("evidence_photo_url"), inspector_id=inspector.id, note=data.get("note"),
+                   rejected_kg=gross_net if rejected else sorted_out,
+                   refraction_kg=round(refraction, 2), dry_basis_kg=None if rejected else round(dry_basis, 2))
     db.add(qc)
     await _event(db, r.id, inspector, "qc", price, None,
                  f"{_v(decision)}: grade {q['grade']}, air {data['moisture']}% (kontrak {r.moisture_est}%)")
     await db.flush()
-    await _receive_linked_harvests(db, inspector, r.id, net, rejected, qc.verification_code)
+    from .logistics import reason_from_quality as _rq
+    await _receive_linked_harvests(db, inspector, r.id, net, rejected, qc.verification_code,
+                                   _rq(data["moisture"], data.get("contamination", 0)) if rejected else None)
     await settle_qc(db, qc, r.collector_id, inspector)
+    from .logistics import open_return, reason_from_quality
+    if rejected:
+        await open_return(db, inspector, stage="qc_pabrik", request_id=r.id, qc_id=qc.id, quantity_kg=gross_net,
+                          reason_code=reason_from_quality(data["moisture"], data.get("contamination", 0)),
+                          moisture=data["moisture"], note=f"Lot ditolak QC ({qc.verification_code})",
+                          evidence_photo_url=data.get("evidence_photo_url"))
+    elif sorted_out > 0:
+        await open_return(db, inspector, stage="qc_pabrik", request_id=r.id, qc_id=qc.id, quantity_kg=sorted_out,
+                          reason_code=data.get("rejected_reason") or "berjamur", moisture=None,
+                          note=f"Sortir sebagian lot {qc.verification_code}: {sorted_out:g} kg dipisah, tidak dibayar",
+                          evidence_photo_url=data.get("evidence_photo_url"))
     return qc
 
 
-async def _receive_linked_harvests(db, inspector: User, request_id: int, net_kg: float, rejected: bool, lot_code: str):
+async def _receive_linked_harvests(db, inspector: User, request_id: int, net_kg: float, rejected: bool, lot_code: str,
+                                   reject_category: str | None = None):
     """Teruskan hasil QC lot ke harvest petani yang terlampir: berat diterima dibagi proporsional timbangan
     pengepul (susut merata; kelebihan berat = stok milik pengepul sendiri, tidak dibagikan)."""
     linked = (await db.execute(select(Harvest).where(Harvest.delivery_request_id == request_id)
@@ -207,7 +233,8 @@ async def _receive_linked_harvests(db, inspector: User, request_id: int, net_kg:
         if rejected:
             await transition(db, h.id, HarvestStatus.VERIFIED, HarvestStatus.REJECTED, inspector,
                              CustodyStage.FACTORY_REJECT, note=f"QC lot ditolak ({lot_code})",
-                             rejected_reason="QC pabrik: lot ditolak", rejected_at=now)
+                             rejected_reason="QC pabrik: lot ditolak", rejected_at=now,
+                             reject_category=reject_category or "lainnya")
             continue
         received = round(ref * factor, 3)
         await transition(db, h.id, HarvestStatus.VERIFIED, HarvestStatus.DELIVERED, inspector,
@@ -217,6 +244,8 @@ async def _receive_linked_harvests(db, inspector: User, request_id: int, net_kg:
 
 def qc_dict(q: InboundQC) -> dict:
     return {"id": q.id, "request_id": q.request_id, "net_kg": q.net_kg, "payable_kg": round(q.payable_kg, 2),
+            "rejected_kg": round(q.rejected_kg or 0.0, 2),
+            "refraction_kg": round(q.refraction_kg or 0.0, 2), "dry_basis_kg": q.dry_basis_kg,
             "remaining_kg": round(q.remaining_kg, 2), "moisture": q.moisture, "ash": q.ash,
             "contamination": q.contamination, "grade": q.grade, "score": q.score, "decision": _v(q.decision),
             "final_price_per_kg": q.final_price_per_kg, "total_payment_rp": q.total_payment_rp,
@@ -281,7 +310,13 @@ async def create_batch(db: AsyncSession, operator: User, data: dict) -> Manufact
     for lot, kg in lots:
         db.add(BatchInput(batch_id=batch.id, qc_id=lot.id, input_kg=kg, moisture=lot.moisture))
     for p, kg in outputs.items():
-        db.add(BatchOutput(batch_id=batch.id, product=p, quantity_kg=kg, quality=data.get("quality", {}).get(p)))
+        exp = model.outputs[p] * input_kg
+        db.add(BatchOutput(batch_id=batch.id, product=p, quantity_kg=kg, quality=data.get("quality", {}).get(p),
+                           expected_kg=round(exp, 3), yield_pct=round(100 * kg / input_kg, 3),
+                           yield_variance_pct=round((kg / exp - 1) * 100, 2) if exp > 0 else None))
+        if kg > 0:
+            db.add(FinishedGoodsMovement(product=p, movement="produksi", quantity_kg=kg, batch_id=batch.id,
+                                         reference=batch.batch_code, actor_id=operator.id))
     for k, kg in losses.items():
         db.add(BatchLoss(batch_id=batch.id, kind=k, quantity_kg=kg))
     db.add(BatchCost(batch_id=batch.id, cost_type="variabel", item="bahan_baku_sekam", driver_qty=input_kg,
@@ -292,6 +327,11 @@ async def create_batch(db: AsyncSession, operator: User, data: dict) -> Manufact
                          amount_rp=c["amount_rp"], product=c.get("product")))
     await db.flush()
     eco["wallet"] = await _allocate_biochar_to_wallets(db, operator, batch, lots, input_kg, outputs["biochar"])
+    if eco["wallet"]["allocated_kg"] > 0:     # biochar milik dompet petani keluar dari stok jual pabrik
+        db.add(FinishedGoodsMovement(product="biochar", movement="alokasi_petani",
+                                     quantity_kg=-eco["wallet"]["allocated_kg"], batch_id=batch.id,
+                                     reference=batch.batch_code, actor_id=operator.id,
+                                     note="Porsi sirkular dikembalikan ke dompet biochar petani"))
     batch.economics = {**eco}                      # simpan ringkasan alokasi di snapshot batch
     await db.flush()
     return batch
@@ -305,10 +345,21 @@ async def _allocate_biochar_to_wallets(db, operator: User, batch: ManufacturingB
     share = P("sirkular.farmer_return_share")
     pool_g = round(biochar_kg * share * 1000)
     buckets: list[tuple[Harvest | None, float]] = []
+    # Batch-load all linked harvests across lots in a single query (eliminates N+1 query)
+    request_ids = list({lot.request_id for lot, _ in lots if lot.request_id is not None})
+    harvests_by_req: dict[int, list[Harvest]] = {rid: [] for rid in request_ids}
+    if request_ids:
+        all_linked = (await db.execute(
+            select(Harvest)
+            .where(Harvest.delivery_request_id.in_(request_ids), Harvest.received_kg.is_not(None))
+            .execution_options(populate_existing=True)
+        )).scalars().all()
+        for h in all_linked:
+            if h.delivery_request_id in harvests_by_req:
+                harvests_by_req[h.delivery_request_id].append(h)
+
     for lot, kg_used in lots:
-        linked = (await db.execute(select(Harvest).where(Harvest.delivery_request_id == lot.request_id,
-                                                         Harvest.received_kg.is_not(None))
-                                   .execution_options(populate_existing=True))).scalars().all()
+        linked = harvests_by_req.get(lot.request_id, [])
         traced = sum(h.received_kg for h in linked)
         frac_used = kg_used / lot.net_kg if lot.net_kg else 0.0
         for h in linked:
@@ -353,6 +404,7 @@ def settlement_dict(s) -> dict:
             "payable_kg": round(s.payable_kg, 2), "moisture": s.moisture, "price_per_kg": s.price_per_kg,
             "amount_rp": s.amount_rp, "price_basis": s.price_basis, "status": _v(s.status),
             "payment_reference": s.payment_reference,
+            **({"deducted_rp": s.deducted_rp, "net_transfer_rp": s.net_transfer_rp} if hasattr(s, "deducted_rp") else {}),
             "created_at": s.created_at.isoformat() if s.created_at else None,
             "paid_at": s.paid_at.isoformat() if s.paid_at else None}
 
@@ -456,12 +508,29 @@ async def mark_settlement_paid(db: AsyncSession, settlement_id: int, reference: 
         raise TransitionConflict("Hanya pembayaran berstatus 'terutang' yang dapat ditandai lunas "
                                  "(harga harus ditetapkan dulu; tidak bisa dibayar dua kali).")
     actor_id = actor.id if actor else s.created_by_id
+    # Potongan logistik terbuka milik pengepul ini (ongkos jarak kosong) dipotong dari pembayaran ini, sebatas nilainya
+    from ..models.factory_ops import LogisticsCharge
+    open_ch = (await db.execute(select(LogisticsCharge).where(LogisticsCharge.collector_id == s.collector_id,
+                                                              LogisticsCharge.status == "terbuka")
+                                .order_by(LogisticsCharge.id).with_for_update())).scalars().all()
+    room, deducted, now = float(s.amount_rp or 0), 0.0, datetime.now(timezone.utc)
+    for c in open_ch:
+        amt = float(c.amount_rp)
+        if amt > room + 1e-6:
+            break
+        c.status, c.settlement_id, c.resolved_at = "dipotong", settlement_id, now
+        room -= amt
+        deducted += amt
     ev = SettlementEvent(settlement_id=settlement_id, action="dibayar", old_price=s.price_per_kg,
                          new_price=s.price_per_kg, old_amount=s.amount_rp, new_amount=s.amount_rp,
-                         reason=f"Lunas transfer ref: {reference}", actor_id=actor_id)
+                         reason=f"Lunas transfer ref: {reference}"
+                                + (f" · dipotong ongkos logistik Rp{deducted:,.0f} → transfer Rp{(s.amount_rp or 0) - deducted:,.0f}"
+                                   if deducted else ""), actor_id=actor_id)
     db.add(ev)
     await db.flush()
-    return await db.get(CollectorSettlement, settlement_id, populate_existing=True)
+    out = await db.get(CollectorSettlement, settlement_id, populate_existing=True)
+    out.deducted_rp, out.net_transfer_rp = round(deducted), round((out.amount_rp or 0) - deducted)
+    return out
 
 
 def settlement_event_dict(e: SettlementEvent, actor_name: str | None = None) -> dict:
@@ -482,3 +551,33 @@ async def settlement_history(db: AsyncSession, settlement_id: int) -> list[dict]
     rows = (await db.execute(q)).all()
     return [settlement_event_dict(ev, actor_name=name) for ev, name in rows]
 
+
+
+# ---------------------------------------------------------------- stok produk jadi (biochar, bio-silika, pellet)
+async def inventory_balance(db: AsyncSession) -> dict:
+    rows = (await db.execute(select(FinishedGoodsMovement.product, func.sum(FinishedGoodsMovement.quantity_kg))
+                             .group_by(FinishedGoodsMovement.product))).all()
+    bal = {p: 0.0 for p in PRODUCTS}
+    bal.update({p: round(float(kg or 0), 3) for p, kg in rows})
+    return bal
+
+
+async def record_goods_movement(db: AsyncSession, actor: User, product: str, movement: str, quantity_kg: float,
+                                unit_price_rp: float | None, reference: str | None, note: str | None):
+    """Keluar/masuk stok produk jadi. Keluar tidak boleh membuat saldo negatif; dua penjualan serentak
+    diserialkan dengan advisory lock per produk (PostgreSQL) / writer tunggal (SQLite)."""
+    if product not in PRODUCTS:
+        raise ValueError("Produk hanya bio_pellet / biochar / bio_silika")
+    sign = -1 if movement == "penjualan" else 1
+    qty = sign * abs(quantity_kg) if movement in ("penjualan", "retur_pelanggan") else quantity_kg
+    if db.bind.dialect.name == "postgresql":
+        await db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:k))"), {"k": f"fg:{product}"})
+    bal = (await inventory_balance(db))[product]
+    if bal + qty < -1e-9:
+        raise TransitionConflict(f"Stok {product} hanya {bal:g} kg; tidak cukup untuk {abs(qty):g} kg.")
+    m = FinishedGoodsMovement(product=product, movement=movement, quantity_kg=qty, unit_price_rp=unit_price_rp,
+                              reference=reference, note=note, actor_id=actor.id)
+    db.add(m)
+    await db.flush()
+    return {"id": m.id, "product": product, "movement": movement, "quantity_kg": qty,
+            "balance_kg": round(bal + qty, 3)}

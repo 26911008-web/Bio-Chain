@@ -34,7 +34,7 @@ async def next_seq(db: AsyncSession, sender: str, receiver: str, period: str) ->
     dialect = db.bind.dialect.name
     if dialect == "postgresql":
         from sqlalchemy import text
-        res = await db.execute(text("SELECT next_trx_seq(:sender, :receiver, :period)"),
+        res = await db.execute(text("SELECT public.next_trx_seq(:sender, :receiver, :period)"),
                                {"sender": sender, "receiver": receiver, "period": period})
         return int(res.scalar_one())
     else:

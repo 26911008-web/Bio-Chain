@@ -38,9 +38,10 @@ QUALITY_REFERENCES = [
 
 class FeedstockSample(BaseModel):
     moisture: float = Field(..., ge=0, le=60, description="Kadar air, % basis basah")
-    ash: float = Field(..., ge=0, le=40, description="Kadar abu, % basis kering")
-    volatile_matter: float = Field(..., ge=0, le=100, description="Volatile matter, % basis kering")
-    fixed_carbon: float = Field(..., ge=0, le=100, description="Fixed carbon, % basis kering")
+    # F9: abu/VM/FC hanya terukur di lab/NIR — boleh kosong di lapangan (skor dari kadar air & kontaminan)
+    ash: float | None = Field(None, ge=0, le=40, description="Kadar abu, % basis kering (opsional)")
+    volatile_matter: float | None = Field(None, ge=0, le=100, description="Volatile matter, % basis kering (opsional)")
+    fixed_carbon: float | None = Field(None, ge=0, le=100, description="Fixed carbon, % basis kering (opsional)")
     contamination: float = Field(0, ge=0, le=50, description="Batu/dedak/plastik, % massa")
     pyrolysis_temp_c: float = Field(500, ge=300, le=700, description="Suhu pirolisis target")
 
@@ -75,19 +76,27 @@ def score_sample(s: FeedstockSample) -> dict:
                               "TOLAK": 0.0}
     ash_lo, ash_hi = P("harga_mutu.ash_ideal_min"), P("harga_mutu.ash_ideal_max")
     warnings = []
-    proximate_sum = s.ash + s.volatile_matter + s.fixed_carbon
-    if abs(proximate_sum - 100) > 3:
-        warnings.append(f"Abu + VM + FC = {proximate_sum:.1f}% (seharusnya ~100%). Cek ulang hasil uji proksimat.")
+    measured = s.ash is not None and s.fixed_carbon is not None
+    if s.ash is not None and s.volatile_matter is not None and s.fixed_carbon is not None:
+        proximate_sum = s.ash + s.volatile_matter + s.fixed_carbon
+        if abs(proximate_sum - 100) > 3:
+            warnings.append(f"Abu + VM + FC = {proximate_sum:.1f}% (seharusnya ~100%). Cek ulang hasil uji proksimat.")
+    if not measured:
+        warnings.append("Uji proksimat (abu/FC) tidak diukur — grade dihitung dari kadar air & kontaminan saja; "
+                        "rendemen memakai abu acuan. Lakukan uji lab untuk lot besar/kontrak.")
 
     components = {
         "kadar_air": _linear_score(s.moisture, best=P("harga_mutu.moisture_best"), worst=MOISTURE_REJECT),
         "kontaminasi": _linear_score(s.contamination, best=P("harga_mutu.contamination_best"), worst=CONTAMINATION_REJECT),
-        "kadar_abu": _clamp(100 - 10 * max(0, s.ash - ash_hi, ash_lo - s.ash), 0, 100),
-        "fixed_carbon": _linear_score(s.fixed_carbon, best=P("harga_mutu.fc_best"), worst=P("harga_mutu.fc_worst")),
     }
+    if s.ash is not None:
+        components["kadar_abu"] = _clamp(100 - 10 * max(0, s.ash - ash_hi, ash_lo - s.ash), 0, 100)
+    if s.fixed_carbon is not None:
+        components["fixed_carbon"] = _linear_score(s.fixed_carbon, best=P("harga_mutu.fc_best"), worst=P("harga_mutu.fc_worst"))
     w = weights("harga_mutu.w_")
-    score = (components["kadar_air"] * w["moisture"] + components["kontaminasi"] * w["contamination"]
-             + components["kadar_abu"] * w["ash"] + components["fixed_carbon"] * w["fc"])
+    key_w = {"kadar_air": w["moisture"], "kontaminasi": w["contamination"], "kadar_abu": w["ash"], "fixed_carbon": w["fc"]}
+    total_w = sum(key_w[k] for k in components) or 1.0          # bobot dinormalisasi atas komponen yang terukur
+    score = sum(components[k] * key_w[k] for k in components) / total_w
 
     if s.moisture > MOISTURE_REJECT or s.contamination > CONTAMINATION_REJECT:
         grade = "TOLAK"
@@ -101,8 +110,9 @@ def score_sample(s: FeedstockSample) -> dict:
         grade = "C"
 
     dry_factor = (1 - s.moisture / 100) * (1 - s.contamination / 100)
-    y = biochar_yield_db(s.pyrolysis_temp_c, s.ash)
-    ash_in_char = _clamp(s.ash / y * 100, 0, 95)
+    ash_used = s.ash if s.ash is not None else P("rendemen.ref_ash")
+    y = biochar_yield_db(s.pyrolysis_temp_c, ash_used)
+    ash_in_char = _clamp(ash_used / y * 100, 0, 95)
 
     comp_details = {
         "method": "Multi-Criteria Proximate Quality Scoring & Pyrolysis Yield Model",
@@ -117,8 +127,8 @@ def score_sample(s: FeedstockSample) -> dict:
         "steps": [
             {"step": "Skor kadar air", "formula": "linear_score(moisture, best, worst)", "value": round(components["kadar_air"], 1), "unit": "poin"},
             {"step": "Skor kontaminasi", "formula": "linear_score(contamination, best, worst)", "value": round(components["kontaminasi"], 1), "unit": "poin"},
-            {"step": "Skor kadar abu", "formula": "clamp(100 - 10 × penalty, 0, 100)", "value": round(components["kadar_abu"], 1), "unit": "poin"},
-            {"step": "Skor fixed carbon", "formula": "linear_score(fixed_carbon, best, worst)", "value": round(components["fixed_carbon"], 1), "unit": "poin"},
+            {"step": "Skor kadar abu", "formula": "clamp(100 - 10 × penalty, 0, 100)", "value": round(components["kadar_abu"], 1) if "kadar_abu" in components else None, "unit": "poin"},
+            {"step": "Skor fixed carbon", "formula": "linear_score(fixed_carbon, best, worst)", "value": round(components["fixed_carbon"], 1) if "fixed_carbon" in components else None, "unit": "poin"},
             {"step": "Rendemen biochar kering (db)", "formula": "biochar_yield_db(temp, ash)", "value": round(y, 2), "unit": "%"},
             {"step": "Potensi biochar per ton terima", "formula": "1000 × faktor_kering × y ÷ 100", "value": round(1000 * dry_factor * y / 100, 1), "unit": "kg/ton"},
             {"step": "Skor komposit mutu", "formula": "∑(skor_komponen × bobot)", "value": round(score, 1), "unit": "poin"},
@@ -136,7 +146,51 @@ def score_sample(s: FeedstockSample) -> dict:
         "biochar_kg_per_ton_received": round(1000 * dry_factor * y / 100, 1),
         "pred_ash_in_biochar_pct": round(ash_in_char, 1),
         "pred_sio2_in_biochar_pct": round(ash_in_char * SIO2_FRACTION_OF_ASH, 1),
-        "sio2_kg_per_ton_received": round(1000 * dry_factor * s.ash / 100 * SIO2_FRACTION_OF_ASH, 1),
+        "sio2_kg_per_ton_received": round(1000 * dry_factor * ash_used / 100 * SIO2_FRACTION_OF_ASH, 1),
+        "proximate_measured": measured,
         "warnings": warnings,
         "computation_details": comp_details,
+    }
+
+
+def farmgate_price(base_price: float, weighed_kg: float, moisture: float, contamination: float, grade: str,
+                   grade_multiplier: float, reference_moisture: float | None = None, wetter_only: bool = False,
+                   method: str | None = None) -> dict:
+    """Harga beli sekam dari petani, terikat langsung pada kadar air (Engine ② → verifikasi pengepul).
+
+    basis_kering (default, sama dengan rumus QC pabrik):
+        harga/kg  = harga_dasar × (1 − M) / (1 − M_acuan)        (M lebih basah → bahan kering lebih sedikit)
+        kg_bayar  = timbangan × (1 − kontaminan)                  (batu/plastik tidak dibayar)
+        total     = kg_bayar × harga/kg;   TOLAK → 0
+      Pengali grade TIDAK dipakai: kadar air sudah dihargai kontinu (menghindari hitung ganda & 'tebing harga'
+      di batas grade). Bonus mutu petani tetap lewat Engine ⑥ (insentif/XP).
+    pengali_grade (lama): total = timbangan × harga_dasar × pengali_grade.
+    wetter_only=True (kontrak lelang): hanya potongan bila lebih basah dari kadar air kontrak, tanpa bonus kering.
+    """
+    method = method or P("harga_mutu.pricing_method")
+    m_ref = P("harga_mutu.reference_moisture_pct") if reference_moisture is None else reference_moisture
+    mold_risk = moisture > P("harga_mutu.moisture_mold_risk_pct")
+    if grade == "TOLAK":
+        price, payable_kg, formula = 0.0, 0.0, "Grade TOLAK → tidak dibeli (kembalikan / keringkan dulu)"
+    elif method == "pengali_grade":
+        price, payable_kg = base_price * grade_multiplier, weighed_kg
+        formula = f"timbangan × Rp{base_price:g} × pengali {grade_multiplier:g}"
+    else:
+        factor = (1 - moisture / 100) / (1 - m_ref / 100)
+        if wetter_only:
+            factor = min(1.0, factor)
+        price = base_price * factor
+        payable_kg = weighed_kg * (1 - contamination / 100)
+        formula = (f"Rp{base_price:g} × (1 − {moisture:g}%) ÷ (1 − {m_ref:g}%) = Rp{price:,.2f}/kg; "
+                   f"kg bayar = {weighed_kg:g} × (1 − {contamination:g}%)")
+    price = round(price, 2)
+    return {
+        "method": method, "price_per_kg": price, "payable_kg": round(payable_kg, 3),
+        "total_price": round(payable_kg * price), "reference_moisture_pct": m_ref,
+        "mold_risk": mold_risk,
+        "mold_advice": ("Kadar air di atas ambang risiko jamur: angkut ≤ 48 jam atau keringkan; jangan simpan "
+                        "tertutup.") if mold_risk else None,
+        "formula": formula,
+        "parameters_used": ["harga_mutu.pricing_method", "harga_mutu.reference_moisture_pct",
+                            "harga_mutu.moisture_mold_risk_pct", "harga_mutu.base_price_per_kg"],
     }

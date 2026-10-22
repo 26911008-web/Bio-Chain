@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,7 +21,7 @@ from ..models.ledger import BiocharLedgerEntry, CustodyEvent, CustodyStage
 from ..engines.incentive import calculate_incentive, DeliveryEvent, next_tier_xp
 from ..models.trade import StockListing
 from ..services import trade
-from ..services.custody import find_replay, wallet_balance
+from ..services.custody import find_replay, trusted_device_time, wallet_balance
 from ..security.url import EvidenceUrl
 
 router = APIRouter()
@@ -31,7 +31,10 @@ class HarvestReportRequest(BaseModel):
     quantity_kg: float = Field(..., gt=0, le=50000,
                                description="Jumlah sekam dalam kg")
     mill_id: int | None = None
-    photo_url: str | None = None
+    photo_url: EvidenceUrl | None = Field(None, max_length=1000)
+    # Opsional: taksiran petani. Tidak memengaruhi harga — QC pengepul yang menentukan; dipakai untuk umpan balik
+    moisture_est: float | None = Field(None, ge=0, le=60, description="Taksiran kadar air (%), boleh kosong")
+    grade_est: str | None = Field(None, pattern="^[ABCD]$", description="Taksiran grade A-D, boleh kosong")
     client_event_id: str | None = Field(None, max_length=64, description="Kunci idempotensi antrean offline")
     client_recorded_at: datetime | None = Field(None, description="Waktu lapor di perangkat (bisa saat offline)")
 
@@ -80,7 +83,9 @@ async def report_harvest(
         status=HarvestStatus.REPORTED,
         qr_code=qr,
         photo_url=req.photo_url,
-        reported_at=req.client_recorded_at or datetime.now(timezone.utc),
+        farmer_moisture_est=req.moisture_est,
+        farmer_grade_est=req.grade_est,
+        reported_at=trusted_device_time(req.client_recorded_at)[0],
     )
     db.add(harvest)
     await db.flush()
@@ -115,10 +120,98 @@ async def report_harvest(
     )
 
 
+@router.get("/payments")
+async def my_payments(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(require_role(UserRole.PETANI))],
+):
+    """Bukti bayar dari pengepul atas sekam saya (F8): bruto, potongan pajak, bersih, metode, nomor kuitansi."""
+    from ..models.compliance import FarmerPayment
+    from ..services.payments import payment_dict
+    rows = (await db.execute(select(FarmerPayment).where(FarmerPayment.farmer_id == user.id)
+                             .order_by(FarmerPayment.id.desc()).limit(100))).scalars().all()
+    return [payment_dict(p) for p in rows]
+
+
+@router.get("/payments/overview")
+async def my_payment_overview(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(require_role(UserRole.PETANI))],
+):
+    """Menu Pembayaran petani: sudah dibayar, menunggu bayar (terlambat bila lewat batas), dan belum ditimbang."""
+    from ..services.payments import farmer_overview
+    return await farmer_overview(db, user)
+
+
+@router.get("/quality-feedback")
+async def my_quality_feedback(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(require_role(UserRole.PETANI))],
+    months: int = 6,
+):
+    """Kurva mutu bulanan dari QC pengepul & QC pabrik + defect rate dan penyebabnya (umpan balik petani)."""
+    from ..services.feedback import farmer_quality_feedback
+    return await farmer_quality_feedback(db, user.id, min(max(months, 1), 24))
+
+
+class RedeemRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+    kg: float = Field(..., gt=0, le=100_000)
+    land_area_ha: float | None = Field(None, gt=0, le=100, description="Luas sawah tujuan aplikasi")
+    pickup_point: str = Field("pabrik", pattern="^(pabrik|pengepul)$")
+    note: str | None = Field(None, max_length=300)
+
+
+@router.get("/biochar/estimate")
+async def biochar_estimate(
+    user: Annotated[User, Depends(require_role(UserRole.PETANI))],
+    kg: float,
+    land_area_ha: float,
+):
+    """Perkiraan manfaat ekonomi biochar di sawah (rumus pendekatan sirkular, parameter menu Pabrik/Admin)."""
+    from ..engines.biochar_field import estimate
+    if kg <= 0 or land_area_ha <= 0:
+        raise HTTPException(422, "kg dan luas sawah harus > 0")
+    return estimate(kg, land_area_ha)
+
+
+@router.get("/biochar/redemptions")
+async def my_redemptions(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(require_role(UserRole.PETANI))],
+):
+    from ..services.circular import redemption_dict
+    from ..models.circular import BiocharRedemption
+    rows = (await db.execute(select(BiocharRedemption).where(BiocharRedemption.farmer_id == user.id)
+                             .order_by(BiocharRedemption.id.desc()).limit(50))).scalars().all()
+    return [redemption_dict(r) for r in rows]
+
+
+@router.post("/biochar/redeem", status_code=201)
+async def redeem_biochar(
+    req: RedeemRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(require_role(UserRole.PETANI))],
+):
+    """Ajukan pengambilan biochar untuk sawah. Saldo ditahan; ledger berkurang saat pabrik menyerahkan karung."""
+    from ..services.circular import request_redemption
+    return await request_redemption(db, user, req.kg, req.land_area_ha, req.pickup_point, req.note)
+
+
+@router.post("/biochar/redemptions/{redemption_id}/cancel")
+async def cancel_redemption(
+    redemption_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(require_role(UserRole.PETANI))],
+):
+    from ..services.circular import cancel_redemption as _cancel
+    return await _cancel(db, user, redemption_id, "dibatalkan petani")
+
+
 @router.get("/mills")
 async def list_mills(
     db: Annotated[AsyncSession, Depends(get_db)],
-    user: Annotated[User, Depends(require_role(UserRole.PETANI))],
+    user: Annotated[User, Depends(require_role(UserRole.PETANI, UserRole.PENGEPUL))],  # pengepul: lapor proxy
 ):
     """Daftar penggilingan untuk form lapor (pengganti /supply/mills yang kini khusus lab)."""
     mills = (await db.execute(
@@ -138,9 +231,14 @@ async def biochar_wallet(
         select(BiocharLedgerEntry).where(BiocharLedgerEntry.farmer_id == user.id)
         .order_by(BiocharLedgerEntry.id.desc()).limit(min(max(limit, 1), 100))
     )).scalars().all()
+    from ..services.circular import pending_kg
+    balance = await wallet_balance(db, user.id)
+    held = await pending_kg(db, user.id)
     return {
         "farmer_id": user.id,
-        "balance_kg": await wallet_balance(db, user.id),
+        "balance_kg": balance,
+        "held_kg": held,                                   # sedang diajukan, belum diserahkan
+        "available_kg": round(max(0.0, balance - held), 2),
         "entries": [{"id": e.id, "type": e.entry_type, "amount_kg": e.amount_kg, "harvest_id": e.harvest_id,
                      "conversion_id": e.conversion_id, "note": e.note,
                      "created_at": e.created_at.isoformat() if e.created_at else None} for e in entries],
@@ -206,7 +304,7 @@ async def get_incentive_status(
 class ListingCreate(BaseModel):
     quantity_kg: float = Field(..., gt=0, le=200_000)
     moisture_pct: float | None = Field(None, ge=0, le=60)
-    grade_estimate: str | None = Field(None, pattern="^(A|B|C)$")
+    grade_estimate: str | None = Field(None, pattern="^(A|B|C|D)$")
     allow_jemput: bool = True
     allow_antar: bool = False
     ask_price_jemput: float | None = Field(None, gt=0, le=10_000, description="Rp/kg di lokasi petani")
@@ -217,8 +315,8 @@ class ListingCreate(BaseModel):
 
 
 class AcceptBid(BaseModel):
-    bid_id: int
-    quantity_kg: float = Field(..., gt=0, description="Boleh sebagian dari tawaran")
+    bid_id: int = Field(..., gt=0)
+    quantity_kg: float = Field(..., gt=0, le=200_000, description="Boleh sebagian dari tawaran")
 
 
 @router.post("/listings", status_code=201)

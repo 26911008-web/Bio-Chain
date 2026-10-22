@@ -149,6 +149,12 @@ def advise(w: WasteStream) -> dict:
             "energi_primer_gj_per_tahun": round(primary_gj, 0),
             "setara_listrik_mwh_teoritis": round(primary_gj / 3.6, 0),
             "energi_pengeringan_ke_15pct_gj": round(drying_gj, 0),
+            # Limbah basah: energi termal as-received ≈ 0 (habis untuk menguapkan air) — potensi nyata ada di
+            # jalur biokimia. Ringkasan memakai keluaran listrik teknologi TERBAIK agar tidak terbaca "tanpa potensi".
+            "teknologi_terbaik": best["technology"],
+            "listrik_teknologi_terbaik_mwh_per_tahun": best["outputs"].get("listrik_mwh_per_tahun"),
+            "catatan": ("Energi termal as-received ≈ 0 karena kadar air tinggi; potensi dihitung dari "
+                        f"{best['technology']}.") if primary_gj <= 0 else None,
         },
         "technologies": ranked,
         "recommendation": (f"Teknologi utama: {best['technology']} (skor {best['score']:.0f}/100). "

@@ -33,6 +33,7 @@ psql "$DATABASE_URL_SYNC" -v ON_ERROR_STOP=1 -f migrations/009_fix_rls_recursion
 psql "$DATABASE_URL_SYNC" -v ON_ERROR_STOP=1 -f migrations/010_reporting_warehouse.sql
 psql "$DATABASE_URL_SYNC" -v ON_ERROR_STOP=1 -f migrations/011_collector_settlements.sql
 psql "$DATABASE_URL_SYNC" -v ON_ERROR_STOP=1 -f migrations/012_settlement_events_and_constraints.sql
+psql "$DATABASE_URL_SYNC" -v ON_ERROR_STOP=1 -f migrations/013_field_ops_green_logistics.sql   # stop gagal/batal, GPS, retur, stok produk, lelang atomik
 psql "$DATABASE_URL_SYNC" -v ON_ERROR_STOP=1 -v app_password="'<rahasia>'" -f migrations/000_app_role.sql
 # 2. deploy kode baru (gunicorn reload bertahap)
 ```
@@ -59,3 +60,5 @@ py -m uvicorn app.main:app --port 8000
 set BIOCHAIN_TEST_PG_OWNER_URL=postgresql+asyncpg://biochain:biochain_dev_2026@localhost:5433/biochain
 py -m pytest -q
 ```
+
+| 014 | `014_field_compliance.sql` | Bukti bayar petani NUMERIC (F8), petani tanpa HP (F7), persetujuan & permintaan data PDP (F12), wajib ganti password (F6) + RLS |

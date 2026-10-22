@@ -11,10 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..database import get_db
 from ..dependencies import require_role
 from ..models.user import User, UserRole
-from ..models.route import Route, RouteStop, RouteStatus
+from ..models.route import Route, RouteStop, RouteStatus, StopStatus
 from ..models.harvest import Harvest, HarvestStatus
 from ..models.ledger import CustodyStage
-from ..services.custody import find_replay, load_harvest, transition
+from ..services import logistics
+from ..services.custody import find_replay, load_harvest, transition, trusted_device_time
 
 from ..security.url import EvidenceUrl
 
@@ -30,6 +31,31 @@ class PickupConfirmRequest(BaseModel):
     photo_url: EvidenceUrl | None = Field(None, max_length=1000)
     client_event_id: str | None = Field(None, max_length=64, description="Kunci idempotensi antrean offline")
     client_recorded_at: datetime | None = Field(None, description="Waktu scan di perangkat (bisa saat offline)")
+
+
+class StopFailRequest(BaseModel):
+    route_stop_id: int
+    reason: str = Field(..., pattern="^(stok_tidak_ada|dibatalkan_pengepul|mutu_buruk|akses_jalan|"
+                                     "penggilingan_tutup|truk_penuh|lainnya)$")
+    note: str | None = Field(None, max_length=500)
+    lat: float | None = Field(None, ge=-90, le=90)
+    lon: float | None = Field(None, ge=-180, le=180)
+    client_event_id: str | None = Field(None, max_length=64)
+    client_recorded_at: datetime | None = None
+
+
+class TrackPointIn(BaseModel):
+    client_point_id: str = Field(..., min_length=8, max_length=64)
+    recorded_at: datetime
+    lat: float = Field(..., ge=-90, le=90)
+    lon: float = Field(..., ge=-180, le=180)
+    accuracy_m: float | None = Field(None, ge=0, le=100_000)
+    speed_mps: float | None = Field(None, ge=0, le=100)
+
+
+class TrackUpload(BaseModel):
+    route_id: int
+    points: list[TrackPointIn] = Field(..., min_length=1, max_length=2000)
 
 
 @router.get("/active-route")
@@ -81,10 +107,12 @@ async def get_active_route(
             "planned_ton": s.planned_ton,
             "actual_ton": s.actual_ton,
             "picked_up": s.qr_scanned,
+            "stop_status": s.stop_status,
+            "fail_reason": s.fail_reason,
             "pickup_at": s.pickup_at.isoformat() if s.pickup_at else None,
         })
 
-    completed_stops = sum(1 for s in stops if s.qr_scanned)
+    completed_stops = sum(1 for s in stops if s.stop_status != StopStatus.PENDING.value)
     status_str = route.status.value if hasattr(route.status, 'value') else str(route.status)
 
     return {
@@ -114,8 +142,10 @@ async def start_route(
     route = result.scalar_one_or_none()
     if not route:
         raise HTTPException(404, "Rute tidak ditemukan")
+    if route.status == RouteStatus.IN_PROGRESS:
+        return {"message": "Rute sudah berjalan.", "route_id": route.id, "already_started": True}
     if route.status != RouteStatus.PLANNED:
-        raise HTTPException(400, "Rute sudah dimulai atau selesai")
+        raise HTTPException(409, f"Rute berstatus '{route.status.value}', tidak bisa dimulai.")
 
     route.status = RouteStatus.IN_PROGRESS
     route.started_at = datetime.now(timezone.utc)
@@ -142,6 +172,8 @@ async def confirm_pickup(
         raise HTTPException(404, "Stop tidak ditemukan pada rute Anda")
     route = (await db.execute(select(Route).where(Route.id == stop.route_id))).scalar_one()
 
+    if stop.stop_status in (StopStatus.FAILED.value, StopStatus.CANCELLED.value):
+        raise HTTPException(409, f"Stop ini sudah '{stop.stop_status}' ({stop.fail_reason}); jangan dimuat.")
     if stop.qr_scanned or await find_replay(db, req.client_event_id):
         return {
             "message": "ℹ️ Pickup stop ini sudah dikonfirmasi sebelumnya.",
@@ -153,6 +185,16 @@ async def confirm_pickup(
         raise HTTPException(409, "Mulai rute terlebih dahulu sebelum konfirmasi pickup.")
 
     picked_kg = req.actual_ton * 1000 if req.actual_ton is not None else None
+    geo_note, geo_m = None, None
+    if req.lat is not None and req.lon is not None and stop.mill_id:
+        from ..engines.emission import haversine_km
+        from ..models.harvest import Mill
+        from ..params import P
+        mill = await db.get(Mill, stop.mill_id)
+        if mill is not None:
+            geo_m = round(haversine_km((req.lat, req.lon), (mill.lat, mill.lon)) * 1000)
+            if geo_m > P("logistik.pickup_geofence_m"):
+                geo_note = f"GEOFENCE: scan {geo_m} m dari titik penggilingan (batas {P('logistik.pickup_geofence_m'):g} m)"
     if stop.harvest_id:
         harvest = await load_harvest(db, stop.harvest_id)
         if harvest.qr_code != req.qr_code:
@@ -160,23 +202,51 @@ async def confirm_pickup(
         await transition(
             db, harvest.id, HarvestStatus.VERIFIED, HarvestStatus.COLLECTED, user, CustodyStage.DRIVER_PICKUP,
             weight_kg=picked_kg, client_event_id=req.client_event_id, client_recorded_at=req.client_recorded_at,
-            lat=req.lat, lon=req.lon, evidence_photo_url=req.photo_url,
+            lat=req.lat, lon=req.lon, evidence_photo_url=req.photo_url, note=geo_note,
             picked_up_kg=picked_kg, collected_at=datetime.now(timezone.utc),
         )
 
     stop.qr_scanned = True
-    stop.pickup_at = req.client_recorded_at or datetime.now(timezone.utc)
+    stop.stop_status = StopStatus.PICKED_UP.value
+    stop.pickup_at = trusted_device_time(req.client_recorded_at)[0]
     stop.actual_ton = req.actual_ton if req.actual_ton is not None else stop.planned_ton
     stop.lat_arrived = req.lat
     stop.lon_arrived = req.lon
     stop.pickup_photo = req.photo_url
 
     return {
-        "message": "✅ Pickup dikonfirmasi!",
+        "message": "✅ Pickup dikonfirmasi!" + (" ⚠️ Lokasi scan jauh dari penggilingan — ditandai untuk auditor."
+                                                 if geo_note else ""),
         "stop_id": stop.id,
         "stop_order": stop.stop_order,
         "already_confirmed": False,
+        "distance_to_mill_m": geo_m,
+        "geofence_flag": geo_note is not None,
     }
+
+
+@router.post("/stop-failed")
+async def report_stop_failed(
+    req: StopFailRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(require_role(UserRole.DRIVER))],
+):
+    """Supir tiba tetapi sekam tidak bisa diambil (stok tidak ada, dibatalkan, basah, jalan putus).
+    Stop ditutup sebagai GAGAL sehingga rute tetap bisa diselesaikan; panen kembali ke antrean pabrik."""
+    return await logistics.fail_stop(db, user, req.route_stop_id, req.reason, req.note, req.lat, req.lon,
+                                     req.client_recorded_at)
+
+
+@router.post("/track")
+async def upload_track(
+    req: TrackUpload,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(require_role(UserRole.DRIVER))],
+):
+    """Unggah titik GPS yang direkam perangkat (juga saat offline). Idempoten per `client_point_id`:
+    batch yang terkirim ulang tidak menggandakan titik. Jejak yang tiba setelah rute selesai memicu
+    perhitungan ulang jarak & emisi."""
+    return await logistics.ingest_track(db, user, req.route_id, [p.model_dump() for p in req.points])
 
 
 @router.post("/complete-route")
@@ -185,22 +255,29 @@ async def complete_route(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(require_role(UserRole.DRIVER))],
 ):
-    """Selesaikan rute setelah semua pickup dikonfirmasi."""
+    """Selesaikan rute bila tidak ada stop yang masih menunggu (dijemput, gagal, atau dibatalkan).
+    Jarak nyata & emisi CO₂e (ISO 14083) dihitung dari jejak GPS yang sudah tersinkron."""
     result = await db.execute(
         select(Route).where(Route.id == route_id, Route.driver_id == user.id)
     )
     route = result.scalar_one_or_none()
     if not route:
         raise HTTPException(404, "Rute tidak ditemukan")
+    if route.status == RouteStatus.COMPLETED:
+        return {"message": "Rute sudah selesai sebelumnya.", "route_id": route.id, "already_completed": True,
+                "emissions": route.emission_detail}
     if route.status != RouteStatus.IN_PROGRESS:
         raise HTTPException(409, f"Rute berstatus '{route.status.value}', tidak bisa diselesaikan.")
     pending = (await db.execute(
-        select(RouteStop.stop_order).where(RouteStop.route_id == route.id, RouteStop.qr_scanned.is_(False))
+        select(RouteStop.stop_order).where(RouteStop.route_id == route.id,
+                                           RouteStop.stop_status == StopStatus.PENDING.value)
     )).scalars().all()
     if pending:
-        raise HTTPException(409, f"Masih ada stop yang belum di-scan: {sorted(pending)}")
+        raise HTTPException(409, f"Masih ada stop yang belum di-scan atau dilaporkan gagal: {sorted(pending)}")
 
     route.status = RouteStatus.COMPLETED
     route.completed_at = datetime.now(timezone.utc)
-
-    return {"message": "🎉 Rute selesai! Terima kasih.", "route_id": route.id}
+    emissions = await logistics.finalize_route_emissions(db, route)
+    return {"message": "🎉 Rute selesai! Terima kasih.", "route_id": route.id, "already_completed": False,
+            "emissions": {k: emissions[k] for k in ("distance_source", "total_km", "empty_km", "fuel_l",
+                                                    "co2e_wtw_kg", "co2e_kg_per_ton_husk", "intensity_g_per_tkm")}}

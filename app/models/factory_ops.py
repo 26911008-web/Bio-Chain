@@ -4,7 +4,8 @@ import enum
 from datetime import datetime, timezone
 
 from sqlalchemy import (
-    JSON, CheckConstraint, Column, DateTime, Double, Enum, ForeignKey, Integer, String, Text, UniqueConstraint,
+    JSON, CheckConstraint, Column, DateTime, Double, Enum, ForeignKey, Integer, Numeric, String, Text,
+    UniqueConstraint,
 )
 
 from ..database import Base
@@ -101,6 +102,10 @@ class InboundQC(Base):
     evidence_photo_url = Column(Text, nullable=True)
     inspector_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     note = Column(Text, nullable=True)
+    rejected_kg = Column(Double, nullable=False, default=0.0)   # karung disortir keluar (basah/berjamur), tidak dibayar
+    # Refraksi: kg basis kering setara kadar air acuan kontrak; refraction_kg = selisih yang "dipotong" di nota
+    refraction_kg = Column(Double, nullable=False, default=0.0)
+    dry_basis_kg = Column(Double, nullable=True)
     created_at = Column(DateTime(timezone=True), default=_now)
 
 
@@ -139,6 +144,8 @@ class BatchInput(Base):
 
 
 class BatchOutput(Base):
+    """Satu baris per produk (Bill of Materials terbalik: 1 input sekam → 3 output).
+    expected_kg = model Engine ⑪ untuk mutu lot yang sama; yield_pct = output ÷ input batch."""
     __tablename__ = "batch_outputs"
     __table_args__ = (CheckConstraint("quantity_kg >= 0", name="ck_bo_nonneg"),)
 
@@ -146,7 +153,89 @@ class BatchOutput(Base):
     batch_id = Column(Integer, ForeignKey("manufacturing_batches.id"), nullable=False, index=True)
     product = Column(String(12), nullable=False)               # bio_pellet | biochar | bio_silika
     quantity_kg = Column(Double, nullable=False)
+    expected_kg = Column(Double, nullable=True)
+    yield_pct = Column(Double, nullable=True)
+    yield_variance_pct = Column(Double, nullable=True)
     quality = Column(JSON, nullable=True)
+
+
+class FinishedGoodsMovement(Base):
+    """Buku stok produk jadi (append-only). Produksi batch = masuk (+), penjualan/penyesuaian = keluar (−).
+    Saldo per produk = Σ quantity_kg — tidak pernah disimpan sebagai angka yang bisa diubah."""
+    __tablename__ = "finished_goods_movements"
+    __table_args__ = (
+        CheckConstraint("product IN ('bio_pellet', 'biochar', 'bio_silika')", name="ck_fg_product"),
+        CheckConstraint("movement IN ('produksi', 'penjualan', 'penyesuaian', 'retur_pelanggan', 'alokasi_petani')",
+                        name="ck_fg_movement"),
+        CheckConstraint("quantity_kg <> 0", name="ck_fg_nonzero"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    product = Column(String(12), nullable=False, index=True)
+    movement = Column(String(16), nullable=False)
+    quantity_kg = Column(Double, nullable=False)                 # bertanda: + masuk, − keluar
+    batch_id = Column(Integer, ForeignKey("manufacturing_batches.id"), nullable=True, index=True)
+    unit_price_rp = Column(Double, nullable=True)
+    reference = Column(String(80), nullable=True)
+    actor_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    note = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=_now)
+
+
+class ReturnReason(str, enum.Enum):
+    BASAH = "basah"
+    BERJAMUR = "berjamur"
+    KONTAMINAN = "kontaminan"
+    SELISIH_BERAT = "selisih_berat"
+    STOK_TIDAK_ADA = "stok_tidak_ada"
+    DIBATALKAN_PENGEPUL = "dibatalkan_pengepul"
+    LAINNYA = "lainnya"
+
+
+class ReturnDisposition(str, enum.Enum):
+    PENDING = "menunggu"
+    RETURN_TO_SENDER = "kembalikan_ke_pengirim"
+    REDRY = "keringkan_ulang"
+    DOWNGRADE = "turun_grade"
+    BOILER_FUEL = "bahan_bakar_boiler"
+    DISPOSE = "musnahkan"
+
+
+class ReturnCase(Base):
+    """Kasus retur / karantina sekam yang ditolak (seluruh lot atau sebagian karung).
+
+    Dibuka otomatis saat pabrik menolak muatan / QC menolak lot / sortir sebagian, atau manual.
+    Barang fisik berada di `location` sampai disposisi diputuskan; biaya penanganan dibebankan ke
+    `cost_bearer` (pihak yang terakhir menimbang & menyatakan lolos mutu)."""
+    __tablename__ = "return_cases"
+    __table_args__ = (
+        CheckConstraint("quantity_kg > 0", name="ck_ret_qty"),
+        CheckConstraint("handling_cost_rp IS NULL OR handling_cost_rp >= 0", name="ck_ret_cost"),
+        CheckConstraint("harvest_id IS NOT NULL OR qc_id IS NOT NULL OR request_id IS NOT NULL", name="ck_ret_ref"),
+        CheckConstraint("status IN ('terbuka', 'selesai')", name="ck_ret_status"),
+        CheckConstraint("(status = 'selesai') = (disposition <> 'menunggu')", name="ck_ret_resolved"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    harvest_id = Column(Integer, ForeignKey("harvests.id"), nullable=True, index=True)
+    request_id = Column(Integer, ForeignKey("delivery_requests.id"), nullable=True, index=True)
+    qc_id = Column(Integer, ForeignKey("inbound_qc.id"), nullable=True, index=True)
+    stage = Column(String(20), nullable=False)                   # gerbang_pabrik | qc_pabrik | pengepul
+    reason_code = Column(_enum(ReturnReason), nullable=False)
+    moisture = Column(Double, nullable=True)
+    quantity_kg = Column(Double, nullable=False)
+    location = Column(String(20), nullable=False, default="pabrik")    # pabrik | pengepul | petani
+    disposition = Column(_enum(ReturnDisposition), nullable=False, default=ReturnDisposition.PENDING)
+    cost_bearer = Column(String(10), nullable=True)              # petani | pengepul | pabrik
+    handling_cost_rp = Column(Double, nullable=True)
+    status = Column(String(8), nullable=False, default="terbuka", index=True)
+    evidence_photo_url = Column(Text, nullable=True)
+    note = Column(Text, nullable=True)
+    opened_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    resolved_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    resolution_note = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=_now)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class BatchLoss(Base):
@@ -227,3 +316,30 @@ class SettlementEvent(Base):
     reason = Column(Text, nullable=True)
     actor_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), default=_now)
+
+
+
+class LogisticsCharge(Base):
+    """Potongan logistik yang ditanggung pengepul (ongkos jarak kosong saat batal / stok tidak ada ketika truk tiba).
+    Dipotong otomatis dari tagihan pabrik → pengepul berikutnya saat ditandai lunas (status dipotong)."""
+    __tablename__ = "logistics_charges"
+    __table_args__ = (
+        CheckConstraint("amount_rp >= 0", name="ck_lch_amount"),
+        CheckConstraint("kind IN ('batal_pembelian', 'stop_gagal')", name="ck_lch_kind"),
+        CheckConstraint("status IN ('terbuka', 'dipotong', 'dibebaskan')", name="ck_lch_status"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    kind = Column(String(20), nullable=False)
+    collector_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    route_id = Column(Integer, ForeignKey("routes.id"), nullable=True)
+    stop_id = Column(Integer, ForeignKey("route_stops.id"), nullable=True, unique=True)
+    harvest_id = Column(Integer, ForeignKey("harvests.id"), nullable=True)
+    km = Column(Double, nullable=True)
+    amount_rp = Column(Numeric(14, 0), nullable=False)
+    status = Column(String(12), nullable=False, default="terbuka", index=True)
+    settlement_id = Column(Integer, ForeignKey("collector_settlements.id"), nullable=True)
+    reason = Column(Text, nullable=True)
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=_now)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)

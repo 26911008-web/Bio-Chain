@@ -8,7 +8,7 @@ import enum
 from datetime import datetime, timezone
 
 from sqlalchemy import (
-    Boolean, Column, DateTime, Double, Enum, Integer, String, Text,
+    Boolean, Column, DateTime, Double, Enum, ForeignKey, Integer, String, Text,
 )
 from sqlalchemy.orm import relationship
 
@@ -42,6 +42,11 @@ class User(Base):
     full_name = Column(String(100), nullable=False)
     role = Column(Enum(UserRole, native_enum=False, values_callable=lambda x: [e.value for e in x]), nullable=False, index=True)
     is_active = Column(Boolean, default=True)
+    must_change_password = Column(Boolean, nullable=False, default=False)   # F6: setelah reset admin
+    token_version = Column(Integer, nullable=False, default=0)               # naik saat ganti/reset password → token lama ditolak
+    # F7: petani tanpa HP yang didaftarkan & dilaporkan oleh pengepul ini (None = akun mandiri)
+    managed_by_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    anonymized_at = Column(DateTime(timezone=True), nullable=True)           # F12: hak hapus (PDP)
 
     # Geolokasi
     lat = Column(Double, nullable=True)
@@ -62,7 +67,7 @@ class User(Base):
                                       foreign_keys="Harvest.farmer_id")
     harvests_as_collector = relationship("Harvest", back_populates="collector",
                                          foreign_keys="Harvest.collector_id")
-    routes_as_driver = relationship("Route", back_populates="driver")
+    routes_as_driver = relationship("Route", back_populates="driver", foreign_keys="Route.driver_id")
 
     def __repr__(self):
         return f"<User {self.id} {self.full_name} ({self.role.value})>"

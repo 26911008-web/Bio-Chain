@@ -12,6 +12,7 @@ aiosqlite>=0.20
 
 # Scientific computing & Reporting
 scipy>=1.11
+ortools>=9.15  # Engine ⑤b: CVRP armada & rute rendah emisi (wheel cp312–cp314)
 numpy>=1.26
 openpyxl>=3.1
 
@@ -34,3 +35,4 @@ truststore>=0.10
 httpx>=0.27
 pytest>=8
 pytest-asyncio>=0.23
+Pillow>=11.0  # F10: encode ulang foto bukti (buang EXIF)

@@ -71,6 +71,17 @@ k6 run loadtest/k6_double_submit.js   # chaos test 1.000 user (server harus hidu
 
 Dokumen: [Audit SRE & High-Availability](docs/05_SRE_HIGH_AVAILABILITY.md) · [Migrasi DB & rollback](migrations/README.md)
 
+## 🌾 Operasi Lapangan & Logistik Hijau (Okt 2026)
+
+- **Offline-first:** antrean IndexedDB + service worker (`/sw.js`) + GPS store & forward. Data tidak hilang saat sinyal putus atau sesi kedaluwarsa.
+- **Rute:** stop gagal/batal, pembatalan rute & pembelian (ongkos km kosong), alokasi armada **Google OR-Tools** (`/factory/dispatch/optimize`).
+- **Emisi ISO 14083:** kg CO₂e per rute & per ton sekam dari jarak GPS nyata (B40, termasuk km kosong).
+- **Retur/karantina** sekam basah/berjamur, sortir sebagian di QC, stok produk jadi, BOM per produk.
+- **Green Scorecard:** `/factory/green-scorecard` (karbon bersih, sirkularitas, E-factor silika).
+- **Mode lapangan:** `DEBUG=false` mewajibkan `DEMO_MODE=false`, `ALLOW_SQLITE_FALLBACK=false`, JWT_SECRET kuat, dan HTTPS.
+
+Detail & revisi SOP: `docs/06_AUDIT_SOP_LAPANGAN_GREEN_LOGISTICS.md` · `docs/REVISI_SOP_BIOCHAIN.docx` · migrasi `migrations/013_field_ops_green_logistics.sql`.
+
 ## 🏗️ Architecture
 
 ```

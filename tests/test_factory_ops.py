@@ -233,6 +233,9 @@ def test_qc_wetter_than_contract_gets_dry_matter_price_and_contaminants_unpaid(e
                                                   "moisture": 15, "contamination": 2, **LAB}, status=201)
     assert qc["net_kg"] == 5000 and qc["payable_kg"] == 4900
     assert qc["final_price_per_kg"] == pytest.approx(480 * 0.85 / 0.89, abs=0.01)
+    # refraksi kadar air tertulis di nota: kg basis kering setara kadar air acuan 11%
+    assert qc["dry_basis_kg"] == pytest.approx(5000 * 0.85 / 0.89, abs=0.01)
+    assert qc["refraction_kg"] == pytest.approx(5000 - 5000 * 0.85 / 0.89, abs=0.01)
     assert qc["decision"] == "terima_potongan" and qc["verification_code"].startswith(
         f"TRX-PGP{env.uid['pengepul']:04d}-PBK{env.uid['pabrik']:04d}-")
     assert qc["total_payment_rp"] == round(4900 * qc["final_price_per_kg"])
@@ -442,8 +445,10 @@ def test_batch_with_ash_route_records_combustion_gas(env):
 def _route_receive(env, kg=1000, received=980, verify_moisture=11, **extra):
     """Jalur armada pabrik: lapor → timbang pengepul → dispatch → jemput supir → timbang terima pabrik."""
     h = env.ok("petani", "POST", "/farmer/harvest", {"quantity_kg": kg}, status=201)
+    # Di atas batas tolak pengepul hanya bisa membeli secara eksplisit "untuk dikeringkan" (risiko miliknya)
     env.ok("pengepul", "POST", "/collector/verify", {"harvest_id": h["id"], "weighed_kg": kg, "moisture": verify_moisture,
-                                                     "contamination": 0, **LAB})
+                                                     "contamination": 0, "beli_untuk_dikeringkan": verify_moisture > 25,
+                                                     **LAB})
     route = env.ok("pabrik", "POST", "/factory/dispatch", {"driver_id": env.uid["supir"], "harvest_ids": [h["id"]]},
                    status=201)
     env.ok("supir", "POST", f"/driver/start-route?route_id={route['route_id']}")

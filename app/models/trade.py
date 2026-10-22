@@ -38,6 +38,7 @@ class BidStatus(str, enum.Enum):
     WITHDRAWN = "withdrawn"
     ACCEPTED = "accepted"
     REJECTED = "rejected"
+    CANCELLED = "cancelled"      # pengepul membatalkan pembelian yang sudah diterima petani (sebelum ditimbang)
 
 
 class StockListing(Base):

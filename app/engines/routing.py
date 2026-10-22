@@ -476,6 +476,24 @@ def plan_routes(depot: dict, mills: list[dict], req: RouteRequest) -> dict:
     # 3. Solver.
     if n == 0:
         mode_used, reason, routes = "trivial", "Tidak ada titik sisa; semua muatan berupa trip penuh langsung.", []
+    elif req.mode == "ortools":
+        from .routing_ortools import solve_fleet
+        mode_used, reason = "ortools", "Diminta eksplisit: pustaka teruji Google OR-Tools, objektif gram CO₂e."
+        used_ms = (time.perf_counter() - t_start) * 1000
+        pts = [{"id": i, "lat": s["mill"]["lat"], "lon": s["mill"]["lon"], "kg": s["m3"] * rho}
+               for i, s in enumerate(stops, start=1)]
+        # armada tak terbatas seperti mode lain: satu kendaraan per titik, solver memakai seperlunya
+        sol = solve_fleet(depot, pts, [{"id": k, "m3": cap} for k in range(n)],
+                          max(50, int(req.time_budget_ms - used_ms)))
+        routes = [r["stops"] for r in sol["routes"]]
+        if sol["unassigned"]:
+            raise ValueError(f"OR-Tools tidak dapat menempatkan titik {sol['unassigned']}.")
+        trail.add("Google OR-Tools RoutingModel (CVRP)",
+                  "Konstruksi PATH_CHEAPEST_ARC lalu Guided Local Search berbatas waktu; biaya busur = gram CO₂e "
+                  "dengan konsumsi BBM bergantung muatan yang baru dijemput.",
+                  formula="biaya(i→j) = d_ij × [f₀ + (f₁−f₀)·kg_i/muatan_maks] × EF_campuran",
+                  complexity="metaheuristik, berbatas waktu", **{k: v for k, v in sol["summary"].items()},
+                  elapsed_ms=sol["computation_details"]["elapsed_ms"])
     elif req.mode == "exact" or (req.mode == "auto" and n <= EXACT_AUTO_MAX):
         if n > EXACT_HARD_MAX:
             raise SolverLimitError(
@@ -522,7 +540,7 @@ def plan_routes(depot: dict, mills: list[dict], req: RouteRequest) -> dict:
     direct_km = sum(2 * road_km((depot["lat"], depot["lon"]), (t["mill"]["lat"], t["mill"]["lon"]))
                     for t in direct_trips)
     total_km = solver_km + direct_km
-    lb = direct_km + (solver_km if mode_used != "heuristic" else lower_bound_km(D, q, cap))
+    lb = direct_km + (solver_km if mode_used in ("exact", "trivial") else lower_bound_km(D, q, cap))
     gap = 100 * (total_km - lb) / total_km if total_km > EPS else 0.0
     depot_pt = (depot["lat"], depot["lon"])
     baseline_km = sum(
@@ -555,6 +573,7 @@ def plan_routes(depot: dict, mills: list[dict], req: RouteRequest) -> dict:
             "max_ton_per_trip": round(cap * rho / 1000, 2),
             "algorithm": {"exact": "Held-Karp + set-partitioning DP (optimal)",
                           "heuristic": "Granular Clarke-Wright + relocate/swap/2-opt + ruin & recreate ILS",
+                          "ortools": "Google OR-Tools CVRP (PATH_CHEAPEST_ARC + Guided Local Search), objektif CO₂e",
                           "trivial": "Trip penuh langsung"}[mode_used],
         },
         "computation_details": {
@@ -567,7 +586,7 @@ def plan_routes(depot: dict, mills: list[dict], req: RouteRequest) -> dict:
             "mode_reason": reason,
             "steps": trail.steps,
             "quality": {"objective_km": round(total_km, 2), "lower_bound_km": round(lb, 2),
-                        "gap_upper_bound_pct": round(gap, 2), "proven_optimal": mode_used != "heuristic"},
+                        "gap_upper_bound_pct": round(gap, 2), "proven_optimal": mode_used in ("exact", "trivial")},
             "references": REFERENCES,
             "total_elapsed_ms": round((time.perf_counter() - t_start) * 1000, 3),
         },

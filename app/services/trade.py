@@ -16,7 +16,8 @@ import math
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select, update
+from sqlalchemy import select, text, update
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..engines.routing import plan_routes, road_km
@@ -76,8 +77,8 @@ async def _open_listing(db: AsyncSession, listing_id: int) -> StockListing:
                                 .execution_options(populate_existing=True))).scalar_one_or_none()
     if listing is None:
         raise LookupError("Listing tidak ditemukan")
-    if listing.status not in OPEN_STATES:
-        raise TransitionConflict(f"Listing berstatus '{_v(listing.status)}', tidak menerima tawaran.")
+    if listing.status not in OPEN_STATES or listing.remaining_kg <= 1e-6:
+        raise TransitionConflict("Barang lelang ini sudah habis/terjual ke pengepul lain dan lelang telah ditutup.")
     if listing.expires_at and listing.expires_at.replace(tzinfo=listing.expires_at.tzinfo or timezone.utc) < datetime.now(timezone.utc):
         raise TransitionConflict("Listing sudah kedaluwarsa.")
     return listing
@@ -166,8 +167,27 @@ async def accept_bid(db: AsyncSession, farmer: User, listing_id: int, bid_id: in
     if qty_kg > bid.quantity_kg + 1e-9:
         raise ValueError(f"Jumlah melebihi tawaran pengepul ({bid.quantity_kg:g} kg).")
 
-    # 1. Kurangi stok secara atomik (compare-and-swap): gagal bila stok sudah diambil penerimaan lain
     now = datetime.now(timezone.utc)
+    if db.bind.dialect.name == "postgresql" and await _has_accept_fn(db):
+        # PostgreSQL: satu fungsi PL/pgSQL mengunci listing lalu tawaran (SELECT ... FOR UPDATE), memvalidasi
+        # di bawah kunci, dan menulis semuanya (migrasi 013). Pesan kesalahan berawalan kode → HTTP.
+        try:
+            async with db.begin_nested():
+                await db.execute(text("SELECT * FROM public.accept_bid_atomic(:l, :b, :f, :q)"),
+                                 {"l": listing_id, "b": bid_id, "f": farmer.id, "q": qty_kg})
+        except DBAPIError as e:
+            msg = str(getattr(e.orig, "args", [e])[0]) if getattr(e, "orig", None) else str(e)
+            for code, exc in (("not_found:", LookupError), ("conflict:", TransitionConflict), ("invalid:", ValueError)):
+                if code in msg:
+                    raise exc(msg.split(code, 1)[1].split("\n")[0].strip()) from e
+            raise
+        listing = (await db.execute(select(StockListing).where(StockListing.id == listing_id)
+                                    .execution_options(populate_existing=True))).scalar_one()
+        await db.refresh(bid)
+        return await _award_harvest(db, farmer, listing, bid, qty_kg, now)
+
+    # SQLite: compare-and-swap berurutan (writer tunggal → setara atomik)
+    # 1. Kurangi stok secara atomik (compare-and-swap): gagal bila stok sudah diambil penerimaan lain
     res = await db.execute(
         update(StockListing)
         .where(StockListing.id == listing_id, StockListing.remaining_kg >= qty_kg - 1e-9,
@@ -189,7 +209,22 @@ async def accept_bid(db: AsyncSession, farmer: User, listing_id: int, bid_id: in
     if closed:
         await db.execute(update(Bid).where(Bid.listing_id == listing_id, Bid.status == BidStatus.ACTIVE)
                          .values(status=BidStatus.REJECTED, decided_at=now))
+    return await _award_harvest(db, farmer, listing, bid, qty_kg, now)
 
+
+_ACCEPT_FN: bool | None = None
+
+
+async def _has_accept_fn(db: AsyncSession) -> bool:
+    """Fungsi accept_bid_atomic ada bila migrasi 013 sudah dijalankan; tanpa itu tetap memakai CAS."""
+    global _ACCEPT_FN
+    if _ACCEPT_FN is None:
+        _ACCEPT_FN = bool((await db.execute(text("SELECT to_regproc('public.accept_bid_atomic') IS NOT NULL"))).scalar())
+    return _ACCEPT_FN
+
+
+async def _award_harvest(db: AsyncSession, farmer: User, listing: StockListing, bid: Bid, qty_kg: float,
+                         now: datetime) -> dict:
     # 3. Kontrak menjadi harvest yang masuk alur custody (timbang → angkut → pabrik)
     h_uuid = str(uuid.uuid4())
     harvest = Harvest(uuid=h_uuid, farmer_id=farmer.id, mill_id=listing.mill_id, quantity_kg=qty_kg,

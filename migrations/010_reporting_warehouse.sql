@@ -48,7 +48,8 @@ LEFT JOIN LATERAL (SELECT coalesce(sum(quantity_kg), 0) AS loss FROM batch_losse
 GROUP BY 1;
 
 -- ---------------------------------------------------------------- biaya & energi
-CREATE OR REPLACE VIEW wh_monthly_cost WITH (security_invoker = true) AS
+DROP VIEW IF EXISTS wh_monthly_cost;  -- 011 mengganti kolom view ini; REPLACE tidak bisa menghapus kolom saat dijalankan ulang
+CREATE VIEW wh_monthly_cost WITH (security_invoker = true) AS
 WITH qc AS (
   SELECT wib_month(created_at) AS month, sum(total_payment_rp) AS raw_material_rp, sum(payable_kg) AS paid_kg
   FROM inbound_qc WHERE decision <> 'tolak' GROUP BY 1

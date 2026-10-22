@@ -94,13 +94,16 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
 
         ip = client_ip(request)
         is_login = request.url.path == LOGIN_PATH
+        # Request ber-token dihitung per PENGGUNA, bukan per IP: di desa puluhan petani berbagi satu wifi KUD
+        # atau CGNAT operator seluler — kunci per IP membuat semuanya kena 429 bersamaan (mis. flush antrean pagi).
+        bucket = _user_bucket(request.headers.get("authorization")) or ip
         now = time.time()
         member = f"{now}:{id(request)}"            # unik walau dua request di mikrodetik yang sama
 
         try:
             pipe = redis_client.pipeline()
             prefix = f"{settings.REDIS_KEY_PREFIX}rl:"
-            for key in (f"{prefix}{ip}", f"{prefix}login:{ip}") if is_login else (f"{prefix}{ip}",):
+            for key in (f"{prefix}{bucket}", f"{prefix}login:{ip}") if is_login else (f"{prefix}{bucket}",):
                 pipe.zremrangebyscore(key, 0, now - self.window)
                 pipe.zadd(key, {member: now})
                 pipe.zcard(key)
@@ -132,3 +135,15 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
             max(0, self.max_requests - request_count)
         )
         return response
+
+
+def _user_bucket(auth_header: str | None) -> str | None:
+    """'u:<id>' dari JWT yang valid (tanda tangan diverifikasi); None → pakai IP."""
+    if not auth_header or not auth_header.lower().startswith("bearer "):
+        return None
+    try:
+        import jwt
+        payload = jwt.decode(auth_header[7:], settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+        return f"u:{payload.get('sub')}" if payload.get("sub") is not None else None
+    except Exception:
+        return None

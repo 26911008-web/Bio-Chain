@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from ..params import P
 
-SolverMode = Literal["auto", "heuristic", "exact"]
+SolverMode = Literal["auto", "heuristic", "exact", "ortools"]
 
 
 class RouteRequest(BaseModel):
@@ -23,7 +23,8 @@ class RouteRequest(BaseModel):
     mode: SolverMode = Field(
         "auto",
         description="auto = exact bila titik ≤ EXACT_AUTO_MAX, selain itu heuristic. "
-                    "exact = DP set-partitioning (maks EXACT_HARD_MAX titik).",
+                    "exact = DP set-partitioning (maks EXACT_HARD_MAX titik). "
+                    "ortools = Google OR-Tools (GLS), objektif gram CO₂e.",
     )
     time_budget_ms: int = Field(default_factory=lambda: int(P("logistik.time_budget_ms")), ge=10, le=2_000,
                                 description="Anggaran waktu end-to-end (heuristic)")
@@ -78,7 +79,7 @@ class SolutionQuality(BaseModel):
 class ComputationDetails(BaseModel):
     problem: dict[str, Any]
     mode_requested: SolverMode
-    mode_used: Literal["exact", "heuristic", "trivial"]
+    mode_used: Literal["exact", "heuristic", "trivial", "ortools"]
     mode_reason: str
     steps: list[ComputationStep]
     quality: SolutionQuality

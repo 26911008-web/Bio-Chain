@@ -209,7 +209,8 @@ def test_awarded_harvest_is_exclusive_and_priced_at_agreed_price(env):
                     {"harvest_id": h["harvest_id"], "weighed_kg": 990, "evidence_photo_url": "javascript:alert(1)", **PROXIMATE}).status_code == 422
     v = env.ok("pengepul_1", "POST", "/collector/verify",
                {"harvest_id": h["harvest_id"], "weighed_kg": 990, "evidence_photo_url": "https://cdn.example/f1.jpg", **PROXIMATE})
-    assert v["total_price"] == 990 * 455 and v["price_basis"] == "harga lelang"
+    # Harga kontrak tidak dinaikkan karena lebih kering; kontaminan 1% tidak dibayar (basis kering)
+    assert v["total_price"] == round(990 * 0.99 * 455) and v["price_basis"] == "harga lelang"
     code = v["verification_code"]
     assert re.fullmatch(rf"TRX-PTN{env.ids['petani_a']:04d}-PGP{env.ids['pengepul_1']:04d}-{yymm()}-00001", code), code
 

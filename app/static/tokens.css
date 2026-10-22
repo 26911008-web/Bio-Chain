@@ -1,0 +1,235 @@
+/* Bio-Chain design tokens — "Field Noir". Sumber kebenaran: DESIGN_SYSTEM.md.
+ *
+ * Tema dipilih lewat <html data-theme="field|noir">. Tanpa atribut = field (terang, aman di bawah matahari).
+ * Token lama (--primary, --card, --bg-mesh, ...) dipertahankan sebagai alias di bagian bawah agar inline style
+ * dan template string JS di index.html tetap berfungsi tanpa diubah.
+ */
+
+:root {
+  /* ---------- Primitif (palet referensi) ---------- */
+  --c-black: #111111;
+  --c-black-2: #181818;
+  --c-black-3: #1f1f1f;
+  --c-white: #ffffff;
+  --c-smoke: #f8f8f8;
+  --c-smoke-2: #f3f3f1;
+  --c-smoke-3: #eaeae9;
+  --c-gainsboro: #e8e8e8;
+  --c-lime: #d6ff4d;
+  --c-olive: #4a6300;
+  --c-olive-deep: #3f5500;
+  --c-red-pastel: #d17171;
+  --c-amber-pastel: #eaa065;
+  --c-khaki: #e4e58b;
+  --c-blue-pastel: #6e9ac5;
+  --c-green-pastel: #82c782;
+
+  /* ---------- Tipografi ---------- */
+  --font-display: 'Syne', 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-ui: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  /* Syne (--font-display) HANYA untuk momen merek: logo header & judul login. Judul, kartu dan angka memakai
+     Plus Jakarta Sans: lebih sempit & angka seragam, jadi tidak terpotong di HP dan mudah dibaca sekilas. */
+  --font-heading: var(--font-ui);
+  --fs-hero: clamp(2.5rem, 1.6rem + 3.8vw, 4rem);
+  --fs-h1: clamp(1.75rem, 1.4rem + 1.5vw, 2.5rem);
+  --fs-h2: clamp(1.5rem, 1.3rem + 0.85vw, 2rem);
+  --fs-h3: clamp(1.25rem, 1.15rem + 0.45vw, 1.5rem);
+  --fs-kpi: clamp(1.75rem, 1.55rem + 0.85vw, 2.25rem);
+  --fs-lg: clamp(1rem, 0.95rem + 0.25vw, 1.125rem);
+  --fs-md: 1rem;
+  --fs-sm: 0.875rem;
+  --fs-xs: 0.75rem;
+  --fs-tag: 0.8125rem;
+  --lh-tight: 1.15;
+  --lh-heading: 1.2;
+  --lh-body: 1.5;
+  --tracking-heading: -0.015em;
+  --tracking-caps: 0.06em;
+
+  /* ---------- Spacing (basis 4px) ---------- */
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px; --sp-5: 20px; --sp-6: 24px;
+  --sp-8: 32px; --sp-10: 40px; --sp-12: 48px; --sp-16: 64px; --sp-20: 80px; --sp-28: 112px;
+  --gutter: 16px;
+  --container: 90rem;
+  --tap-min: 48px;
+
+  /* ---------- Radius ---------- */
+  --r-xs: 6px;
+  --r-sm: 12px;
+  --r-md: 16px;
+  --r-lg: 24px;
+  --r-pill: 999px;
+
+  /* ---------- Motion ---------- */
+  --ease-out: cubic-bezier(.22, 1, .36, 1);
+  --ease-in-out: cubic-bezier(.65, 0, .35, 1);
+  --dur-fast: 120ms;
+  --dur-base: 320ms;
+  --dur-slow: 560ms;
+
+  /* ---------- 3D ornamen (lihat DESIGN_SYSTEM.md §7a) ---------- */
+  --persp: 1000px;          /* kedalaman kamera untuk kartu tilt */
+  --persp-deep: 1600px;     /* hero / ornamen besar */
+  --tilt-max: 8deg;         /* batas rotasi tilt kartu; JS hanya menulis --rx/--ry */
+  --depth-1: 12px;          /* lapisan konten di atas kartu (translateZ) */
+  --depth-2: 28px;
+  --depth-3: 48px;
+  --rx: 0deg;
+  --ry: 0deg;
+  --glare-x: 50%;
+  --glare-y: 50%;
+
+  /* ---------- Semantik: tema FIELD (default) ---------- */
+  color-scheme: light;
+  --surface-0: var(--c-smoke);
+  --surface-1: var(--c-white);
+  --surface-2: var(--c-smoke-2);
+  --surface-inverse: var(--c-black);
+  --border: #e2e2de;
+  --border-strong: #8a8a85;
+  --ink: var(--c-black);
+  --ink-muted: #525252;
+  --ink-subtle: #6b6b6b;
+  --ink-inverse: var(--c-white);
+  --accent: var(--c-black);
+  --on-accent: var(--c-white);
+  --accent-ink: var(--c-olive);
+  --accent-soft: #eef8cc;
+  --accent-soft-ink: var(--c-olive-deep);
+  --highlight: var(--c-lime);          /* fill saja, teks di atasnya wajib --c-black */
+  --focus-ring: var(--c-olive);
+  --scrim: rgba(17, 17, 17, .6);
+
+  --success: #1f6b2a;  --success-soft: #e7f4e8;
+  --warning: #9a4a00;  --warning-soft: #fdf0e3;
+  --danger:  #b42318;  --danger-soft:  #fdecea;
+  --info:    #1d4f86;  --info-soft:    #e8f0f9;
+  --pending: #5b5b00;  --pending-soft: #f7f7d9;
+
+  --elev-1: 0 0 0 1px var(--border);
+  --elev-2: 0 0 0 1px var(--border), 0 8px 24px rgba(0, 0, 0, .08);
+  --elev-3: 0 24px 64px rgba(0, 0, 0, .25);
+  --ornament-glow: rgba(74, 99, 0, .18);
+}
+
+@media (min-width: 768px)  { :root { --gutter: 32px; } }
+@media (min-width: 1280px) { :root { --gutter: 48px; } }
+
+/* ---------- Semantik: tema NOIR ---------- */
+:root[data-theme="noir"] {
+  color-scheme: dark;
+  --surface-0: var(--c-black);
+  --surface-1: var(--c-black-2);
+  --surface-2: var(--c-black-3);
+  --surface-inverse: var(--c-white);
+  --border: rgba(255, 255, 255, .14);
+  --border-strong: rgba(255, 255, 255, .40);
+  --ink: var(--c-white);
+  --ink-muted: #b5b5b5;
+  --ink-subtle: #a3a3a3;
+  --ink-inverse: var(--c-black);
+  --accent: var(--c-lime);
+  --on-accent: var(--c-black);
+  --accent-ink: var(--c-lime);
+  --accent-soft: rgba(214, 255, 77, .12);
+  --accent-soft-ink: var(--c-lime);
+  --focus-ring: var(--c-lime);
+  --scrim: rgba(0, 0, 0, .7);
+
+  /* Di noir, status dipakai sebagai fill pastel dengan teks #111 */
+  --success: var(--c-green-pastel); --success-soft: rgba(130, 199, 130, .14);
+  --warning: var(--c-amber-pastel); --warning-soft: rgba(234, 160, 101, .14);
+  --danger:  var(--c-red-pastel);   --danger-soft:  rgba(209, 113, 113, .14);
+  --info:    var(--c-blue-pastel);  --info-soft:    rgba(110, 154, 197, .14);
+  --pending: var(--c-khaki);        --pending-soft: rgba(228, 229, 139, .14);
+
+  --elev-2: 0 0 0 1px var(--border), 0 8px 24px rgba(0, 0, 0, .5);
+  --elev-3: 0 24px 64px rgba(0, 0, 0, .6);
+  --ornament-glow: rgba(214, 255, 77, .22);
+}
+
+/* ---------- Alias token lama (jangan hapus sebelum semua inline style dimigrasi) ---------- */
+:root {
+  --primary: var(--accent-ink);
+  --primary-dark: var(--ink);
+  --primary-light: var(--highlight);
+  --primary-soft: var(--accent-soft);
+  --primary-border: var(--border-strong);
+  --bg-mesh: var(--surface-0);
+  --bg-panel: var(--surface-2);
+  --card: var(--surface-1);
+  --card-glass: var(--surface-1);
+  --amber: var(--warning);
+  --amber-dark: var(--warning);
+  --amber-soft: var(--warning-soft);
+  --amber-border: var(--warning);
+  --red: var(--danger);
+  --red-soft: var(--danger-soft);
+  --blue: var(--info);
+  --blue-soft: var(--info-soft);
+  --purple: var(--pending);
+  --purple-soft: var(--pending-soft);
+  --radius-lg: var(--r-md);
+  --radius-md: var(--r-sm);
+  --radius-sm: var(--r-xs);
+  --shadow-sm: var(--elev-1);
+  --shadow-md: var(--elev-2);
+  --shadow-lg: var(--elev-3);
+}
+
+/* ---------- Dasar global yang aman (presentational) ---------- */
+html { -webkit-text-size-adjust: 100%; }
+body { background: var(--surface-0); color: var(--ink); font-family: var(--font-ui); line-height: var(--lh-body); }
+
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+::selection { background: var(--highlight); color: var(--c-black); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+  :root { --tilt-max: 0deg; }
+}
+
+/* ---------- Personalisasi per peran: <html data-role="..."> (diset ui-enhance.js setelah login) ----------
+ * --role-strong : fill/teks aksen di tema field (teks putih di atasnya ≥6.8:1)
+ * --role-bright : fill/teks aksen di tema noir (teks #111 di atasnya ≥6.4:1; di atas #181818 ≥6.0:1)
+ */
+:root[data-role="petani"]   { --role-strong: #4a6300; --role-soft: #eef8cc; --role-soft-ink: #3f5500; --role-bright: #d6ff4d; }
+:root[data-role="pengepul"] { --role-strong: #8a4b00; --role-soft: #fdf0e3; --role-soft-ink: #8a4b00; --role-bright: #eaa065; }
+:root[data-role="driver"]   { --role-strong: #1d4f86; --role-soft: #e8f0f9; --role-soft-ink: #1d4f86; --role-bright: #9fc3e6; }
+:root[data-role="pabrik"]   { --role-strong: #4a6300; --role-soft: #eef8cc; --role-soft-ink: #3f5500; --role-bright: #d6ff4d; }
+:root[data-role="auditor"]  { --role-strong: #1d4f86; --role-soft: #e8f0f9; --role-soft-ink: #1d4f86; --role-bright: #9fc3e6; }
+:root[data-role="admin"]    { --role-strong: #5b5b00; --role-soft: #f7f7d9; --role-soft-ink: #5b5b00; --role-bright: #e4e58b; }
+
+:root[data-role]:not([data-theme="noir"]) {
+  --accent: var(--role-strong);
+  --on-accent: #ffffff;
+  --accent-ink: var(--role-strong);
+  --accent-soft: var(--role-soft);
+  --accent-soft-ink: var(--role-soft-ink);
+  --focus-ring: var(--role-strong);
+  --ornament-glow: color-mix(in srgb, var(--role-strong) 20%, transparent);
+}
+:root[data-role][data-theme="noir"] {
+  --accent: var(--role-bright);
+  --on-accent: #111111;
+  --accent-ink: var(--role-bright);
+  --accent-soft: color-mix(in srgb, var(--role-bright) 12%, transparent);
+  --accent-soft-ink: var(--role-bright);
+  --focus-ring: var(--role-bright);
+  --highlight: var(--role-bright);
+  --ornament-glow: color-mix(in srgb, var(--role-bright) 22%, transparent);
+}
+
+/* Kepadatan per peran: peran lapangan = tombol besar; peran kantor = lebih padat */
+:root[data-role="petani"], :root[data-role="pengepul"] { --tap-min: 52px; }
+:root[data-role="driver"] { --tap-min: 56px; --fs-md: 1.0625rem; --fs-sm: 0.9375rem; }
+:root[data-role="pabrik"], :root[data-role="auditor"], :root[data-role="admin"] { --tap-min: 40px; }

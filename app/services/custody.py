@@ -70,6 +70,25 @@ def _val(e) -> str:
     return e.value if hasattr(e, "value") else str(e)
 
 
+def trusted_device_time(dt: datetime | None) -> tuple[datetime, str | None]:
+    """Waktu kejadian untuk laporan: jam perangkat bila masuk akal, selain itu jam server + catatan.
+
+    Antrean offline wajar tertunda berjam-jam (sah), tetapi HP murah sering salah jam/tanggal. Di luar
+    jendela [−CLIENT_CLOCK_MAX_PAST_HOURS, +CLIENT_CLOCK_MAX_FUTURE_MINUTES] jam perangkat tidak dipakai
+    untuk laporan bulanan (event custody tetap menyimpan keduanya: device_time & server_time)."""
+    from ..config import settings
+    from datetime import timedelta
+    now = datetime.now(timezone.utc)
+    if dt is None:
+        return now, None
+    dt = dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    if dt > now + timedelta(minutes=settings.CLIENT_CLOCK_MAX_FUTURE_MINUTES):
+        return now, f"jam perangkat {dt.isoformat()} di masa depan — dipakai jam server"
+    if dt < now - timedelta(hours=settings.CLIENT_CLOCK_MAX_PAST_HOURS):
+        return now, f"jam perangkat {dt.isoformat()} > {settings.CLIENT_CLOCK_MAX_PAST_HOURS:g} jam lalu — dipakai jam server"
+    return dt, None
+
+
 async def find_replay(db: AsyncSession, client_event_id: str | None) -> CustodyEvent | None:
     if not client_event_id:
         return None
@@ -120,6 +139,9 @@ async def transition(
             f"Harvest #{harvest_id} berstatus '{_val(current)}', bukan '{_val(from_status)}'. "
             "Kemungkinan sudah diproses pihak lain; muat ulang data.")
 
+    _, clock_note = trusted_device_time(client_recorded_at)
+    if clock_note:
+        note = "; ".join(x for x in (note, clock_note) if x)
     code, sender_id = None, None
     if stage in HANDOVER_STAGES:
         sender = await handover_sender(db, harvest_id, stage)

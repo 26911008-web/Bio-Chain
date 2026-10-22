@@ -37,6 +37,37 @@ ADDED_COLUMNS = [
     ("manufacturing_batches", "silica_route", "VARCHAR(16) NOT NULL DEFAULT 'biochar'"),
     ("manufacturing_batches", "silica_husk_share", "DOUBLE PRECISION NOT NULL DEFAULT 0"),
     ("bids", "farmer_id", "INTEGER REFERENCES users(id)"),
+    # 013 — pembatalan rute, stop gagal, jejak GPS & emisi, retur, BOM multi-output
+    ("route_stops", "stop_status", "VARCHAR(12) NOT NULL DEFAULT 'pending'"),
+    ("route_stops", "fail_reason", "VARCHAR(30)"),
+    ("route_stops", "fail_note", "TEXT"),
+    ("route_stops", "failed_at", "TIMESTAMP WITH TIME ZONE"),
+    ("routes", "optimizer", "VARCHAR(40)"),
+    ("routes", "actual_km", "DOUBLE PRECISION"),
+    ("routes", "fuel_l", "DOUBLE PRECISION"),
+    ("routes", "co2e_wtw_kg", "DOUBLE PRECISION"),
+    ("routes", "co2e_per_ton_kg", "DOUBLE PRECISION"),
+    ("routes", "emission_detail", "JSON"),
+    ("routes", "cancel_reason", "TEXT"),
+    ("routes", "cancelled_by_id", "INTEGER REFERENCES users(id)"),
+    ("routes", "cancelled_at", "TIMESTAMP WITH TIME ZONE"),
+    ("inbound_qc", "rejected_kg", "DOUBLE PRECISION NOT NULL DEFAULT 0"),
+    ("batch_outputs", "expected_kg", "DOUBLE PRECISION"),
+    ("batch_outputs", "yield_pct", "DOUBLE PRECISION"),
+    ("batch_outputs", "yield_variance_pct", "DOUBLE PRECISION"),
+    # 014 — kepatuhan lapangan: wajib ganti password (F6), petani tanpa HP (F7), anonimisasi PDP (F12)
+    ("users", "must_change_password", "BOOLEAN NOT NULL DEFAULT FALSE"),
+    ("users", "managed_by_id", "INTEGER REFERENCES users(id)"),
+    ("users", "anonymized_at", "TIMESTAMP WITH TIME ZONE"),
+    # 015 — taksiran petani opsional, kategori tolak (defect rate), pengambilan biochar (tabel baru via create_all)
+    ("harvests", "farmer_moisture_est", "DOUBLE PRECISION"),
+    ("harvests", "farmer_grade_est", "VARCHAR(1)"),
+    ("harvests", "reject_category", "VARCHAR(20)"),
+    # 016 — pencabutan token, uang muka (DP), refraksi basis kering, dedup foto
+    ("users", "token_version", "INTEGER NOT NULL DEFAULT 0"),
+    ("farmer_payments", "dp_rp", "NUMERIC(14,0) NOT NULL DEFAULT 0"),
+    ("inbound_qc", "refraction_kg", "DOUBLE PRECISION NOT NULL DEFAULT 0"),
+    ("inbound_qc", "dry_basis_kg", "DOUBLE PRECISION"),
 ]
 
 
@@ -47,7 +78,10 @@ ADDED_INDEXES = [
     "CREATE INDEX IF NOT EXISTS ix_route_stops_route_order ON route_stops (route_id, stop_order)",
     "CREATE INDEX IF NOT EXISTS ix_routes_driver_status ON routes (driver_id, status)",
     "CREATE UNIQUE INDEX IF NOT EXISTS uq_custody_verification_code ON custody_events (verification_code)",
-    "CREATE UNIQUE INDEX IF NOT EXISTS uq_route_stops_harvest ON route_stops (harvest_id) WHERE harvest_id IS NOT NULL",
+    # 013: indeks lama (semua stop) diganti indeks stop hidup → harvest dari stop gagal/batal bisa dijadwalkan ulang
+    "DROP INDEX IF EXISTS uq_route_stops_harvest",
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_route_stops_harvest_live ON route_stops (harvest_id) "
+    "WHERE harvest_id IS NOT NULL AND stop_status IN ('pending', 'picked_up')",
 ]
 
 
@@ -59,13 +93,17 @@ def upgrade_schema(sync_conn) -> list[str]:
         if column not in {c["name"] for c in insp.get_columns(table)}:
             sync_conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"))
             added.append(f"{table}.{column}")
+    # Data lama: stop yang sudah dipindai → picked_up (kolom baru default 'pending')
+    sync_conn.execute(text("UPDATE route_stops SET stop_status = 'picked_up' "
+                           "WHERE qr_scanned = TRUE AND stop_status = 'pending'"))
     dup = sync_conn.execute(text(
-        "SELECT harvest_id FROM route_stops WHERE harvest_id IS NOT NULL GROUP BY harvest_id HAVING COUNT(*) > 1"
+        "SELECT harvest_id FROM route_stops WHERE harvest_id IS NOT NULL AND stop_status IN ('pending', 'picked_up') "
+        "GROUP BY harvest_id HAVING COUNT(*) > 1"
     )).first()
     for ddl in ADDED_INDEXES:
-        if "uq_route_stops_harvest" in ddl and dup is not None:
+        if "uq_route_stops_harvest_live" in ddl and dup is not None:
             # Non-breaking: data lama ganda → jangan gagalkan startup; bereskan dulu (lihat migrations/README.md).
-            print(f"⚠️  uq_route_stops_harvest dilewati: harvest_id {dup[0]} ada di >1 stop.")
+            print(f"⚠️  uq_route_stops_harvest_live dilewati: harvest_id {dup[0]} ada di >1 stop hidup.")
             continue
         sync_conn.execute(text(ddl))
     return added

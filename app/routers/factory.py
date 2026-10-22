@@ -3,9 +3,10 @@
 from datetime import datetime, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field, model_validator
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import select, func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import aliased
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,9 +19,15 @@ from ..engines.carbon import CarbonInput, calculate_carbon_reduction
 from ..engines.forecaster import ForecastInput, forecast_supply
 from ..engines.quality import FeedstockSample, biochar_yield_db, score_sample, yield_curve
 from ..engines.blending import BlendRequest, optimize_blend
+from ..engines.factory_econ import LOSS_KINDS
 from ..params import P
 from ..models.ledger import CustodyStage
-from ..models.route import Route, RouteStop, RouteStatus
+from ..models.route import LIVE_STOP_STATUSES, Route, RouteStop, RouteStatus
+from ..models.harvest import Mill
+from ..models.factory_ops import ReturnCase
+from ..services import logistics
+from ..concurrency import run_cpu
+from ..data import DEPOT
 from ..engines.energy import EnergyAnalysisRequest, analyze as analyze_energy
 from ..models.energy import EnergyMeterReading
 from ..engines.factory_econ import PricingRequest, recommend_price
@@ -54,15 +61,65 @@ class EnergyReadingIn(BaseModel):
 class DispatchRequest(BaseModel):
     driver_id: int
     harvest_ids: list[int] = Field(..., min_length=1, max_length=50)
-    vehicle_plate: str | None = None
-    vehicle_m3: float = Field(30, gt=0)
+    vehicle_plate: str | None = Field(None, max_length=20)
+    vehicle_m3: float = Field(default_factory=lambda: P("logistik.vehicle_m3"), gt=0, le=200)
+    vehicle_payload_kg: float | None = Field(None, gt=0, le=40_000,
+                                             description="Muatan maksimum truk ini; kosong = parameter logistik")
+
+
+class FleetVehicle(BaseModel):
+    driver_id: int
+    vehicle_m3: float = Field(default_factory=lambda: P("logistik.vehicle_m3"), gt=0, le=200)
+    vehicle_payload_kg: float | None = Field(None, gt=0, le=40_000, description="Kosong = parameter logistik")
+    vehicle_plate: str | None = Field(None, max_length=20)
+
+
+class FleetDispatchRequest(BaseModel):
+    harvest_ids: list[int] = Field(..., min_length=1, max_length=200)
+    vehicles: list[FleetVehicle] = Field(..., min_length=1, max_length=30)
+    time_limit_ms: int = Field(1000, ge=100, le=10_000)
+    commit: bool = Field(False, description="False = pratinjau rencana; True = buat rute & tugaskan supir")
+
+
+class RouteCancelRequest(BaseModel):
+    reason: str = Field(..., min_length=3, max_length=500)
+
+
+class ReturnOpenRequest(BaseModel):
+    harvest_id: int | None = None
+    request_id: int | None = None
+    qc_id: int | None = None
+    reason_code: str = Field(..., pattern="^(basah|berjamur|kontaminan|selisih_berat|stok_tidak_ada|"
+                                          "dibatalkan_pengepul|lainnya)$")
+    quantity_kg: float = Field(..., gt=0, le=1_000_000)
+    moisture: float | None = Field(None, ge=0, le=95)
+    location: str = Field("pabrik", pattern="^(pabrik|pengepul|petani)$")
+    note: str | None = Field(None, max_length=500)
+    evidence_photo_url: EvidenceUrl | None = Field(None, max_length=1000)
+
+
+class ReturnResolveRequest(BaseModel):
+    disposition: str = Field(..., pattern="^(kembalikan_ke_pengirim|keringkan_ulang|turun_grade|"
+                                          "bahan_bakar_boiler|musnahkan)$")
+    cost_bearer: str | None = Field(None, pattern="^(petani|pengepul|pabrik)$")
+    handling_cost_rp: float | None = Field(None, ge=0, le=1e10)
+    note: str | None = Field(None, max_length=500)
+
+
+class GoodsMovementRequest(BaseModel):
+    product: str = Field(..., pattern="^(bio_pellet|biochar|bio_silika)$")
+    movement: str = Field(..., pattern="^(penjualan|penyesuaian|retur_pelanggan)$")
+    quantity_kg: float = Field(..., description="penjualan/retur: kg positif; penyesuaian: bertanda (+/-)")
+    unit_price_rp: float | None = Field(None, ge=0)
+    reference: str | None = Field(None, max_length=80, description="No. DO / faktur / berita acara")
+    note: str | None = Field(None, max_length=500)
 
 
 class ReceiveRequest(BaseModel):
     harvest_id: int
     received_kg: float = Field(..., gt=0, le=50000, description="Timbangan jembatan pabrik (otoritatif)")
     client_event_id: str | None = Field(None, max_length=64)
-    note: str | None = None
+    note: str | None = Field(None, max_length=500)
     evidence_photo_url: EvidenceUrl | None = Field(None, max_length=1000)
     price_per_kg: float | None = Field(None, ge=0, le=20_000,
                                        description="Harga beli ke pengepul (Rp/kg). Kosong = rekomendasi netback engine")
@@ -71,6 +128,8 @@ class ReceiveRequest(BaseModel):
 class FactoryRejectRequest(BaseModel):
     harvest_id: int
     reason: str = Field(..., min_length=3, max_length=500)
+    reason_code: str = Field("lainnya", pattern="^(basah|berjamur|kontaminan|selisih_berat|lainnya)$")
+    moisture: float | None = Field(None, ge=0, le=95, description="Kadar air terukur di gerbang (bukti retur)")
     weighed_kg: float | None = Field(None, gt=0)
     client_event_id: str | None = Field(None, max_length=64)
 
@@ -101,31 +160,170 @@ async def dispatch_route(
     bad_dr = [h.id for h in harvests if h.delivery_request_id is not None]
     if bad_dr:
         raise HTTPException(409, f"Harvest {bad_dr} sudah terlampir Delivery Request — kirim lewat QC, bukan rute.")
+    await _ensure_not_scheduled(db, req.harvest_ids)
+    order = {hid: i for i, hid in enumerate(req.harvest_ids)}
+    harvests = sorted(harvests, key=lambda h: order[h.id])
+    route = await _create_route(db, driver, harvests, req.vehicle_plate, req.vehicle_m3, optimizer="manual",
+                                payload_kg=req.vehicle_payload_kg)
+    stops = (await db.execute(
+        select(RouteStop).where(RouteStop.route_id == route.id).order_by(RouteStop.stop_order)
+    )).scalars().all()
+    return {"route_id": route.id, "driver_id": driver.id, "planned_km": route.total_km,
+            "planned_co2e_kg": route.co2_kg,
+            "stops": [{"route_stop_id": st.id, "harvest_id": st.harvest_id, "order": st.stop_order} for st in stops]}
+
+
+async def _ensure_not_scheduled(db: AsyncSession, harvest_ids: list[int]) -> None:
     busy = (await db.execute(
-        select(RouteStop.harvest_id).join(Route, RouteStop.route_id == Route.id)
-        .where(RouteStop.harvest_id.in_(req.harvest_ids),
-               Route.status.in_([RouteStatus.PLANNED, RouteStatus.IN_PROGRESS]))
+        select(RouteStop.harvest_id).where(RouteStop.harvest_id.in_(harvest_ids),
+                                           RouteStop.stop_status.in_(LIVE_STOP_STATUSES))
     )).scalars().all()
     if busy:
         raise HTTPException(409, f"Harvest sudah ada di rute aktif: {sorted(busy)}")
 
-    order = {hid: i for i, hid in enumerate(req.harvest_ids)}
-    harvests = sorted(harvests, key=lambda h: order[h.id])
+
+def check_capacity(total_kg: float, vehicle_m3: float, payload_kg: float | None = None) -> None:
+    """Sekam ringan tapi memakan ruang: muatan dibatasi VOLUME bak (kg ÷ densitas curah) DAN berat (muatan truk).
+    Melebihi salah satunya → 422 dengan saran (pecah rute / truk lebih besar)."""
+    rho = P("logistik.bulk_density_kg_m3")
+    cap_kg = payload_kg or P("logistik.vehicle_payload_kg")
+    need_m3 = total_kg / rho
+    problems = []
+    if need_m3 > vehicle_m3 + 1e-6:
+        problems.append(f"volume {need_m3:.1f} m³ > bak {vehicle_m3:g} m³ (densitas {rho:g} kg/m³)")
+    if total_kg > cap_kg + 1e-6:
+        problems.append(f"berat {total_kg:,.0f} kg > muatan maks {cap_kg:,.0f} kg")
+    if problems:
+        raise HTTPException(422, "Muatan melebihi kapasitas truk: " + "; ".join(problems)
+                            + ". Pecah menjadi beberapa rute atau gunakan Dispatch Otomatis (OR-Tools).")
+
+
+async def _create_route(db: AsyncSession, driver: User, harvests: list[Harvest], plate: str | None,
+                        vehicle_m3: float, optimizer: str, payload_kg: float | None = None) -> Route:
+    """Buat rute + stop terurut; km & CO2e rencana dihitung dari koordinat penggilingan (estimasi jalan)."""
+    from ..engines.emission import emissions_from_plan
+    from ..engines.routing import road_km
+    rho = P("logistik.bulk_density_kg_m3")
     total_kg = sum(h.verified_kg or h.quantity_kg for h in harvests)
-    route = Route(driver_id=driver.id, vehicle_plate=req.vehicle_plate, status=RouteStatus.PLANNED,
-                  vehicle_m3=req.vehicle_m3, total_ton=round(total_kg / 1000, 3))
+    check_capacity(total_kg, vehicle_m3, payload_kg)
+    route = Route(driver_id=driver.id, vehicle_plate=plate, status=RouteStatus.PLANNED, vehicle_m3=vehicle_m3,
+                  bulk_density=rho, total_ton=round(total_kg / 1000, 3), total_m3=round(total_kg / rho, 2),
+                  utilization_pct=round(100 * total_kg / rho / vehicle_m3, 1), optimizer=optimizer)
     db.add(route)
     await db.flush()
+    mills = {m.id: m for m in (await db.execute(
+        select(Mill).where(Mill.id.in_([h.mill_id for h in harvests if h.mill_id])))).scalars().all()}
+    path, legs, load = [(DEPOT["lat"], DEPOT["lon"])], [], 0.0
     for i, h in enumerate(harvests, start=1):
         kg = h.verified_kg or h.quantity_kg
         db.add(RouteStop(route_id=route.id, harvest_id=h.id, mill_id=h.mill_id, stop_order=i,
-                         planned_ton=round(kg / 1000, 3), planned_m3=round(kg / 110, 2)))
-    await db.flush()
-    stops = (await db.execute(
-        select(RouteStop).where(RouteStop.route_id == route.id).order_by(RouteStop.stop_order)
-    )).scalars().all()
-    return {"route_id": route.id, "driver_id": driver.id,
-            "stops": [{"route_stop_id": st.id, "harvest_id": st.harvest_id, "order": st.stop_order} for st in stops]}
+                         planned_ton=round(kg / 1000, 3), planned_m3=round(kg / rho, 2)))
+        m = mills.get(h.mill_id)
+        if m is not None:
+            legs.append((road_km(path[-1], (m.lat, m.lon)), load))
+            path.append((m.lat, m.lon))
+        load += kg
+    if len(path) > 1:
+        legs.append((road_km(path[-1], path[0]), load))
+        em = emissions_from_plan(legs, total_kg)
+        route.total_km, route.co2_kg = round(em["total_km"], 2), em["co2e_wtw_kg"]
+        route.total_cost = round(em["total_km"] * P("logistik.cost_per_km"))
+    try:
+        await db.flush()
+    except IntegrityError as e:          # dispatch serentak untuk harvest yang sama (indeks unik stop hidup)
+        raise HTTPException(409, "Harvest baru saja dijadwalkan oleh operator lain - muat ulang.") from e
+    return route
+
+
+def _v_role(u: User) -> str:
+    return u.role.value if hasattr(u.role, "value") else str(u.role)
+
+
+@router.post("/dispatch/optimize")
+async def dispatch_optimize(
+    req: FleetDispatchRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_pabrik_dep)],
+):
+    """Alokasi panen terverifikasi ke beberapa supir sekaligus dengan Google OR-Tools (CVRP kapasitas volume,
+    objektif gram CO2e). `commit=false` = pratinjau; `commit=true` = rute dibuat & ditugaskan (khusus pabrik)."""
+    from ..engines.routing_ortools import OrToolsUnavailable, solve_fleet
+    if req.commit and _v_role(user) != UserRole.PABRIK.value:
+        raise HTTPException(403, "Hanya operator pabrik yang dapat menugaskan rute.")
+    driver_ids = [v.driver_id for v in req.vehicles]
+    if len(driver_ids) != len(set(driver_ids)):
+        raise HTTPException(422, "Satu supir hanya satu kendaraan per rencana.")
+    drivers = {u.id: u for u in (await db.execute(select(User).where(User.id.in_(driver_ids)))).scalars().all()}
+    bad = [d for d in driver_ids if d not in drivers or drivers[d].role != UserRole.DRIVER or not drivers[d].is_active]
+    if bad:
+        raise HTTPException(422, f"Bukan supir aktif: {bad}")
+    harvests = (await db.execute(select(Harvest).where(Harvest.id.in_(req.harvest_ids)))).scalars().all()
+    bad = sorted(set(req.harvest_ids) - {h.id for h in harvests if h.status == HarvestStatus.VERIFIED
+                                         and h.delivery_request_id is None})
+    if bad:
+        raise HTTPException(409, f"Hanya harvest 'verified' tanpa Delivery Request yang bisa dijadwalkan: {bad}")
+    await _ensure_not_scheduled(db, req.harvest_ids)
+    mills = {m.id: m for m in (await db.execute(
+        select(Mill).where(Mill.id.in_([h.mill_id for h in harvests if h.mill_id])))).scalars().all()}
+    no_loc = [h.id for h in harvests if h.mill_id not in mills]
+    if no_loc:
+        raise HTTPException(422, f"Harvest tanpa lokasi penggilingan tidak bisa dirutekan: {no_loc}")
+    pts = [{"id": h.id, "lat": mills[h.mill_id].lat, "lon": mills[h.mill_id].lon,
+            "kg": h.verified_kg or h.quantity_kg} for h in harvests]
+    vehicles = [{"id": v.driver_id, "m3": v.vehicle_m3, "payload_kg": v.vehicle_payload_kg} for v in req.vehicles]
+    try:
+        plan = await run_cpu(solve_fleet, DEPOT, pts, vehicles, req.time_limit_ms)
+    except OrToolsUnavailable as e:
+        raise HTTPException(503, str(e)) from e
+    if req.commit:
+        by_id = {h.id: h for h in harvests}
+        plates = {v.driver_id: v.vehicle_plate for v in req.vehicles}
+        payloads = {v.driver_id: v.vehicle_payload_kg for v in req.vehicles}
+        for r in plan["routes"]:
+            route = await _create_route(db, drivers[r["vehicle_id"]], [by_id[i] for i in r["stops"]],
+                                        plates.get(r["vehicle_id"]), r["vehicle_m3"], optimizer="ortools",
+                                        payload_kg=payloads.get(r["vehicle_id"]))
+            r["route_id"] = route.id
+    plan["committed"] = req.commit
+    return plan
+
+
+@router.get("/routes")
+async def list_routes(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_audit_read)],
+    status: str | None = None,
+    limit: int = 50,
+):
+    """Pantau rute: status stop (dijemput/gagal/batal), km rencana vs GPS, BBM & CO2e."""
+    q = select(Route).order_by(Route.id.desc()).limit(min(max(limit, 1), 200))
+    if status:
+        q = q.where(Route.status == status)
+    routes = (await db.execute(q)).scalars().all()
+    stops = (await db.execute(select(RouteStop).where(RouteStop.route_id.in_([r.id for r in routes]))
+                              .order_by(RouteStop.stop_order))).scalars().all() if routes else []
+    by_route: dict[int, list] = {}
+    for st in stops:
+        by_route.setdefault(st.route_id, []).append(
+            {"id": st.id, "order": st.stop_order, "harvest_id": st.harvest_id, "status": st.stop_status,
+             "fail_reason": st.fail_reason, "fail_note": st.fail_note, "planned_ton": st.planned_ton})
+    return [{"route_id": r.id, "driver_id": r.driver_id,
+             "status": r.status.value if hasattr(r.status, "value") else r.status,
+             "optimizer": r.optimizer, "planned_km": r.total_km, "actual_km": r.actual_km, "fuel_l": r.fuel_l,
+             "co2e_wtw_kg": r.co2e_wtw_kg, "co2e_kg_per_ton_husk": r.co2e_per_ton_kg,
+             "cancel_reason": r.cancel_reason, "stops": by_route.get(r.id, [])} for r in routes]
+
+
+@router.post("/routes/{route_id}/cancel")
+async def cancel_route(
+    route_id: int,
+    body: RouteCancelRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_pabrik_only)],
+):
+    """Batalkan rute: stop yang belum dijemput dibatalkan (panen kembali ke antrean). Muatan yang sudah naik
+    tetap diantar supir ke pabrik."""
+    return await logistics.cancel_route(db, user, route_id, body.reason)
 
 
 @router.post("/receive")
@@ -170,12 +368,22 @@ async def factory_reject(
     user: Annotated[User, Depends(_pabrik_only)],
 ):
     """Tolak muatan saat tiba: COLLECTED → REJECTED (atomik; bersaing aman dengan /receive)."""
+    from ..services.custody import find_replay
+    replay = await find_replay(db, req.client_event_id)
     await transition(
         db, req.harvest_id, HarvestStatus.COLLECTED, HarvestStatus.REJECTED, user, CustodyStage.FACTORY_REJECT,
         weight_kg=req.weighed_kg, client_event_id=req.client_event_id, note=req.reason,
         rejected_reason=req.reason, rejected_at=datetime.now(timezone.utc), received_kg=req.weighed_kg,
     )
-    return {"harvest_id": req.harvest_id, "status": "rejected"}
+    case = None
+    if replay is None:
+        h = await load_harvest(db, req.harvest_id)
+        # Muatan ditolak tetap fisik di pabrik -> kasus retur (karantina) sampai diputuskan disposisinya
+        case = await logistics.open_return(
+            db, user, stage="gerbang_pabrik", harvest_id=h.id, reason_code=req.reason_code,
+            quantity_kg=req.weighed_kg or h.verified_kg or h.quantity_kg, moisture=req.moisture, note=req.reason)
+    return {"harvest_id": req.harvest_id, "status": "rejected",
+            "return_case_id": case.id if case else None}
 
 
 @router.post("/conversions", status_code=201)
@@ -282,6 +490,196 @@ async def blend_recommend(
     return optimize_blend(req)
 
 
+@router.get("/biochar-redemptions")
+async def biochar_redemptions(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_pabrik_dep)],
+    status: str = "diajukan",
+):
+    """Antrean pengambilan biochar petani untuk sawah."""
+    from ..services.circular import list_redemptions
+    return await list_redemptions(db, status)
+
+
+class HandoverRequest(BaseModel):
+    kg: float | None = Field(None, gt=0, le=100_000, description="Kg aktual diserahkan (default = diajukan)")
+    note: str | None = Field(None, max_length=300)
+
+
+@router.post("/biochar-redemptions/{redemption_id}/handover")
+async def handover_biochar(
+    redemption_id: int,
+    body: HandoverRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_pabrik_dep)],
+):
+    """Serahkan karung biochar ke petani → ledger redemption (negatif) ditulis sekarang."""
+    from ..services.circular import handover
+    return await handover(db, user, redemption_id, body.kg, body.note)
+
+
+def _period(from_: str | None, to: str | None) -> tuple[datetime, datetime, str]:
+    """Bulan YYYY-MM inklusif → [awal bulan from, awal bulan setelah to). Default 12 bulan terakhir."""
+    now = datetime.now(timezone.utc)
+
+    def parse(x):
+        try:
+            y, m = (int(v) for v in x.split("-"))
+            return datetime(y, m, 1, tzinfo=timezone.utc)
+        except (ValueError, AttributeError) as e:
+            raise HTTPException(422, "Format bulan harus YYYY-MM") from e
+    end_m = parse(to) if to else datetime(now.year, now.month, 1, tzinfo=timezone.utc)
+    end = datetime(end_m.year + (end_m.month == 12), end_m.month % 12 + 1, 1, tzinfo=timezone.utc)
+    if from_:
+        start = parse(from_)
+    else:
+        idx = end_m.year * 12 + end_m.month - 1 - 11
+        start = datetime(idx // 12, idx % 12 + 1, 1, tzinfo=timezone.utc)
+    if start >= end:
+        raise HTTPException(422, "Bulan awal harus sebelum bulan akhir")
+    return start, end, f"{start:%Y-%m} s.d. {end_m:%Y-%m}"
+
+
+@router.get("/esg/report")
+async def esg_report(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_audit_read)],
+    from_: Annotated[str | None, Query(alias="from")] = None,
+    to: str | None = None,
+):
+    """Laporan ESG (E/S/G + karbon terpisah + penghematan) dari data nyata. Struktur: docs/09_RISET_STANDAR_ESG_BIOCHAR.md."""
+    from ..services.esg import esg_report as _esg
+    start, end, label = _period(from_, to)
+    return await _esg(db, start, end, label)
+
+
+@router.get("/esg/report.csv")
+async def esg_report_csv(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_audit_read)],
+    from_: Annotated[str | None, Query(alias="from")] = None,
+    to: str | None = None,
+):
+    import csv
+    import io
+    from fastapi.responses import Response
+    from ..services.esg import esg_report as _esg
+    start, end, label = _period(from_, to)
+    r = await _esg(db, start, end, label)
+    buf = io.StringIO()
+    w = csv.writer(buf, delimiter=";")
+    w.writerow(["Pilar", "Kode", "KPI", "Nilai", "Satuan", "Rumus", "Standar", "Sumber data", "Catatan"])
+    for pillar, key in (("Lingkungan", "environment"), ("Sosial", "social"), ("Tata kelola", "governance")):
+        for k in r[key]:
+            w.writerow([pillar, k["code"], k["name"], "" if k["value"] is None else k["value"], k["unit"], k["formula"],
+                        k["standard"], k["source"], k.get("note", "")])
+    for name, t in r["efficiency"].items():
+        w.writerow(["Efisiensi", name, f"Penghematan {name}", t.get("saving_rp"), "Rp", "", "", "services/efficiency.py",
+                    f"{t.get('saving_co2e_kg')} kgCO2e"])
+    fname = f"laporan-esg-{start:%Y%m}-{(end):%Y%m}.csv"
+    return Response("\ufeff" + buf.getvalue(), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+
+@router.get("/efficiency")
+async def efficiency(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_audit_read)],
+    from_: Annotated[str | None, Query(alias="from")] = None,
+    to: str | None = None,
+):
+    """Optimasi & efisiensi per proses: penghematan terealisasi, tercatat, dan potensi (Rp & kgCO₂e) + rekomendasi."""
+    from ..services.efficiency import efficiency_overview
+    start, end, _ = _period(from_, to)
+    return await efficiency_overview(db, start, end)
+
+
+class EfficiencyActionIn(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+    process: str = Field(..., max_length=20)
+    title: str = Field(..., min_length=3, max_length=160)
+    description: str | None = Field(None, max_length=2000)
+    metric: str | None = Field(None, max_length=60)
+    baseline_value: float | None = None
+    current_value: float | None = None
+    saving_rp: float | None = Field(None, ge=0, le=1e12)
+    saving_co2e_kg: float | None = Field(None, ge=-1e9, le=1e9)
+    period: str | None = Field(None, pattern=r"^\d{4}-\d{2}$")
+    status: str = Field("rencana", pattern="^(rencana|berjalan)$")
+    evidence: str | None = Field(None, max_length=1000)
+    source_opportunity: str | None = Field(None, max_length=40)
+
+
+class EfficiencyStatusIn(BaseModel):
+    status: str = Field(..., pattern="^(rencana|berjalan|terverifikasi|batal)$")
+    evidence: str | None = Field(None, max_length=1000)
+    saving_rp: float | None = Field(None, ge=0, le=1e12)
+    saving_co2e_kg: float | None = Field(None, ge=-1e9, le=1e9)
+
+
+@router.post("/efficiency/actions", status_code=201)
+async def create_efficiency_action(
+    body: EfficiencyActionIn,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_pabrik_dep)],
+):
+    """Catat aksi penghematan / pengurangan dampak (status awal: rencana atau berjalan)."""
+    from ..services.efficiency import create_action
+    return await create_action(db, user, body.model_dump())
+
+
+@router.patch("/efficiency/actions/{action_id}")
+async def update_efficiency_action(
+    action_id: int,
+    body: EfficiencyStatusIn,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_pabrik_dep)],
+):
+    """Ubah status; 'terverifikasi' wajib bukti & diverifikasi orang lain (empat mata)."""
+    from ..services.efficiency import update_action_status
+    return await update_action_status(db, user, action_id, body.status, body.evidence, body.saving_rp, body.saving_co2e_kg)
+
+
+@router.get("/charges")
+async def logistics_charges(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_audit_read)],
+    status: str = "terbuka",
+):
+    """Potongan logistik pengepul (dipotong otomatis saat tagihan ditandai lunas)."""
+    from ..models.factory_ops import LogisticsCharge
+    from ..services.logistics import charge_dict
+    q = select(LogisticsCharge).order_by(LogisticsCharge.id.desc()).limit(200)
+    if status != "semua":
+        q = q.where(LogisticsCharge.status == status)
+    return [charge_dict(c) for c in (await db.execute(q)).scalars().all()]
+
+
+class WaiveChargeRequest(BaseModel):
+    reason: str = Field(..., min_length=3, max_length=300)
+
+
+@router.post("/charges/{charge_id}/waive")
+async def waive_charge(
+    charge_id: int,
+    body: WaiveChargeRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_pabrik_dep)],
+):
+    """Bebaskan potongan (mis. jalan putus/bencana — bukan kesalahan pengepul). Alasan wajib, tercatat."""
+    from ..models.factory_ops import LogisticsCharge
+    from ..services.logistics import charge_dict
+    c = (await db.execute(select(LogisticsCharge).where(LogisticsCharge.id == charge_id).with_for_update())).scalar_one_or_none()
+    if c is None:
+        raise HTTPException(404, "Potongan tidak ditemukan")
+    if c.status != "terbuka":
+        raise HTTPException(409, f"Potongan sudah {c.status}.")
+    c.status, c.resolved_at = "dibebaskan", datetime.now(timezone.utc)
+    c.reason = f"{c.reason or ''} · dibebaskan oleh #{user.id}: {body.reason}".strip(" ·")
+    await db.commit()
+    return charge_dict(c)
+
+
 @router.get("/esg/summary")
 async def esg_summary(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -305,6 +703,9 @@ async def esg_summary(
         # Estimasi biochar dari model rendemen AKTIF (menu Parameter), bukan angka tertanam
         "estimated_biochar_ton": round((row[1] or 0) * biochar_yield_db(P("limbah.pyrolysis_temp_c"),
                                                                         P("rendemen.ref_ash")) / 100, 2),
+        # Potensi SiO2 = biomassa x abu referensi x fraksi SiO2 dalam abu (parameter aktif, sama dengan engine mutu)
+        "estimated_sio2_ton": round((row[1] or 0) * P("rendemen.ref_ash") / 100
+                                    * P("rendemen.sio2_fraction_of_ash"), 2),
         "methodology": "IPCC 2006 Tier 2",
     }
 
@@ -418,6 +819,8 @@ class InboundQCIn(BaseModel):
     volatile_matter: float = Field(..., ge=0, le=100)
     fixed_carbon: float = Field(..., ge=0, le=100)
     contamination: float = Field(0, ge=0, le=50)
+    rejected_kg: float = Field(0, ge=0, description="Karung disortir keluar (basah/berjamur): tidak dibayar, dikarantina")
+    rejected_reason: str | None = Field(None, pattern="^(basah|berjamur|kontaminan|lainnya)$")
     evidence_photo_url: EvidenceUrl | None = Field(None, max_length=1000)
     note: str | None = Field(None, max_length=500)
 
@@ -462,9 +865,9 @@ class BatchIn(BaseModel):
         bad = set(self.outputs) - {"bio_pellet", "biochar", "bio_silika"}
         if bad or any(v < 0 for v in self.outputs.values()):
             raise ValueError("outputs hanya bio_pellet/biochar/bio_silika dengan kg ≥ 0")
-        bad = set(self.losses) - {"air", "volatil_syngas", "gas_pembakaran", "residu_ekstraksi", "susut_proses"}
+        bad = set(self.losses) - set(LOSS_KINDS)          # satu sumber: engine + CHECK migrasi 016 (termasuk bio_oil)
         if bad or any(v < 0 for v in self.losses.values()):
-            raise ValueError("losses hanya air/volatil_syngas/gas_pembakaran/residu_ekstraksi/susut_proses, kg ≥ 0")
+            raise ValueError(f"losses hanya {'/'.join(LOSS_KINDS)}, kg ≥ 0")
         if self.prices and (set(self.prices) - {"bio_pellet", "biochar", "bio_silika"}
                             or any(v < 0 for v in self.prices.values())):
             raise ValueError("prices hanya bio_pellet/biochar/bio_silika dengan Rp/kg ≥ 0")
@@ -644,3 +1047,93 @@ async def route_arrivals(
         "ash": h.ash,
         "grade": h.grade,
     } for h, fname, cname in rows]
+
+
+# ---------------------------------------------------------------- retur / karantina
+@router.get("/returns")
+async def list_returns(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_audit_read)],
+    status: str | None = None,
+):
+    q = select(ReturnCase).order_by(ReturnCase.id.desc()).limit(300)
+    if status:
+        q = q.where(ReturnCase.status == status)
+    return [logistics.return_dict(r) for r in (await db.execute(q)).scalars().all()]
+
+
+@router.post("/returns", status_code=201)
+async def open_return_case(
+    body: ReturnOpenRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_pabrik_only)],
+):
+    """Buka kasus retur manual (mis. jamur ditemukan di gudang setelah diterima)."""
+    if not (body.harvest_id or body.request_id or body.qc_id):
+        raise HTTPException(422, "Isi salah satu: harvest_id, request_id, atau qc_id.")
+    rc = await logistics.open_return(db, user, stage="gudang_pabrik", harvest_id=body.harvest_id,
+                                     request_id=body.request_id, qc_id=body.qc_id, reason_code=body.reason_code,
+                                     quantity_kg=body.quantity_kg, moisture=body.moisture, location=body.location,
+                                     note=body.note, evidence_photo_url=body.evidence_photo_url)
+    return logistics.return_dict(rc)
+
+
+@router.post("/returns/{case_id}/resolve")
+async def resolve_return_case(
+    case_id: int,
+    body: ReturnResolveRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_pabrik_only)],
+):
+    """Putuskan disposisi: kembalikan ke pengirim, keringkan ulang, turun grade, bahan bakar boiler, musnahkan."""
+    try:
+        rc = await logistics.resolve_return(db, user, case_id, body.disposition, body.cost_bearer,
+                                            body.handling_cost_rp, body.note)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e
+    return logistics.return_dict(rc)
+
+
+# ---------------------------------------------------------------- stok produk jadi
+@router.get("/inventory")
+async def inventory(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_audit_read)],
+):
+    """Saldo stok biochar / bio-silika / bio-pellet = jumlah mutasi (produksi - alokasi petani - penjualan +/- koreksi)."""
+    return {"balance_kg": await factory_ops.inventory_balance(db)}
+
+
+@router.post("/inventory/movements", status_code=201)
+async def inventory_movement(
+    body: GoodsMovementRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_pabrik_only)],
+):
+    try:
+        return await factory_ops.record_goods_movement(db, user, body.product, body.movement, body.quantity_kg,
+                                                       body.unit_price_rp, body.reference, body.note)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e
+
+
+# ---------------------------------------------------------------- Green Scorecard (karbon, sirkularitas, green chemistry)
+@router.get("/green-scorecard")
+async def green_scorecard(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_audit_read)],
+    since: str | None = None,
+):
+    """Neraca karbon bersih (pembakaran terbuka dihindari + sekuestrasi biochar − angkut − listrik),
+    indikator ekonomi sirkular, dan E-factor lini silika — dihitung dari batch, rute, dan retur NYATA.
+    `since` = YYYY-MM-DD (opsional)."""
+    from ..services.esg import green_scorecard_for
+    start = None
+    if since:
+        try:
+            start = datetime.fromisoformat(since).replace(tzinfo=timezone.utc)
+        except ValueError as e:
+            raise HTTPException(422, "since harus YYYY-MM-DD") from e
+    return await green_scorecard_for(db, start)
+
+

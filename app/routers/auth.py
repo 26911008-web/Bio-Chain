@@ -8,9 +8,9 @@ from typing import Annotated
 import hashlib
 import secrets
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +19,8 @@ from ..config import settings
 from ..database import get_db
 from ..dependencies import create_access_token, get_current_user, security
 from ..models.user import User, UserRole, IncentiveTier
+
+from ..services.phone import normalize_phone, require_phone
 
 router = APIRouter()
 
@@ -79,25 +81,31 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 
 class RegisterRequest(BaseModel):
-    username: str | None = None
-    email: str | None = None
+    username: str | None = Field(None, max_length=50)
+    email: str | None = Field(None, max_length=100)
     phone: str = Field(..., min_length=8, max_length=20,
                        description="Nomor telepon (format: 08xxxxxxxxxx)")
-    password: str = Field(..., min_length=4, max_length=100)
+    password: str = Field(..., min_length=6, max_length=100)
     full_name: str = Field(..., min_length=2, max_length=100)
-    role: str = Field("petani", description="petani|pengepul|driver|pabrik|admin")
-    kecamatan: str | None = None
-    kabupaten: str | None = "Sleman"
+    role: str = Field("petani", pattern="^(petani|pengepul|driver|pabrik)$",
+                      description="petani|pengepul|driver|pabrik")
+    kecamatan: str | None = Field(None, max_length=100)
+    kabupaten: str | None = Field("Sleman", max_length=100)
     lat: float | None = None
     lon: float | None = None
 
+    _phone = field_validator("phone")(require_phone)       # F6: +62/62/spasi/strip → 08…
+    # F12: persetujuan pemrosesan data (UI wajib centang layanan_inti). Opsional di API demi klien lama;
+    # tanpa ini /me/consents melaporkan needs_consent=true dan UI meminta persetujuan setelah login.
+    consents: dict[str, bool] | None = None
+
 
 class LoginRequest(BaseModel):
-    identifier: str | None = Field(None, description="Username atau nomor telepon")
-    phone: str | None = None
-    username: str | None = None
-    password: str = Field(..., min_length=1)
-    expected_role: str | None = Field(None, description="Gerbang peran yang dipilih di halaman muka")
+    identifier: str | None = Field(None, max_length=100, description="Username atau nomor telepon")
+    phone: str | None = Field(None, max_length=30)
+    username: str | None = Field(None, max_length=50)
+    password: str = Field(..., min_length=1, max_length=128)
+    expected_role: str | None = Field(None, max_length=20, description="Gerbang peran yang dipilih di halaman muka")
 
 
 class UserProfileResponse(BaseModel):
@@ -114,6 +122,7 @@ class UserProfileResponse(BaseModel):
     lon: float | None = None
     xp_total: int = 0
     incentive_tier: str | None = None
+    must_change_password: bool = False
 
 
 class TokenResponse(BaseModel):
@@ -128,6 +137,12 @@ class TokenResponse(BaseModel):
     kecamatan: str | None = None
     xp_total: int = 0
     incentive_tier: str | None = None
+    must_change_password: bool = False
+
+
+class ChangePasswordRequest(BaseModel):
+    old_password: str = Field(..., min_length=1, max_length=128)
+    new_password: str = Field(..., min_length=6, max_length=100)
 
 
 @router.post("/register", response_model=TokenResponse, status_code=201)
@@ -168,9 +183,17 @@ async def register(req: RegisterRequest, db: Annotated[AsyncSession, Depends(get
     )
     db.add(user)
     await db.flush()
+    if req.consents:                                       # F12: jejak persetujuan sejak pendaftaran
+        if req.consents.get("layanan_inti") is not True:
+            raise HTTPException(422, "Persetujuan layanan inti wajib untuk mendaftar.")
+        from ..security.rls import apply_now, bind_identity
+        from ..services.privacy import record_consents
+        bind_identity(db, user.id, user.role.value if hasattr(user.role, "value") else str(user.role))
+        await apply_now(db)                                # PostgreSQL RLS: catat sebagai pemilik akun baru
+        await record_consents(db, user.id, req.consents)
 
     role_str = user.role.value if hasattr(user.role, 'value') else str(user.role)
-    token = create_access_token(user.id, role_str)
+    token = create_access_token(user.id, role_str, user.token_version or 0)
     tier_str = user.incentive_tier.value if hasattr(user.incentive_tier, 'value') else str(user.incentive_tier)
 
     return TokenResponse(
@@ -184,6 +207,7 @@ async def register(req: RegisterRequest, db: Annotated[AsyncSession, Depends(get
         kecamatan=user.kecamatan,
         xp_total=user.xp_total or 0,
         incentive_tier=tier_str,
+        must_change_password=bool(user.must_change_password),
     )
 
 
@@ -194,9 +218,11 @@ async def login(req: LoginRequest, db: Annotated[AsyncSession, Depends(get_db)])
     if not lookup:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Username atau nomor telepon wajib diisi")
 
-    result = await db.execute(
-        select(User).where(or_(User.phone == lookup, User.username == lookup))
-    )
+    phone_norm = normalize_phone(lookup)                 # "+62 812-…" sama dengan "0812…"
+    conds = [User.phone == lookup, User.username == lookup]
+    if phone_norm and phone_norm != lookup:
+        conds.append(User.phone == phone_norm)
+    result = await db.execute(select(User).where(or_(*conds)))
     user = result.scalar_one_or_none()
     # Lepas koneksi DB sebelum hashing (~0,3 s) agar pool tidak habis saat badai login.
     await db.commit()
@@ -217,7 +243,7 @@ async def login(req: LoginRequest, db: Annotated[AsyncSession, Depends(get_db)])
                             f"Akun ini bukan akun {req.expected_role}. Silakan pilih gerbang yang sesuai.")
 
     role_str = user.role.value if hasattr(user.role, 'value') else str(user.role)
-    token = create_access_token(user.id, role_str)
+    token = create_access_token(user.id, role_str, user.token_version or 0)
     tier_str = user.incentive_tier.value if hasattr(user.incentive_tier, 'value') else str(user.incentive_tier)
 
     return TokenResponse(
@@ -231,6 +257,7 @@ async def login(req: LoginRequest, db: Annotated[AsyncSession, Depends(get_db)])
         kecamatan=user.kecamatan,
         xp_total=user.xp_total or 0,
         incentive_tier=tier_str,
+        must_change_password=bool(user.must_change_password),
     )
 
 
@@ -253,23 +280,46 @@ async def get_me(user: Annotated[User, Depends(get_current_user)]):
         lon=user.lon,
         xp_total=user.xp_total or 0,
         incentive_tier=tier_str,
+        must_change_password=bool(user.must_change_password),
     )
+
+
+@router.post("/change-password")
+async def change_password(req: ChangePasswordRequest, user: Annotated[User, Depends(get_current_user)],
+                          db: Annotated[AsyncSession, Depends(get_db)]):
+    """Ganti password sendiri (wajib setelah reset oleh admin — F6)."""
+    if not await run_cpu(verify_password, req.old_password, user.password_hash):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Password lama salah")
+    if req.old_password == req.new_password:
+        raise HTTPException(422, "Password baru harus berbeda dari password lama")
+    user.password_hash = await run_cpu(hash_password, req.new_password)
+    user.must_change_password = False
+    user.token_version = int(user.token_version or 0) + 1      # cabut semua token lama (perangkat lain)
+    await db.commit()
+    role_str = user.role.value if hasattr(user.role, "value") else str(user.role)
+    return {"message": "Password berhasil diganti. Sesi di perangkat lain otomatis keluar.",
+            "access_token": create_access_token(user.id, role_str, user.token_version)}
 
 
 @router.get("/demo-accounts")
 async def get_demo_accounts():
-    """Daftar akun demo resmi untuk auto-fill di halaman login."""
+    """Daftar akun demo resmi untuk auto-fill di halaman login (hanya DEMO_MODE; produksi → 404)."""
+    if not settings.DEMO_MODE:
+        raise HTTPException(404, "Not Found")
     from ..seed import DEMO_ACCOUNTS
     return DEMO_ACCOUNTS
 
 
 @router.post("/reset-demo")
 async def reset_demo(
+    request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
 ):
-    """Reset & isi ulang database dengan data demo — hanya admin (operasi destruktif)."""
-    user = await get_current_user(credentials, db)
+    """Reset & isi ulang database dengan data demo — hanya admin & hanya DEMO_MODE (operasi destruktif)."""
+    if not settings.DEMO_MODE:
+        raise HTTPException(404, "Not Found")
+    user = await get_current_user(request, credentials, db)
     if user.role != UserRole.ADMIN:
         raise HTTPException(403, "Reset data hanya untuk admin.")
     from ..seed import seed_demo_data

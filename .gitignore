@@ -35,3 +35,8 @@ Thumbs.db
 # Uploads
 app/static/uploads/*
 !app/static/uploads/.gitkeep
+
+# Office lock files & output uji browser
+~$*
+test-results/
+playwright-report/

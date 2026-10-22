@@ -122,7 +122,8 @@ def test_full_circular_cycle_100kg_to_10kg_biochar(env):
     # 2. Pengepul B timbang & uji mutu
     v = env.ok("pengepul_b", "POST", "/collector/verify", {"harvest_id": h["id"], "weighed_kg": 100, **PROXIMATE})
     assert v["weighed_kg"] == 100 and v["grade"] in {"A", "B", "C"}
-    assert v["total_price"] == round(100 * 400 * v["quality_detail"]["price_multiplier"])
+    # Harga basis kering (harga_mutu.pricing_method): 400 × (1−11%)/(1−12%) per kg, kontaminan 1% tidak dibayar
+    assert v["total_price"] == round(100 * 0.99 * round(400 * 0.89 / 0.88, 2)) and v["price_basis"] == "basis kering"
 
     # 3. Supir C mengangkut
     route = env.ok("pabrik_d", "POST", "/factory/dispatch",
@@ -194,7 +195,7 @@ def test_weight_gain_is_flagged(env):
 def test_price_uses_collector_scale_not_farmer_estimate(env):
     h = report(env, kg=500)                      # petani menaksir berlebihan
     v = env.ok("pengepul_b", "POST", "/collector/verify", {"harvest_id": h["id"], "weighed_kg": 320, **PROXIMATE})
-    assert v["total_price"] == round(320 * 400 * v["quality_detail"]["price_multiplier"])
+    assert v["total_price"] == round(320 * 0.99 * round(400 * 0.89 / 0.88, 2))
     assert v["estimate_gap_pct"] == pytest.approx(36.0)
 
 
@@ -216,7 +217,8 @@ def test_self_registration_cannot_create_admin_or_auditor(env):
     for role in ("admin", "auditor"):
         r = c.post("/api/v1/auth/register", json={"phone": f"08999{role[:3]}01", "password": "abcdef12",
                                                     "full_name": "Penyusup", "role": role})
-        assert r.status_code == 403
+        # 422: ditolak validasi pola role; 403: ditolak lapisan otorisasi. Keduanya menolak.
+        assert r.status_code in (403, 422)
 
 
 def test_driver_cannot_confirm_stop_on_another_drivers_route(env):

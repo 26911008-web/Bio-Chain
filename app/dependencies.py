@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -21,14 +21,20 @@ from .security.rls import apply_now, bind_identity
 security = HTTPBearer(auto_error=False)
 
 
-def create_access_token(user_id: int, role: str) -> str:
-    """Buat JWT access token dengan payload {sub, role, exp}."""
-    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.JWT_EXPIRE_MINUTES)
-    payload = {"sub": str(user_id), "role": role, "exp": expire}
+# Saat akun wajib ganti password (reset admin), hanya jalur ini yang boleh dipakai — ditegakkan di server.
+MUST_CHANGE_ALLOWED = ("/api/v1/auth/me", "/api/v1/auth/change-password", "/api/v1/me/")
+
+
+def create_access_token(user_id: int, role: str, token_version: int = 0) -> str:
+    """Buat JWT access token dengan payload {sub, role, tv, iat, exp}. `tv` = users.token_version."""
+    now = datetime.now(timezone.utc)
+    expire = now + timedelta(minutes=settings.JWT_EXPIRE_MINUTES)
+    payload = {"sub": str(user_id), "role": role, "tv": int(token_version or 0), "iat": now, "exp": expire}
     return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
 
 
 async def get_current_user(
+    request: Request,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> User:
@@ -44,6 +50,7 @@ async def get_current_user(
         )
         user_id = int(payload["sub"])
         token_role = payload.get("role")
+        token_version = int(payload.get("tv", 0))
     except (jwt.ExpiredSignatureError,):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token kedaluwarsa")
     except (jwt.InvalidTokenError, KeyError, ValueError):
@@ -57,6 +64,11 @@ async def get_current_user(
     if token_role != role:
         # Role diubah admin setelah token terbit → token lama tidak boleh membawa hak lama.
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Peran akun berubah; silakan login ulang")
+    if token_version != int(user.token_version or 0):
+        # Password diganti/direset setelah token terbit → semua sesi lama (HP hilang, dipinjam) berakhir.
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Sesi berakhir karena password diganti; silakan login ulang")
+    if user.must_change_password and not request.url.path.startswith(MUST_CHANGE_ALLOWED):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Ganti password sementara Anda terlebih dahulu.")
 
     # RLS PostgreSQL: semua query berikutnya di request ini dibatasi ke identitas ini.
     bind_identity(db, user.id, role)

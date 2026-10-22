@@ -143,7 +143,7 @@ def test_openrouter_model_list_only_free(client, mock_llm, monkeypatch):
 
 def test_auto_default_prefers_configured_cloud_then_local(monkeypatch):
     monkeypatch.setattr(settings, "AI_DEFAULT_PROVIDER", "auto")
-    for k in ("GEMINI_API_KEY", "GROQ_API_KEY", "MISTRAL_API_KEY", "OPENROUTER_API_KEY"):
+    for k in ("GEMINI_API_KEY", "GROQ_API_KEY", "MISTRAL_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY"):
         monkeypatch.setattr(settings, k, "")
     assert P.resolve_default() == "ollama"
     monkeypatch.setattr(settings, "MISTRAL_API_KEY", "x")

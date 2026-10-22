@@ -65,8 +65,9 @@ async def lifespan(app: FastAPI):
     # 2. Auto-seed demo data if empty
     try:
         from .seed import seed_if_empty
-        async with db_module.async_session() as session:
-            await seed_if_empty(session)
+        if settings.DEMO_MODE:                     # produksi: DB kosong tetap kosong (admin dibuat lewat CLI)
+            async with db_module.async_session() as session:
+                await seed_if_empty(session)
         from .services.params_store import load as load_params, start_pg_listener
         async with db_module.async_session() as session:
             await load_params(session)
@@ -106,24 +107,30 @@ app = FastAPI(
 )
 
 # --- Middleware Stack ---
-# 1. CORS — izinkan frontend Next.js
+# 1. CORS — origin dari env CORS_ORIGINS (F19); default dev lokal saat DEBUG. SPA sendiri satu origin.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:8000",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:8000",
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=settings.cors_origins,
+    allow_credentials=False,          # auth = Bearer token (bukan cookie) → kredensial lintas-origin tidak perlu
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+    expose_headers=["X-Request-ID", "X-AI-Provider", "X-AI-Model", "X-AI-Fallback"],
 )
 
 # 2. Rate Limiter (Redis-backed, fail-open)
 app.add_middleware(RateLimiterMiddleware)
-# 3. Kebijakan akses deny-by-default (paling luar: ditolak sebelum menyentuh rate limiter/handler)
+# 3. Kebijakan akses deny-by-default (ditolak sebelum menyentuh rate limiter/handler)
 app.add_middleware(RoutePolicyMiddleware)
+# 4. Request-ID + log akses terstruktur (F17) — paling luar agar penolakan kebijakan pun tercatat & ber-ID
+from .observability import RequestIdMiddleware, configure_logging  # noqa: E402
+
+configure_logging(settings.DEBUG)
+app.add_middleware(RequestIdMiddleware)
+# 5. Header keamanan + CSP ketat (skrip tanpa 'unsafe-inline'; hash importmap otomatis dari index.html)
+from .security.headers import SecurityHeadersMiddleware  # noqa: E402
+
+if settings.CSP_ENABLED:
+    app.add_middleware(SecurityHeadersMiddleware, index_html=STATIC / "index.html")
 
 
 # --- Domain errors → HTTP (transaksi request otomatis di-rollback oleh get_db) ---
@@ -214,6 +221,8 @@ try:
     app.include_router(assistant.router, prefix="/api/v1/assistant", tags=["🤖 Asisten AI"])
     app.include_router(params_router.router, prefix="/api/v1/params", tags=["⚙️ Parameter Asumsi"])
     app.include_router(uploads_router.router, prefix="/api/v1/uploads", tags=["📸 Unggah Bukti"])
+    from .routers import me as me_router
+    app.include_router(me_router.router, prefix="/api/v1/me", tags=["🔒 Data Pribadi (PDP)"])
     from .routers import reports as reports_router
     app.include_router(reports_router.router, prefix="/api/v1/reports", tags=["📊 Laporan Bulanan"])
     app.include_router(reports_router.router, prefix="/api/reports", include_in_schema=False)
@@ -272,6 +281,13 @@ async def system_status():
 @app.get("/", include_in_schema=False)
 def index():
     return FileResponse(STATIC / "index.html")
+
+
+@app.get("/sw.js", include_in_schema=False)
+async def service_worker():
+    """Service worker offline-first; dilayani dari root agar cakupannya seluruh aplikasi."""
+    return FileResponse(STATIC / "sw.js", media_type="application/javascript",
+                        headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"})
 
 
 app.include_router(labs.router, prefix="/api/v1/labs", tags=["🧪 Lab 7 Engine (Pabrik/Admin)"])

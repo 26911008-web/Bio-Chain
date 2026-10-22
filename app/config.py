@@ -3,6 +3,7 @@
 Membaca dari .env file atau environment variables.
 """
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -46,7 +47,7 @@ class Settings(BaseSettings):
     BASE_PRICE_PER_KG: float = 400.0            # Rp/kg sekam sebelum multiplier grade
 
     # Asisten AI — semua kunci hanya di server (.env), tidak pernah ke browser
-    AI_DEFAULT_PROVIDER: str = "auto"       # auto | ollama | gemini | mistral | groq | openrouter
+    AI_DEFAULT_PROVIDER: str = "auto"       # auto | ollama | gemini | mistral | groq | openai | openrouter
     AI_TIMEOUT_S: float = 60.0              # jeda maksimum antar potongan teks (streaming)
     AI_MAX_TOKENS: int = 600
     OLLAMA_BASE_URL: str = "http://localhost:11434"
@@ -57,14 +58,59 @@ class Settings(BaseSettings):
     MISTRAL_MODEL: str = "mistral-small-latest"
     GROQ_API_KEY: str = ""
     GROQ_MODEL: str = "openai/gpt-oss-20b"
+    OPENAI_API_KEY: str = ""
+    OPENAI_MODEL: str = "gpt-5-mini"        # cek GET /api/v1/assistant/providers/openai/models
+    OPENAI_REASONING_EFFORT: str = "low"     # kosongkan untuk model non-reasoning (mis. gpt-4.1)
     OPENROUTER_API_KEY: str = ""
     OPENROUTER_MODEL: str = ""              # kosong → pilih model ':free' di UI
+
+    # CORS — daftar origin dipisah koma (F19). Kosong + DEBUG → origin dev lokal. Produksi: isi domain HTTPS.
+    CORS_ORIGINS: str = ""
+    # Produksi multi-worker wajib arq+Redis (F16). Setel True HANYA untuk server satu worker.
+    ALLOW_LOCAL_JOBS_IN_PROD: bool = False
 
     # App
     APP_NAME: str = "Bio-Chain API"
     DEBUG: bool = True
+    # Mode demo (hackathon / laptop): akun demo publik, seed otomatis, reset data oleh admin.
+    # WAJIB False saat dipakai di lapangan — kalau tidak, password admin demo terbuka di /auth/demo-accounts.
+    DEMO_MODE: bool = True
+    # Content-Security-Policy dari aplikasi (app/security/headers.py). Matikan hanya untuk debugging lokal.
+    CSP_ENABLED: bool = True
+    # Toleransi jam perangkat (HP murah sering salah jam). Waktu di luar jendela ini ditandai, bukan dipercaya.
+    CLIENT_CLOCK_MAX_PAST_HOURS: float = 72.0
+    CLIENT_CLOCK_MAX_FUTURE_MINUTES: float = 10.0
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+
+    @model_validator(mode="after")
+    def _validate_secrets(self):
+        if not self.DEBUG:
+            if self.JWT_SECRET.startswith("biochain-dev-secret") or len(self.JWT_SECRET) < 32:
+                raise ValueError("JWT_SECRET tidak aman untuk mode produksi (harus diubah dan minimal 32 karakter).")
+            # Produksi lapangan: tidak boleh ada akun demo publik / reset data, dan tidak boleh diam-diam
+            # pindah ke SQLite lokal (split-brain antar worker, RLS & trigger audit hilang).
+            if self.DEMO_MODE:
+                raise ValueError("DEMO_MODE harus False saat DEBUG=False (akun demo & reset data terbuka).")
+            if self.ALLOW_SQLITE_FALLBACK and "sqlite" not in self.DATABASE_URL.lower():
+                raise ValueError("ALLOW_SQLITE_FALLBACK harus False di produksi (cegah split-brain SQLite/PostgreSQL).")
+            if self.JOB_BACKEND != "arq" and not self.ALLOW_LOCAL_JOBS_IN_PROD:
+                raise ValueError("JOB_BACKEND=arq (+ REDIS_URL) wajib di produksi: job & antrean in-memory tidak terbagi "
+                                 "antar worker. Untuk server satu worker setel ALLOW_LOCAL_JOBS_IN_PROD=true.")
+            origins = self.cors_origins
+            if not origins or "*" in origins:
+                raise ValueError("CORS_ORIGINS wajib diisi domain HTTPS eksplisit di produksi (tanpa '*').")
+            if any(o.startswith("http://") and "localhost" not in o and "127.0.0.1" not in o for o in origins):
+                raise ValueError("CORS_ORIGINS produksi harus https:// (kamera QR, GPS & crypto.randomUUID butuh HTTPS).")
+        return self
+
+    @property
+    def cors_origins(self) -> list[str]:
+        if self.CORS_ORIGINS.strip():
+            return [o.strip().rstrip("/") for o in self.CORS_ORIGINS.split(",") if o.strip()]
+        if self.DEBUG:
+            return ["http://localhost:3000", "http://localhost:8000", "http://127.0.0.1:3000", "http://127.0.0.1:8000"]
+        return []
 
 
 settings = Settings()

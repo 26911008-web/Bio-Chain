@@ -51,7 +51,10 @@ Indonesia menghasilkan lebih dari **10,2 juta ton sekam padi** setiap tahun dari
    - Sistem otomatis mendeteksi ketersediaan port PostgreSQL 16.
    - Jika PostgreSQL tidak aktif (lingkungan demo lokal tanpa Docker), sistem langsung beralih ke SQLite lokal (`biochain.db`) secara transparan tanpa error.
 3. **Portal Pengguna Multi-Peran**:
-   - Dilengkapi kartu peran login instan 1-klik untuk Petani, Pengepul, Driver, Pabrik, dan Admin.
+   - Dilengkapi kartu peran login instan 1-klik untuk Petani, Pengepul, Driver, Pabrik, Auditor ESG, dan Admin.
+4. **AI Performance Evaluator & Smart Optimizer Terpadu Tiap Persona**:
+   - Setiap portal peran dilengkapi modul evaluasi cerdas bertenaga LLM (Google Gemini `gemini-3.8-flash` & fallback zero-downtime domain heuristic).
+   - Menghasilkan skor kinerja instan (0-100), analisis gap, prioritas masalah, serta rekomendasi langkah optimasi taktis yang dapat langsung dieksekusi berdasarkan metrik riil (kadar air, efisiensi rute & muatan, yield biochar, kepatuhan integritas MRV emisi, dan SLA sistem).
 
 ---
 
