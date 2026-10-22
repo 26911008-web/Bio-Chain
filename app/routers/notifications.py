@@ -11,7 +11,6 @@ from ..services.notifications import (
     get_persona_notifications,
     mark_notification_read,
     mark_all_notifications_read,
-    record_notification,
 )
 
 router = APIRouter()

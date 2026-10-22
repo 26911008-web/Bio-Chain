@@ -22,7 +22,7 @@ from ..engines.routing import road_km
 from ..models.factory_ops import ReturnCase, ReturnDisposition, ReturnReason
 from ..models.harvest import Harvest, HarvestStatus, Mill
 from ..models.ledger import CustodyStage
-from ..models.route import LIVE_STOP_STATUSES, Route, RouteStatus, RouteStop, RouteTrackPoint, StopStatus
+from ..models.route import Route, RouteStatus, RouteStop, RouteTrackPoint, StopStatus
 from ..models.trade import Bid, BidStatus, ListingStatus, StockListing
 from ..models.user import User
 from ..params import P

@@ -8,7 +8,7 @@ import enum
 from datetime import datetime, timezone
 
 from sqlalchemy import (
-    Boolean, Column, DateTime, Double, Enum, ForeignKey, Integer, String, Text, func,
+    Boolean, Column, DateTime, Double, Enum, ForeignKey, Integer, String, func,
 )
 from sqlalchemy.orm import relationship
 

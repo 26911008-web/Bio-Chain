@@ -57,16 +57,16 @@
 - [x] Verify sensitive user attributes (passwords, salts) are stripped from all API outputs.
 
 ### 3.2 [SAFE PURGE] Verified Dead Files & Unused Dependencies
-- [ ] Remove obsolete ad-hoc runner scripts superseded by Playwright specs:
+- [x] Remove obsolete ad-hoc runner scripts superseded by Playwright specs:
   - `tests/fase1_runner.js`
   - `tests/fase2_runner.js`
   - `tests/fase3_runner.js`
   - `tests/fase4_runner.js`
   - `tests/fase5_runner.js`
   - `tests/fase6_omni_regression.js`
-- [ ] Remove obsolete temporary debugging script: `scripts/test_gate_click.js`.
-- [ ] Remove unused Python imports across `app/routers/`, `app/services/`, and `app/engines/` (`anyio.to_thread`, `timedelta`, `LIVE_STOP_STATUSES`, `Conversion`, `calculate_incentive`, `DeliveryEvent`, `DeliveryScheme`).
-- [ ] Clean up `package.json` entry point hint (`"main": "index.js"` pointing to missing root file).
+- [x] Remove obsolete temporary debugging script: `scripts/test_gate_click.js`.
+- [x] Remove unused Python imports across `app/routers/`, `app/services/`, and `app/engines/` (`anyio.to_thread`, `timedelta`, `LIVE_STOP_STATUSES`, `Conversion`, `calculate_incentive`, `DeliveryEvent`, `DeliveryScheme`).
+- [x] Clean up `package.json` entry point hint (`"main": "index.js"` pointing to missing root file).
 
 ### 3.3 [DEDUPLICATION] Duplicated Utilities & Logic to Consolidate
 - [ ] Deduplicate multi-output conversion calculations and response formatting in `app/engines/product_optimization.py` (lines 239-262, 391-414, 524-540, 640-656).

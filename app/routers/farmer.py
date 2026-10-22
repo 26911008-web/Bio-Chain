@@ -14,14 +14,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import get_db
-from ..dependencies import require_role, get_current_user
+from ..dependencies import require_role
 from ..models.user import User, UserRole
 from ..models.harvest import Harvest, HarvestStatus, Mill
 from ..models.ledger import BiocharLedgerEntry, CustodyEvent, CustodyStage
-from ..engines.incentive import calculate_incentive, DeliveryEvent, next_tier_xp
-from ..models.trade import StockListing, Bid, CollectorPaymentReputation, CollectorRating
+from ..engines.incentive import next_tier_xp
+from ..models.trade import StockListing, Bid, CollectorPaymentReputation, CollectorRating, ListingStatus
 from ..models.circular import BiocharRequest, BiocharQualityEvaluation, BiocharCircularRequest
-from ..models.trade import StockListing, Bid, CollectorPaymentReputation, CollectorRating, ListingStatus, DeliveryScheme
 from ..services import trade
 from ..services.biomass import get_biomass
 from ..services.qr_sign import new_qr_code

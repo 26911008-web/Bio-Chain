@@ -10,8 +10,6 @@ Menyediakan silsilah ketelusuran tertutup (closed-loop circular economy) dari:
 """
 
 import hashlib
-import json
-from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import select
@@ -20,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..models.circular import BiocharDistribution, BiocharRedemption, BiocharRequest
 from ..models.conversion import Conversion
 from ..models.harvest import Harvest, HarvestStatus
-from ..models.industrial import GateReception, ProductionBlend, ByProductLedger
+from ..models.industrial import GateReception
 from ..models.ledger import BiocharLedgerEntry, CustodyEvent
 from ..models.user import User
 

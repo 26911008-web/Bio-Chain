@@ -10,7 +10,7 @@ Prinsip:
 - AI (assistant router) hanya MENJELASKAN hasil ini dan menyusun langkah — tidak menghitung ulang.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession

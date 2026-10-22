@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import async_session
-from ..models.harvest import Harvest, HarvestStatus
+from ..models.harvest import Harvest
 from ..services.circular_traceability import get_circular_traceability, COMMODITY_LABELS
 
 router = APIRouter()

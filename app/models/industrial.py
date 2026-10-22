@@ -5,9 +5,8 @@ Gate Receptions, Loading Ramps, Factory Invoices, Production Blends, & By-Produc
 from datetime import datetime, timezone
 import enum
 from sqlalchemy import (
-    JSON, Boolean, Column, DateTime, Double, ForeignKey, Index, Integer, String, Text,
+    JSON, Boolean, Column, DateTime, Double, ForeignKey, Integer, String, Text,
 )
-from sqlalchemy.orm import relationship
 
 from ..database import Base
 

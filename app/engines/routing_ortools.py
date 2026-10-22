@@ -20,8 +20,7 @@ import time
 
 import numpy as np
 
-from ..params import P
-from .emission import emissions_from_plan, fuel_factors, fuel_l_per_km
+from .emission import emissions_from_plan, fuel_factors
 from .routing import distance_matrix
 
 try:                                     # dependensi opsional: tanpa OR-Tools, endpoint memberi 503 yang jelas

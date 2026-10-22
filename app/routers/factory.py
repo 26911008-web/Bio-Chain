@@ -16,7 +16,6 @@ from ..dependencies import require_role
 from ..models.user import User, UserRole
 from ..models.harvest import Harvest, HarvestStatus
 from ..models.circular import BiocharDistribution, BiocharRequest
-from ..models.conversion import Conversion, CarbonCredit
 from ..engines.carbon import CarbonInput, calculate_carbon_reduction
 from ..engines.forecaster import ForecastInput, forecast_supply
 from ..engines.quality import FeedstockSample, biochar_yield_db, score_sample, yield_curve

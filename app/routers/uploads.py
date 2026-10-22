@@ -2,7 +2,6 @@
 
 from pathlib import Path
 import hashlib
-import uuid
 import anyio.to_thread
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 

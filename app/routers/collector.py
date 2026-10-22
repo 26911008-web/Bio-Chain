@@ -13,17 +13,17 @@ from ..params import P
 from ..database import get_db
 from ..dependencies import require_role
 from ..models.user import User, UserRole
-from ..models.harvest import Harvest, HarvestStatus, QualityGrade
+from ..models.harvest import Harvest, HarvestStatus
 from ..models.ledger import CustodyStage
 from ..engines.quality import FeedstockSample, farmgate_price, score_sample
-from ..models.trade import Bid, BidStatus, StockListing, CollectorPaymentReputation, ListingStatus
+from ..models.trade import Bid, BidStatus, StockListing, ListingStatus
 from ..models.circular import BiocharRequest
 from ..models.factory_ops import DeliveryRequest
 from ..models.route import Route, RouteStatus, RouteStop
 from ..services import biomass as _biomass, factory_ops, trade
 from ..services.qr_sign import new_qr_code
 from ..services.custody import find_replay, load_harvest, pct_diff, transition
-from ..engines.routing import plan_routes, road_km
+from ..engines.routing import plan_routes
 from ..schemas.routing import RouteRequest
 
 from ..security.url import EvidenceUrl
