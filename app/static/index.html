@@ -187,7 +187,7 @@
         <fieldset class="form-group fo-consent">
           <legend class="kpi-lbl">Persetujuan data pribadi (UU 27/2022)</legend>
           <label class="fo-check"><input type="checkbox" id="reg-consent-core" required>
-            Saya setuju identitas, lokasi penggilingan, timbangan &amp; pembayaran saya diproses untuk jual-beli sekam <b>(wajib)</b></label>
+            Saya setuju identitas, lokasi penggilingan, timbangan &amp; pembayaran saya diproses untuk jual-beli biomassa <b>(wajib)</b></label>
           <label class="fo-check"><input type="checkbox" id="reg-consent-gps" checked>
             Lokasi GPS saat serah-terima direkam sebagai bukti</label>
           <label class="fo-check"><input type="checkbox" id="reg-consent-photo" checked>
@@ -349,7 +349,7 @@
         <div class="card-header">
           <div>
             <h2 class="card-title">🧪 Bio-Chain Engine Workbench</h2>
-            <p class="card-sub">Eksplorasi langsung model matematika dan algoritma inti rantai pasok sekam padi</p>
+            <p class="card-sub">Eksplorasi langsung model matematika dan algoritma inti rantai pasok multi-biomassa</p>
           </div>
           <div style="display:flex; gap:8px; flex-wrap:wrap;">
             <button class="btn btn-outline-green btn-sm" data-onclick="switchEngineSub('eng-quality')">② Skor Mutu &amp; Rendemen</button>
@@ -365,7 +365,7 @@
         <div id="eng-quality" class="eng-sub">
           <div class="grid-sidebar">
             <div>
-              <label style="font-weight:600; font-size:var(--fs-sm);">Parameter Uji Proksimat Sekam:</label>
+              <label style="font-weight:600; font-size:var(--fs-sm);">Parameter Uji Proksimat Biomassa:</label>
               <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:8px;">
                 <div><label class="kpi-lbl">Kadar Air (% bb)</label><input type="number" id="q-moisture" class="btn btn-secondary" style="width:100%;" value="11" step="0.1"></div>
                 <div><label class="kpi-lbl">Kontaminan (%)</label><input type="number" id="q-contam" class="btn btn-secondary" style="width:100%;" value="1.5" step="0.1"></div>
@@ -465,7 +465,7 @@
               <label style="font-weight:600; font-size:var(--fs-sm);">Armada Pengambilan Sleman-Klaten:</label>
               <div style="margin-top:8px;">
                 <label class="kpi-lbl">Volume Bak Truk (m³)</label><input id="r-m3" type="number" class="btn btn-secondary" style="width:100%; margin-bottom:8px;" value="30">
-                <label class="kpi-lbl">Densitas Curah Sekam (kg/m³)</label><input id="r-dens" type="number" class="btn btn-secondary" style="width:100%; margin-bottom:8px;" value="110">
+                <label class="kpi-lbl">Densitas Curah Biomassa (kg/m³)</label><input id="r-dens" type="number" class="btn btn-secondary" style="width:100%; margin-bottom:8px;" value="110">
                 <label class="kpi-lbl">Biaya Bahan Bakar per km (Rp)</label><input id="r-cost" type="number" class="btn btn-secondary" style="width:100%; margin-bottom:8px;" value="4000">
               </div>
               <button class="btn btn-primary" style="width:100%; margin-top:12px;" id="btn-run-route">Hitung Rute Optimal ➔</button>
@@ -528,7 +528,7 @@
 <div class="modal-overlay" id="qr-modal">
   <div class="modal-box">
     <div class="modal-head">
-      <h3 id="modal-qr-title">Bukti Setor Sekam</h3>
+      <h3 id="modal-qr-title">Bukti Setor Biomassa</h3>
       <button type="button" class="btn btn-secondary btn-sm btn-icon" data-onclick="closeModal()" aria-label="Tutup">✕</button>
     </div>
     <p style="margin:0 0 16px; font-size:var(--fs-xs); color:var(--ink-muted);">
@@ -615,12 +615,12 @@
       <button type="button" class="btn btn-secondary btn-sm btn-icon" data-onclick="closeGeneratorModal()" aria-label="Tutup generator">✕</button>
     </div>
     <p style="margin:0 0 12px; font-size:var(--fs-xs); color:var(--ink-muted);">
-      Buat kode QR 2D kustom untuk karung sekam, tanda terima timbangan, batch pirolisis pabrik, atau tautan.
+      Buat kode QR 2D kustom untuk karung biomassa, tanda terima timbangan, batch pirolisis pabrik, atau tautan.
     </p>
 
     <div class="form-group" style="text-align:left;">
       <label class="kpi-lbl" for="gen-input-text">Isi Teks / Nomor Resi / Metadata</label>
-      <input type="text" id="gen-input-text" class="btn btn-secondary" style="width:100%; text-align:left; font-family:monospace;" placeholder="Misal: BIO-HARVEST-2026-001" value="BIO-SEKAM-SLEMAN-2026">
+      <input type="text" id="gen-input-text" class="btn btn-secondary" style="width:100%; text-align:left; font-family:monospace;" placeholder="Misal: BIO-HARVEST-2026-001" value="BIO-BIOMASSA-SLEMAN-2026">
     </div>
 
     <div style="display:flex; gap:8px; justify-content:center; margin-bottom:12px; flex-wrap:wrap;">
@@ -654,7 +654,7 @@
       <div class="form-group">
         <label for="adm-role">Peran Pengguna (Role)</label>
         <select id="adm-role">
-          <option value="petani">🌾 Petani / Penggilingan Sekam</option>
+          <option value="petani">🌾 Petani / Produsen Biomassa</option>
           <option value="pengepul">📦 Pengepul / Hub KUD</option>
           <option value="driver">🚛 Driver Armada Truk Logistik</option>
           <option value="pabrik">🏭 Operator Pabrik Biochar</option>

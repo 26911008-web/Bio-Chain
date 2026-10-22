@@ -33,7 +33,9 @@
 
     <section class="card" aria-labelledby="fx-bm-title">
       <div class="card-header"><div><h3 class="card-title" id="fx-bm-title">🌾 Master Multi-Biomassa</h3>
-        <p class="card-sub">Nilai awal = titik tengah literatur (docs/15). Ganti dengan hasil lab per lot; harga dasar beli WAJIB diisi pabrik (tanpa angka bawaan).</p></div></div>
+        <p class="card-sub">Nilai awal = titik tengah literatur (docs/15). Ganti dengan hasil lab per lot; harga dasar beli WAJIB diisi pabrik (tanpa angka bawaan).</p></div>
+        ${canWrite() ? `<button type="button" class="btn btn-primary btn-sm" id="btn-add-biomass">➕ Tambah Komoditas</button>` : ""}
+      </div>
       <div id="fx-bm"><p class="muted">Memuat…</p></div></section>
 
     ${canWrite() ? `<section class="card" aria-labelledby="fx-fb-title">
@@ -420,6 +422,40 @@
       if (!Object.keys(changes).length) throw new Error("Tidak ada perubahan.");
       await api(`/api/v1/biomass/${code}`, { method: "PUT", body: { changes, source: fd.get("source") } });
       showToast(`${b.name} diperbarui`, "🌾"); loadBiomass();
+    });
+  }
+
+  function newBiomass() {
+    const f = (k, label, defVal = "", step = "0.1") => `<div class="form-group"><label for="fx-nbm-${k}">${label}</label>
+      <input id="fx-nbm-${k}" name="${k}" type="number" step="${step}" min="0" value="${defVal}" inputmode="decimal"></div>`;
+    dlg("Tambah Komoditas Biomassa Baru", `
+      <div class="form-group"><label for="fx-nbm-name">Nama komoditas</label>
+        <input id="fx-nbm-name" name="name" required minlength="2" maxlength="80" placeholder="Misal: Cangkang Kelapa Sawit"></div>
+      <div class="form-group"><label for="fx-nbm-code">Kode unik (opsional, kosong = otomatis)</label>
+        <input id="fx-nbm-code" name="code" maxlength="24" placeholder="Misal: cangkang_sawit"></div>
+      ${f("base_price_per_kg", "Harga beli dasar (Rp/kg)", "600", "1")}
+      ${f("moisture_ref_pct", "Kadar air acuan (%)", "14")}
+      ${f("moisture_reject_pct", "Kadar air tolak (%)", "22")}
+      ${f("contaminant_tol_pct", "Toleransi kotoran (%)", "2")}
+      ${f("ash_pct_db", "Kadar abu (% bk)", "3")}
+      ${f("lhv_db_mj_kg", "Nilai kalor LHV bk (MJ/kg)", "16")}
+      <div class="form-group"><label for="fx-nbm-src">Sumber data / acuan</label>
+        <input id="fx-nbm-src" name="source" maxlength="500" value="Input operator pabrik"></div>
+    `, async (fd) => {
+      const body = {
+        name: fd.get("name").trim(),
+        code: fd.get("code") ? fd.get("code").trim() : undefined,
+        base_price_per_kg: numOrNull(fd.get("base_price_per_kg")),
+        moisture_ref_pct: numOrNull(fd.get("moisture_ref_pct")) ?? 14,
+        moisture_reject_pct: numOrNull(fd.get("moisture_reject_pct")) ?? 22,
+        contaminant_tol_pct: numOrNull(fd.get("contaminant_tol_pct")) ?? 2,
+        ash_pct_db: numOrNull(fd.get("ash_pct_db")) ?? 3,
+        lhv_db_mj_kg: numOrNull(fd.get("lhv_db_mj_kg")) ?? 16,
+        source: fd.get("source") || "Input operator pabrik"
+      };
+      const res = await api("/api/v1/biomass", { method: "POST", body });
+      showToast(`Komoditas ${res.name} berhasil didaftarkan`, "🌿");
+      loadBiomass();
     });
   }
 
@@ -867,6 +903,8 @@
         } catch (err) { showToast(err.message, "❌"); }
       }, "⏳");
     }
+    const newBmBtn = e.target.closest("#btn-add-biomass");
+    if (newBmBtn) return newBiomass();
     const bm = e.target.closest("[data-fx-bm]");
     if (bm) return editBiomass(bm.dataset.fxBm);
     for (const [attr, fn] of [["fxAshLab", ashLab], ["fxAshAlloc", ashAllocate], ["fxAshHand", ashHandover], ["fxAshDispose", ashDispose]]) {

@@ -45,6 +45,27 @@
         err.textContent = ex.message || String(ex);
       } finally { btn.disabled = false; }
     });
+    form.addEventListener("change", async (e) => {
+      const sel = e.target;
+      if (sel && sel.tagName === "SELECT" && sel.value === "__custom__") {
+        const name = prompt("Masukkan nama komoditas biomassa baru (misal: Kulit Kopi, Cangkang Sawit, Bonggol Jagung):");
+        if (!name || !name.trim()) {
+          sel.value = "sekam_padi";
+          return;
+        }
+        try {
+          const res = await api("/api/v1/biomass", { method: "POST", body: { name: name.trim() } });
+          showToast(`Komoditas biomassa "${res.name}" berhasil ditambahkan!`, "🌿");
+          if (typeof biomassList === "function") await biomassList();
+          sel.innerHTML = await commodityOptions(res.code);
+          sel.value = res.code;
+          sel.dispatchEvent(new Event("input", { bubbles: true }));
+        } catch (err) {
+          showToast(err.message || "Gagal menambahkan biomassa", "❌");
+          sel.value = "sekam_padi";
+        }
+      }
+    });
     d.addEventListener("close", () => d.remove());
     d.showModal();
     const first = d.querySelector("input, select, textarea");
@@ -58,7 +79,7 @@
       <section class="card" aria-labelledby="fo-proxy-title">
         <div class="card-header"><div>
           <h3 class="card-title" id="fo-proxy-title">👵 Petani tanpa HP</h3>
-          <p class="card-sub">Daftarkan & laporkan sekam atas nama petani yang tidak punya HP. Petani menerima nota QR.</p></div>
+          <p class="card-sub">Daftarkan & laporkan biomassa atas nama petani yang tidak punya HP. Petani menerima nota QR.</p></div>
           <button type="button" class="btn btn-secondary btn-sm" id="fo-proxy-new">➕ Daftarkan petani</button></div>
         <div id="fo-proxy-list"><p class="muted">Memuat…</p></div>
       </section>
@@ -133,8 +154,8 @@
           <tr><td><b>${H(f.full_name)}</b>${f.phone ? `<br><span class="kpi-lbl">${H(f.phone)}</span>` : ""}</td>
               <td>${H(f.kecamatan || "-")}</td>
               <td><button type="button" class="btn btn-primary btn-sm" data-fo-report="${Number(f.id)}"
-                    data-name="${H(f.full_name)}">Lapor sekam</button></td></tr>`).join("")}</tbody></table></div>`
-        : emptyState("👵", "Belum ada petani binaan", "Daftarkan petani yang tidak punya HP agar sekamnya tetap tercatat.");
+                    data-name="${H(f.full_name)}">Lapor biomassa</button></td></tr>`).join("")}</tbody></table></div>`
+        : emptyState("👵", "Belum ada petani binaan", "Daftarkan petani yang tidak punya HP agar biomassanya tetap tercatat.");
     } catch (e) { box.innerHTML = `<div class="banner banner-error" role="alert">⚠️ ${H(e.message)}</div>`; }
   }
 
@@ -197,8 +218,10 @@
 
   async function commodityOptions(selected = "sekam_padi") {
     const rows = typeof biomassList === "function" ? await biomassList() : [];
-    if (!rows.length) return `<option value="sekam_padi">Sekam padi</option>`;
-    return rows.map(b => `<option value="${H(b.code)}" ${b.code === selected ? "selected" : ""}>${H(b.name)}</option>`).join("");
+    if (!rows.length) return `<option value="sekam_padi">Sekam padi</option><option value="__custom__">➕ Tambah Biomassa Lain...</option>`;
+    const opts = rows.map(b => `<option value="${H(b.code)}" ${b.code === selected ? "selected" : ""}>${H(b.name)}</option>`);
+    opts.push(`<option value="__custom__">➕ Tambah Biomassa Lain...</option>`);
+    return opts.join("");
   }
 
   async function proxyReport(farmerId, name) {
@@ -220,7 +243,7 @@
           moisture_est: fd.get("moisture_est") === "" ? null : Number(fd.get("moisture_est")),
           grade_est: fd.get("grade_est") || null,
           client_event_id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) } });
-        openModal(`Nota sekam · ${r.farmer_name || name}`, r.qr_code, `${num(r.quantity_kg, 0)} kg · dilaporkan pengepul untuk petani`);
+        openModal(`Nota biomassa · ${r.farmer_name || name}`, r.qr_code, `${num(r.quantity_kg, 0)} kg · dilaporkan pengepul untuk petani`);
         showToast(r.message, "✅");
         if (typeof loadCollectorData === "function") loadCollectorData();
       },
@@ -241,7 +264,7 @@
                   <button type="button" class="btn btn-primary btn-sm" data-fo-pay="${Number(r.harvest_id)}"
                     data-amount="${Number(r.amount_rp)}" data-name="${H(r.farmer_name)}">Bayar</button></td></tr>`).join("")}
           </tbody></table></div>`
-        : emptyState("✅", "Semua lot sudah dibayar", "Lot baru muncul di sini setelah Anda menimbang & menguji sekam.");
+        : emptyState("✅", "Semua lot sudah dibayar", "Lot baru muncul di sini setelah Anda menimbang & menguji biomassa.");
     } catch (e) { box.innerHTML = `<div class="banner banner-error" role="alert">⚠️ ${H(e.message)}</div>`; }
   }
 
@@ -281,7 +304,7 @@
         return showToast(`${c.farmer_name} tidak punya HP — temui langsung di ${c.kecamatan || "lokasi"}.`, "👵");
       }
       const me = (STATE.user || {}).full_name || "pengepul";
-      const text = `Halo ${c.farmer_name}, saya ${me} dari Bio-Chain. Terkait laporan sekam lot #${harvestId}: kapan bisa dijemput/ditimbang?`;
+      const text = `Halo ${c.farmer_name}, saya ${me} dari Bio-Chain. Terkait laporan biomassa lot #${harvestId}: kapan bisa dijemput/ditimbang?`;
       const url = `https://wa.me/${waNumber(c.phone)}?text=${encodeURIComponent(text)}`;
       if (win) { win.opener = null; win.location.href = url; }
       else window.location.href = url;
@@ -364,7 +387,7 @@
       box.innerHTML = `
         <div class="kpi-row">
           <div class="kpi-tile"><div class="kpi-lbl">Saldo biochar</div><div class="kpi-val">${num(w.balance_kg, 1)} kg</div>
-            <div class="kpi-lbl">hak dari sekam yang diolah</div></div>
+            <div class="kpi-lbl">hak dari biomassa yang diolah</div></div>
           <div class="kpi-tile"><div class="kpi-lbl">Bisa diambil</div><div class="kpi-val">${num(w.available_kg, 1)} kg</div>
             <div class="kpi-lbl">${w.held_kg ? `${num(w.held_kg, 1)} kg sedang diajukan` : "siap diajukan"}</div></div>
         </div>
@@ -377,7 +400,7 @@
             <select id="br-pick" class="btn btn-secondary" style="width:100%;"><option value="pabrik">Gudang pabrik</option><option value="pengepul">Gudang pengepul</option></select></div>
           <div style="align-self:end;"><button type="submit" class="btn btn-primary" style="width:100%;" ${w.available_kg > 0 ? "" : "disabled"}>♻️ Ajukan pengambilan</button></div>
         </form>
-        ${w.available_kg > 0 ? "" : `<p class="form-hint">Saldo masih 0 — biochar dialokasikan setelah sekam Anda diolah pabrik. Perkiraan di bawah memakai contoh 500 kg.</p>`}
+        ${w.available_kg > 0 ? "" : `<p class="form-hint">Saldo masih 0 — biochar dialokasikan setelah biomassa Anda diolah pabrik. Perkiraan di bawah memakai contoh 500 kg.</p>`}
         <div id="br-est" class="sale-preview" aria-live="polite"></div>
         <div id="br-list">${reqs.length ? `<div class="table-scroll"><table class="data-table"><thead><tr><th>#</th><th class="num">kg</th><th>Status</th><th></th></tr></thead><tbody>
           ${reqs.map(x => `<tr><td>${Number(x.id)}<br><span class="kpi-lbl">${H((x.created_at || "").slice(0, 10))} · ${H(x.pickup_point)}</span></td>
@@ -596,7 +619,7 @@
       box.innerHTML = (queued ? `<div class="banner banner-warning" role="status">📵 ${queued} mutasi stok menunggu sinyal</div>` : "")
         + (whCache.length ? whCache.map(w => `<div class="card" style="margin:8px 0; padding:12px;">
             <div style="display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; align-items:center;">
-              <b>${H(w.name)}</b> ${w.is_covered ? "" : '<span class="badge badge-amber" title="Musim hujan: sekam terbuka cepat basah">tanpa atap</span>'}
+              <b>${H(w.name)}</b> ${w.is_covered ? "" : '<span class="badge badge-amber" title="Musim hujan: biomassa terbuka cepat basah">tanpa atap</span>'}
               <button type="button" class="btn btn-primary btn-sm" data-fo-mv="${Number(w.id)}">± Catat stok</button></div>
             ${w.stock.length ? `<div class="table-scroll"><table class="data-table"><thead><tr><th>Komoditas</th>
               <th class="num">Timbang (kg)</th><th class="num">Berat bayar (kg)</th></tr></thead><tbody>${w.stock.map(st => `<tr>

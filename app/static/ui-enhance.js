@@ -629,7 +629,7 @@
       return `<button type="button" class="btn btn-secondary qty-step" data-d="${d}"
                 aria-label="${d > 0 ? "Tambah" : "Kurangi"} ${Math.abs(d)} ${unit}">${label}</button>`;
     }).join("") + (truckKg() ? `<button type="button" class="btn btn-secondary qty-step" data-d="${truckKg()}"
-                aria-label="Tambah satu truk (${truckKg()} ${unit})" title="Kapasitas 1 bak truk = volume × densitas sekam">+1 truk</button>` : "");
+                aria-label="Tambah satu truk (${truckKg()} ${unit})" title="Kapasitas 1 bak truk = volume × densitas biomassa">+1 truk</button>` : "");
     row.addEventListener("click", e => {
       const b = e.target.closest(".qty-step");
       if (!b) return;
@@ -643,7 +643,7 @@
     input.insertAdjacentElement("afterend", row);
   }
 
-  // Sekam dibatasi VOLUME bak: 1 truk = m³ bak × densitas curah (parameter), tidak melebihi muatan berat maksimum
+  // Biomassa dibatasi VOLUME bak: 1 truk = m³ bak × densitas curah (parameter), tidak melebihi muatan berat maksimum
   function truckKg() {
     if (typeof PV !== "function") return 0;
     const kg = Math.min(PV("logistik.vehicle_m3", 30) * PV("logistik.bulk_density_kg_m3", 110), PV("logistik.vehicle_payload_kg", 5000));

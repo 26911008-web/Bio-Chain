@@ -235,7 +235,7 @@ function closeGeneratorModal() {
 }
 
 function generateCustomQr() {
-  const val = ($("gen-input-text")?.value || "").trim() || "BIO-SEKAM-2026";
+  const val = ($("gen-input-text")?.value || "").trim() || "BIO-MASS-2026";
   currentGeneratedQrText = val;
   const wrap = $("gen-qr-canvas-wrap");
   if (!wrap) return;
@@ -580,10 +580,10 @@ $("btn-rp-xlsx") && ($("btn-rp-xlsx").onclick = e => withBusy(e.currentTarget, d
 // Teks model dirender sebagai teks (esc) + markdown minimal; tidak ada HTML dari model yang dieksekusi.
 // ==============================================================
 const AI_SUGGEST = {
-  petani: ["Bagaimana agar sekam saya naik ke Grade A?", "Kapan waktu terbaik melapor stok?", "Apa arti dompet biochar saya?"],
+  petani: ["Bagaimana agar biomassa saya naik ke Grade A?", "Kapan waktu terbaik melapor stok?", "Apa arti dompet biochar saya?"],
   pengepul: ["Antrean mana yang sebaiknya diverifikasi dulu?", "Cara cepat menilai kadar air di lapangan?", "Bagaimana menekan susut timbangan?"],
-  driver: ["Tips muat sekam agar bak truk optimal?", "Apa yang harus dicek saat scan QR?", "Bagaimana jika sinyal hilang di jalan?"],
-  pabrik: ["Saran optimasi pasokan minggu ini?", "Bagaimana menekan susut pengepul→pabrik?", "Strategi blending untuk sekam basah?"],
+  driver: ["Tips muat biomassa agar bak truk optimal?", "Apa yang harus dicek saat scan QR?", "Bagaimana jika sinyal hilang di jalan?"],
+  pabrik: ["Saran optimasi pasokan minggu ini?", "Bagaimana menekan susut pengepul→pabrik?", "Strategi blending untuk biomassa basah?"],
   auditor: ["Ringkas temuan neraca massa saat ini.", "Indikator kecurangan timbangan apa yang perlu dipantau?"],
   admin: ["Ringkas kondisi rantai pasok hari ini.", "Apa risiko operasional terbesar saat ini?"],
 };
@@ -886,11 +886,40 @@ async function biomassList() {
     try { return JSON.parse(localStorage.getItem("biochain_biomass") || "[]"); } catch { return []; }
   }
 }
-async function fillCommoditySelect(sel) {
+async function fillCommoditySelect(sel, currentVal = null) {
   if (!sel) return;
   const rows = await biomassList();
-  if (!rows.length) return;
-  sel.innerHTML = rows.map(b => `<option value="${esc(b.code)}" ${b.code === "sekam_padi" ? "selected" : ""}>${esc(b.name)}</option>`).join("");
+  const opts = rows.map(b => `<option value="${esc(b.code)}">${esc(b.name)}</option>`);
+  opts.push(`<option value="__custom__">➕ Tambah Biomassa Lain...</option>`);
+  sel.innerHTML = opts.join("");
+  if (currentVal && rows.some(b => b.code === currentVal)) {
+    sel.value = currentVal;
+  } else if (rows.some(b => b.code === "sekam_padi")) {
+    sel.value = "sekam_padi";
+  } else if (rows.length) {
+    sel.value = rows[0].code;
+  }
+  if (!sel._boundCustom) {
+    sel._boundCustom = true;
+    sel.addEventListener("change", async () => {
+      if (sel.value === "__custom__") {
+        const name = prompt("Masukkan nama komoditas biomassa baru (misal: Kulit Kopi, Cangkang Sawit, Bonggol Jagung):");
+        if (!name || !name.trim()) {
+          sel.value = (rows.some(b => b.code === "sekam_padi") ? "sekam_padi" : (rows[0] ? rows[0].code : ""));
+          return;
+        }
+        try {
+          const res = await api("/api/v1/biomass", { method: "POST", body: { name: name.trim() } });
+          showToast(`Komoditas biomassa "${res.name}" berhasil ditambahkan!`, "🌿");
+          await fillCommoditySelect(sel, res.code);
+          sel.dispatchEvent(new Event("change", { bubbles: true }));
+        } catch (err) {
+          showToast(err.message || "Gagal menambahkan biomassa", "❌");
+          sel.value = (rows.some(b => b.code === "sekam_padi") ? "sekam_padi" : (rows[0] ? rows[0].code : ""));
+        }
+      }
+    });
+  }
 }
 
 const myUid = () => STATE.user && STATE.user.user_id;
@@ -1494,7 +1523,7 @@ const AI_EVAL_CONFIG = {
       { id: "jadwal", label: "⏱️ Waktu & Volume Penyetoran Optimal" }
     ],
     chips: [
-      "Bagaimana cara menaikkan mutu sekam ke Grade A?",
+      "Bagaimana cara menaikkan mutu biomassa ke Grade A?",
       "Berapa takaran biochar ideal per hektar sawah?",
       "Hitung potensi tambahan Rupiah jika kadar air ≤ 11%"
     ]
@@ -1527,7 +1556,7 @@ const AI_EVAL_CONFIG = {
     ],
     chips: [
       "Bagaimana urutan jemput paling hemat BBM hari ini?",
-      "Cara menyusun karung sekam agar muatan maksimal 25 m³?",
+      "Cara menyusun karung biomassa agar muatan maksimal 25 m³?",
       "Apa yang harus dilakukan jika blank-spot GPS saat serah terima?"
     ]
   },
@@ -1539,10 +1568,10 @@ const AI_EVAL_CONFIG = {
       { id: "semua", label: "🔍 Semua Aspek Pirolisis & Pasokan" },
       { id: "neraca", label: "⚖️ Neraca Massa & Toleransi Susut (5%)" },
       { id: "rendemen", label: "🔥 Suhu Reaktor vs Rendemen Biochar" },
-      { id: "blending", label: "🌾 Strategi Blending Sekam Basah" }
+      { id: "blending", label: "🌾 Strategi Blending Biomassa Basah" }
     ],
     chips: [
-      "Bagaimana formula blending sekam kadar air 16% dan 11%?",
+      "Bagaimana formula blending biomassa kadar air 16% dan 11%?",
       "Berapa suhu pirolisis optimal untuk kadar Fixed Carbon tertinggi?",
       "Apakah ada deviasi susut pengepul yang melampaui ambang 5%?"
     ]
@@ -1566,7 +1595,7 @@ const AI_EVAL_CONFIG = {
   admin: {
     icon: "⚙️",
     title: "AI Optimizer & Evaluator Ekosistem Platform",
-    sub: "Kesehatan menyeluruh platform, bottleneck aliran sekam, dan parameter harga",
+    sub: "Kesehatan menyeluruh platform, bottleneck aliran biomassa, dan parameter harga",
     focuses: [
       { id: "semua", label: "🔍 Semua Aspek Ekosistem" },
       { id: "bottleneck", label: "🚦 Bottleneck Aliran Pasokan Lintas Persona" },
@@ -1575,7 +1604,7 @@ const AI_EVAL_CONFIG = {
     ],
     chips: [
       "Ringkas performa rantai pasok Sleman & Klaten hari ini",
-      "Apakah parameter harga dasar sekam perlu disesuaikan?",
+      "Apakah parameter harga dasar biomassa perlu disesuaikan?",
       "Persona mana yang memiliki backlog operasional tertinggi?"
     ]
   }
@@ -1848,10 +1877,10 @@ async function renderPersonaDashboard(role) {
   if (role === "petani") {
     container.innerHTML = `
       <div class="kpi-row" id="petani-kpi">
-        <div class="kpi-tile"><div class="kpi-lbl">Total Laporan Sekam</div><div class="kpi-val" id="p-tot-harvest">0</div><div class="kpi-lbl">Batch</div></div>
-        <div class="kpi-tile kpi-amber"><div class="kpi-lbl">Total Tonase Terkirim</div><div class="kpi-val" id="p-tot-ton">0</div><div class="kpi-lbl">Ton Sekam</div></div>
+        <div class="kpi-tile"><div class="kpi-lbl">Total Laporan Panen</div><div class="kpi-val" id="p-tot-harvest">0</div><div class="kpi-lbl">Batch</div></div>
+        <div class="kpi-tile kpi-amber"><div class="kpi-lbl">Total Tonase Terkirim</div><div class="kpi-val" id="p-tot-ton">0</div><div class="kpi-lbl">Ton Biomassa</div></div>
         <div class="kpi-tile kpi-purple"><div class="kpi-lbl">XP Gamifikasi</div><div class="kpi-val" id="p-xp">0</div><div class="kpi-lbl" id="p-tier-lbl">Mitra Emas</div></div>
-        <div class="kpi-tile kpi-blue"><div class="kpi-lbl">Dompet Biochar</div><div class="kpi-val" id="p-wallet">0</div><div class="kpi-lbl">kg hak dari sekam terolah</div></div>
+        <div class="kpi-tile kpi-blue"><div class="kpi-lbl">Dompet Biochar</div><div class="kpi-val" id="p-wallet">0</div><div class="kpi-lbl">kg hak dari biomassa terolah</div></div>
       </div>
 
       ${renderAIEvaluationCard("petani")}
@@ -1922,7 +1951,7 @@ async function renderPersonaDashboard(role) {
         <div class="card">
           <div class="card-header">
             <div>
-              <h3 class="card-title">📜 Riwayat Laporan Sekam</h3>
+              <h3 class="card-title">📜 Riwayat Laporan Biomassa</h3>
               <p class="card-sub">Tracking status verifikasi dan bukti QR setor</p>
             </div>
           </div>
@@ -1960,7 +1989,7 @@ async function renderPersonaDashboard(role) {
       const base = PV("harga_mutu.base_price_per_kg", 400);
       if (g === "D") {
         $("f-est-earning").textContent = "Berisiko ditolak";
-        $("f-est-note").textContent = "Sekam basah (>18%) biasanya ditolak atau dibeli murah untuk dikeringkan. Jemur dulu bila bisa.";
+        $("f-est-note").textContent = "Biomassa basah (>18%) biasanya ditolak atau dibeli murah untuk dikeringkan. Jemur dulu bila bisa.";
       } else if (g) {
         $("f-est-earning").textContent = rp(q * base * PV(`harga_mutu.mult_${g}`, 1));
         $("f-est-note").textContent = `Perkiraan Grade ${g}. Harga final setelah uji pengepul.`;
@@ -2023,18 +2052,18 @@ async function renderPersonaDashboard(role) {
     container.innerHTML = `
       <div class="kpi-row">
         <div class="kpi-tile"><div class="kpi-lbl">Antrian Verifikasi</div><div class="kpi-val" id="col-pending">0</div><div class="kpi-lbl">Laporan Petani</div></div>
-        <div class="kpi-tile kpi-amber"><div class="kpi-lbl">Terverifikasi Hari Ini</div><div class="kpi-val" id="col-verified-kg">–</div><div class="kpi-lbl">kg Sekam</div></div>
+        <div class="kpi-tile kpi-amber"><div class="kpi-lbl">Terverifikasi Hari Ini</div><div class="kpi-val" id="col-verified-kg">–</div><div class="kpi-lbl">kg Biomassa</div></div>
         <div class="kpi-tile kpi-blue"><div class="kpi-lbl">Skor Mutu Hari Ini</div><div class="kpi-val" id="col-avg-score">–</div><div class="kpi-lbl">Rata-rata · skala 100</div></div>
       </div>
 
       ${renderAIEvaluationCard("pengepul")}
 
       <div class="grid-2">
-        <!-- Antrian Verifikasi Sekam -->
+        <!-- Antrian Verifikasi Biomassa -->
         <div class="card">
           <div class="card-header">
             <div>
-              <h3 class="card-title">📦 Antrian Sekam Masuk</h3>
+              <h3 class="card-title">📦 Antrian Biomassa Masuk</h3>
               <p class="card-sub">Pilih batch untuk diverifikasi dengan hasil uji proksimat</p>
             </div>
           </div>
@@ -2050,8 +2079,8 @@ async function renderPersonaDashboard(role) {
         <div class="card">
           <div class="card-header">
             <div>
-              <h3 class="card-title">🔬 Uji Mutu Proksimat Sekam</h3>
-              <p class="card-sub" id="col-verify-target">Pilih sekam dari tabel antrian di samping</p>
+              <h3 class="card-title">🔬 Uji Mutu Proksimat Biomassa</h3>
+              <p class="card-sub" id="col-verify-target">Pilih biomassa dari tabel antrian di samping</p>
             </div>
           </div>
           <form id="form-verify-harvest">
@@ -2106,7 +2135,7 @@ async function renderPersonaDashboard(role) {
         <div class="card">
           <div class="card-header">
             <div>
-              <h3 class="card-title">🚛 Titik Penjemputan Sekam</h3>
+              <h3 class="card-title">🚛 Titik Penjemputan Biomassa</h3>
               <p class="card-sub">Scan QR petani di setiap penggilingan</p>
             </div>
           </div>
@@ -2139,7 +2168,7 @@ async function renderPersonaDashboard(role) {
         <div class="card">
           <div class="card-header">
             <div>
-              <h3 class="card-title">📈 Proyeksi Pasokan Sekam 30 Hari</h3>
+              <h3 class="card-title">📈 Proyeksi Pasokan Biomassa 30 Hari</h3>
               <p class="card-sub">Model cosinus musiman panen Sleman &amp; Klaten (BPS)</p>
             </div>
           </div>
@@ -2155,7 +2184,7 @@ async function renderPersonaDashboard(role) {
             </div>
           </div>
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
-            <div><label class="kpi-lbl">Biomassa Sekam (ton)</label><input type="number" id="c-ton" class="btn btn-secondary" style="width:100%;" value="50"></div>
+            <div><label class="kpi-lbl">Biomassa (ton)</label><input type="number" id="c-ton" class="btn btn-secondary" style="width:100%;" value="50"></div>
             <div><label class="kpi-lbl">Jarak Angkut (km)</label><input type="number" id="c-km" class="btn btn-secondary" style="width:100%;" value="45"></div>
           </div>
           <button class="btn btn-primary" style="width:100%; margin-top:12px;" data-onclick="calcCarbon()">Hitung Pengurangan CO₂ ➔</button>
@@ -2200,7 +2229,7 @@ async function renderPersonaDashboard(role) {
       <div class="kpi-row" id="admin-summary-kpis">
         <div class="kpi-tile"><div class="kpi-lbl">Total Pengguna</div><div class="kpi-val" id="a-tot-users">–</div><div class="kpi-lbl">Akun terdaftar</div></div>
         <div class="kpi-tile kpi-amber"><div class="kpi-lbl">Penggilingan Padi</div><div class="kpi-val" id="a-tot-mills">–</div><div class="kpi-lbl">Sleman &amp; Klaten</div></div>
-        <div class="kpi-tile kpi-blue"><div class="kpi-lbl">Laporan Sekam</div><div class="kpi-val" id="a-tot-harvests">–</div><div class="kpi-lbl">Batch Transaksi</div></div>
+        <div class="kpi-tile kpi-blue"><div class="kpi-lbl">Laporan Biomassa</div><div class="kpi-val" id="a-tot-harvests">–</div><div class="kpi-lbl">Batch Transaksi</div></div>
         <div class="kpi-tile kpi-purple"><div class="kpi-lbl">Armada Logistik</div><div class="kpi-val" id="a-tot-routes">–</div><div class="kpi-lbl">Rute Penjemputan</div></div>
       </div>
 
@@ -2267,7 +2296,7 @@ async function loadPetaniData() {
     const tbody = tbodyEl;
     if (!harvests.length) {
       tbody.innerHTML = pendingPetaniRows()
-        || `<tr><td colspan="5">${emptyState("🌾", "Belum ada laporan sekam", "Kirim laporan stok sekam pertama Anda lewat formulir di sebelah kiri.")}</td></tr>`;
+        || `<tr><td colspan="5">${emptyState("🌾", "Belum ada laporan biomassa", "Kirim laporan stok biomassa pertama Anda lewat formulir di sebelah kiri.")}</td></tr>`;
       return;
     }
 
@@ -2286,7 +2315,7 @@ async function loadPetaniData() {
         <td><span class="badge ${badgeClass(h.status)}">${esc(h.status)}</span></td>
         <td>${h.grade ? `<b>${esc(h.grade)}</b>` : '-'}</td>
         <td>
-          <button class="btn btn-secondary btn-sm" data-onclick="openModal('QR Setor Sekam #${h.id}', '${esc(h.qr_code)}', '${num(h.verified_kg || h.quantity_kg, 0)} kg Sekam')">
+          <button class="btn btn-secondary btn-sm" data-onclick="openModal('QR Setor Biomassa #${h.id}', '${esc(h.qr_code)}', '${num(h.verified_kg || h.quantity_kg, 0)} kg Biomassa')">
             QR 👁️
           </button>
         </td>
@@ -2313,7 +2342,7 @@ const PETANI_MARKET_HTML = `
     </div>
     <div class="card" id="petani-biochar-card">
       <div class="card-header"><div><h3 class="card-title">♻️ Biochar untuk Sawah</h3>
-        <p class="card-sub">Hak biochar dari sekam Anda. Ajukan pengambilan &amp; lihat perkiraan manfaatnya.</p></div></div>
+        <p class="card-sub">Hak biochar dari biomassa Anda. Ajukan pengambilan &amp; lihat perkiraan manfaatnya.</p></div></div>
       <div id="biochar-sawah"><p class="muted">Memuat…</p></div>
     </div>
   </div>`;
@@ -2333,7 +2362,7 @@ async function loadMyListings() {
         ${["open", "partially_awarded"].includes(l.status) ? `<button class="btn btn-secondary btn-sm" data-onclick="showBids(${Number(l.id)})">Lihat tawaran</button>
           <button class="btn btn-secondary btn-sm" data-onclick="cancelListing(${Number(l.id)})">Batalkan</button>` : ""}
         <div id="bids-${Number(l.id)}"></div>
-      </div>`).join("") : emptyState("🏷️", "Belum ada stok dipasang", "Gunakan formulir di sebelah kiri untuk membuka lelang sekam baru.");
+      </div>`).join("") : emptyState("🏷️", "Belum ada stok dipasang", "Gunakan formulir di sebelah kiri untuk membuka lelang biomassa baru.");
   } catch (err) { console.error("loadMyListings:", err); }
 }
 
@@ -2411,7 +2440,7 @@ async function loadMarket() {
           <button class="btn btn-secondary btn-sm" data-onclick="adviseBid(${Number(l.id)}, this)">Hitung saran</button>
           <button class="btn btn-primary btn-sm" data-onclick="placeBid(${Number(l.id)}, this)">Tawar</button>
           <div id="ba-${l.id}" class="kpi-lbl"></div></td></tr>`).join("")}</tbody></table>`
-      : emptyState("🛒", "Belum ada stok terbuka", "Saat ini semua stok lelang sekam petani telah terserap atau belum ada lelang baru.");
+      : emptyState("🛒", "Belum ada stok terbuka", "Saat ini semua stok lelang biomassa petani telah terserap atau belum ada lelang baru.");
   } catch (err) { console.error("loadMarket:", err); }
 }
 
@@ -2491,7 +2520,7 @@ const DR_STATUS = { submitted: "badge-amber", countered: "badge-blue", accepted:
 const FACTORY_OPS_HTML = `
   <div class="grid-2" style="margin-top:16px;">
     <div class="card">
-      <div class="card-header"><div><h3 class="card-title">🧮 Rekomendasi Harga Beli Sekam</h3>
+      <div class="card-header"><div><h3 class="card-title">🧮 Rekomendasi Harga Beli Biomassa</h3>
         <p class="card-sub">Netback 3 produk − biaya variabel − biaya tetap − margin (angka dari menu Parameter)</p></div></div>
       <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px;">
         <div><label class="kpi-lbl">Kadar air (%)</label><input id="pr-m" type="number" class="btn btn-secondary" style="width:100%;" value="11" step="0.5"></div>
@@ -2503,8 +2532,8 @@ const FACTORY_OPS_HTML = `
         <div style="grid-column:span 2;"><label class="kpi-lbl">Jalur bio-silika</label><select id="pr-route" class="btn btn-secondary" style="width:100%;">
           <option value="biochar">Silika dari biochar</option>
           <option value="abu_pembakaran">Silika dari abu pembakaran</option>
-          <option value="sekam_langsung">Silika dari sekam langsung</option></select></div>
-        <div><label class="kpi-lbl">Porsi sekam ke silika</label><input id="pr-xs" type="number" class="btn btn-secondary" style="width:100%;" min="0" max="1" step="0.05"></div>
+          <option value="sekam_langsung">Silika dari biomassa langsung</option></select></div>
+        <div><label class="kpi-lbl">Porsi biomassa ke silika</label><input id="pr-xs" type="number" class="btn btn-secondary" style="width:100%;" min="0" max="1" step="0.05"></div>
       </div>
       <p class="kpi-lbl">* Harga jual tidak punya angka bawaan — isi harga kontrak/pasar aktual (tersimpan sebagai default di menu Parameter).</p>
       <button class="btn btn-primary" style="width:100%; margin-top:8px;" id="btn-price">Hitung Harga ➔</button>
@@ -2512,13 +2541,13 @@ const FACTORY_OPS_HTML = `
     </div>
     <div class="card">
       <div class="card-header"><div><h3 class="card-title">📥 Ajuan Pengiriman dari Pengepul</h3>
-        <p class="card-sub">Terima / tawar balik jadwal & harga, lalu QC saat sekam tiba</p></div></div>
+        <p class="card-sub">Terima / tawar balik jadwal & harga, lalu QC saat biomassa tiba</p></div></div>
       <div id="dr-inbox" style="overflow-x:auto;"><p class="muted">Memuat…</p></div>
     </div>
   </div>
   <div class="card" style="margin-top:16px;">
     <div class="card-header"><div><h3 class="card-title">💳 Pembayaran ke Pengepul (jalur QC &amp; rute armada)</h3>
-      <p class="card-sub">Sekam jalur rute ditimbang terima di sini → tagihan pengepul tercatat. Harga kosong = rekomendasi netback.</p></div>
+      <p class="card-sub">Biomassa jalur rute ditimbang terima di sini → tagihan pengepul tercatat. Harga kosong = rekomendasi netback.</p></div>
       <select id="st-filter" class="btn btn-secondary btn-sm" aria-label="Filter status settlement"><option value="">Semua status</option>
         <option value="menunggu_harga">Menunggu harga</option><option value="terutang">Terutang</option><option value="dibayar">Dibayar</option></select></div>
     <h4 style="margin:4px 0;">🚛 Tiba via rute armada — menunggu timbang terima</h4>
@@ -2533,7 +2562,7 @@ const FACTORY_OPS_HTML = `
     <div class="grid-2">
       <div>
         <label class="kpi-lbl">Kode batch</label><input id="bt-code" class="btn btn-secondary" style="width:100%; text-align:left;">
-        <h4 style="margin:12px 0 4px;">Lot sekam (stok QC)</h4><div id="bt-lots"><p class="muted">Memuat…</p></div>
+        <h4 style="margin:12px 0 4px;">Lot biomassa (stok QC)</h4><div id="bt-lots"><p class="muted">Memuat…</p></div>
         <h4 style="margin:12px 0 4px;">Biaya batch</h4>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
           <div><label class="kpi-lbl">Listrik (kWh)</label><input id="bt-kwh" type="number" class="btn btn-secondary" style="width:100%;" value="0"></div>
@@ -2544,8 +2573,8 @@ const FACTORY_OPS_HTML = `
           <div><label class="kpi-lbl">Jalur bio-silika</label><select id="bt-route" class="btn btn-secondary" style="width:100%;">
           <option value="biochar">Silika dari biochar</option>
           <option value="abu_pembakaran">Silika dari abu pembakaran</option>
-          <option value="sekam_langsung">Silika dari sekam langsung</option></select></div>
-          <div><label class="kpi-lbl">Porsi sekam ke silika</label><input id="bt-xs" type="number" class="btn btn-secondary" style="width:100%;" min="0" max="1" step="0.05"></div>
+          <option value="sekam_langsung">Silika dari biomassa langsung</option></select></div>
+          <div><label class="kpi-lbl">Porsi biomassa ke silika</label><input id="bt-xs" type="number" class="btn btn-secondary" style="width:100%;" min="0" max="1" step="0.05"></div>
         </div>
       </div>
       <div>
@@ -2591,7 +2620,7 @@ async function loadArrivals() {
         <td><input id="rcv-p-${h.harvest_id}" type="number" class="btn btn-secondary btn-sm" style="width:90px;" placeholder="netback" min="0"></td>
         <td><input id="rcv-photo-${h.harvest_id}" type="text" class="btn btn-secondary btn-sm" style="width:110px;" placeholder="https://..."></td>
         <td><button class="btn btn-primary btn-sm" data-onclick="receiveArrival(${Number(h.harvest_id)}, this)">Terima</button></td></tr>`).join("")}</tbody></table>`
-      : `<p class="muted">Tidak ada sekam jalur rute yang menunggu timbang terima.</p>`;
+      : `<p class="muted">Tidak ada biomassa jalur rute yang menunggu timbang terima.</p>`;
   } catch (err) { console.error("loadArrivals:", err); }
 }
 
@@ -2670,13 +2699,13 @@ async function runPricing() {
         <div class="kpi-tile kpi-blue"><div class="kpi-lbl">Target</div><div class="kpi-val">${rp(r.target_per_kg)}</div><div class="kpi-lbl">/kg · dengan margin</div></div>
         <div class="kpi-tile kpi-amber"><div class="kpi-lbl">Plafon</div><div class="kpi-val">${rp(r.ceiling_per_kg)}</div><div class="kpi-lbl">/kg · impas penuh</div></div>
       </div>
-      <table class="data-table" style="margin-top:8px;"><thead><tr><th>Produk</th><th class="num">kg/kg sekam</th><th class="num">Nilai Rp/kg sekam</th></tr></thead>
+      <table class="data-table" style="margin-top:8px;"><thead><tr><th>Produk</th><th class="num">kg/kg biomassa</th><th class="num">Nilai Rp/kg biomassa</th></tr></thead>
       <tbody>${Object.entries(r.yields_kg_per_kg).map(([k, v]) => `<tr><td>${PRODUCT_NAMES[k]}</td><td class="num">${num(v, 3)}</td>
         <td class="num">${rp(r.revenue_per_kg[k])}</td></tr>`).join("")}</tbody></table>
       <p class="kpi-lbl">Biaya variabel ${rp(Object.values(r.variable_cost_per_kg).reduce((a, b) => a + b, 0))}/kg · tetap ${rp(r.fixed_cost_per_kg)}/kg ·
         loss ${Object.entries(r.losses_kg_per_kg).map(([k, v]) => `${LOSS_NAMES[k]} ${num(v * 100, 1)}%`).join(", ")}</p>
       <p class="kpi-lbl">Sensitivitas kadar air → target: ${r.sensitivity_moisture.map(x => `${x.moisture}%: ${rp(x.target_per_kg)}`).join(" · ")}</p>
-      <p class="kpi-lbl">Jalur silika: ${esc(r.silica_route)}${r.heat_recovered_mj_per_kg ? ` · panas tungku ${num(r.heat_recovered_mj_per_kg, 2)} MJ/kg sekam menutup biaya pengering` : ""}</p>`;
+      <p class="kpi-lbl">Jalur silika: ${esc(r.silica_route)}${r.heat_recovered_mj_per_kg ? ` · panas tungku ${num(r.heat_recovered_mj_per_kg, 2)} MJ/kg biomassa menutup biaya pengering` : ""}</p>`;
   } catch (err) {
     // Harga belum diisi = keadaan konfigurasi, bukan kegagalan: tampilkan di kartu kalkulator, bukan toast merah saat halaman dibuka
     if (err.code === "price_missing") {
@@ -2768,7 +2797,7 @@ async function loadLots() {
     $("bt-lots").innerHTML = lotCache.length ? lotCache.map(l => `<label style="display:flex; gap:8px; align-items:center; font-size:var(--fs-xs); margin:4px 0;">
         <span style="flex:1;">Lot #${l.id} · sisa ${num(l.remaining_kg, 0)} kg · air ${num(l.moisture)}% · ${esc(l.grade)}</span>
         <input type="number" class="btn btn-secondary bt-lot" data-id="${Number(l.id)}" style="width:100px;" min="0" max="${l.remaining_kg}" value="0"></label>`).join("")
-      : emptyState("📦", "Belum ada lot hasil QC", "Lakukan verifikasi QC pada sekam masuk untuk memunculkan lot siap batch.");
+      : emptyState("📦", "Belum ada lot hasil QC", "Lakukan verifikasi QC pada biomassa masuk untuk memunculkan lot siap batch.");
   } catch (err) { console.error("loadLots:", err); }
 }
 
@@ -2826,7 +2855,7 @@ async function saveBatch() {
       <p class="kpi-lbl">${esc(e.computation_details.alokasi)} · ${esc(e.computation_details.impas)}</p>
       <div class="card" style="background:var(--primary-soft); margin-top:8px;"><b>🌾 Dompet biochar petani:</b>
         ${num(e.wallet.allocated_kg, 2)} kg dikreditkan ke ${e.wallet.farmers.length} petani
-        (porsi ${num(e.wallet.return_share * 100, 0)}% biochar)${e.wallet.untraceable_kg ? ` · ${num(e.wallet.untraceable_kg, 2)} kg dari sekam yang tidak tertelusur ke petani` : ""}
+        (porsi ${num(e.wallet.return_share * 100, 0)}% biochar)${e.wallet.untraceable_kg ? ` · ${num(e.wallet.untraceable_kg, 2)} kg dari biomassa yang tidak tertelusur ke petani` : ""}
         <div class="kpi-lbl">${esc(e.wallet.method || "")}</div></div>`;
     showToast(`Batch ${b.batch_code} tersimpan.`, "🏭");
     $("bt-code").value = `B-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${Math.floor(Math.random() * 900 + 100)}`;
@@ -2846,7 +2875,7 @@ const PENGEPUL_DR_HTML = `
       <div><label class="kpi-lbl">Harga diajukan (Rp/kg)</label><input id="dr-price" type="number" class="btn btn-secondary" style="width:100%;"></div>
     </div>
     <p class="kpi-lbl" id="dr-reco"></p>
-    <details style="margin:8px 0;"><summary class="kpi-lbl" style="cursor:pointer;">🌾 Lampirkan sekam petani (agar biochar masuk ke dompet mereka)</summary>
+    <details style="margin:8px 0;"><summary class="kpi-lbl" style="cursor:pointer;">🌾 Lampirkan biomassa petani (agar biochar masuk ke dompet mereka)</summary>
       <div id="dr-harvests" style="margin-top:8px;"></div></details>
     <button class="btn btn-primary" id="btn-dr">Ajukan ➔</button>
     <div id="dr-mine" style="margin-top:12px; overflow-x:auto;"></div>
@@ -2898,7 +2927,7 @@ async function loadAttachable() {
     const rows = await api("/api/v1/collector/attachable-harvests");
     $("dr-harvests").innerHTML = rows.length ? rows.map(h => `<label style="display:flex; gap:8px; font-size:var(--fs-xs); margin:2px 0;">
         <input type="checkbox" class="dr-h" value="${Number(h.id)}"> #${h.id} · ${esc(h.farmer)} · ${num(h.verified_kg, 0)} kg · air ${num(h.moisture)}% · ${esc(h.grade || "-")}</label>`).join("")
-      : `<p class="muted">Tidak ada sekam petani terverifikasi yang belum dikirim.</p>`;
+      : `<p class="muted">Tidak ada biomassa petani terverifikasi yang belum dikirim.</p>`;
   } catch (err) { console.error("loadAttachable:", err); }
 }
 
@@ -2958,7 +2987,7 @@ async function loadCollectorData() {
 
     const tbody = $("table-col-queue").querySelector("tbody");
     if (!list.length) {
-      tbody.innerHTML = `<tr><td colspan="4">${emptyState("📦", "Tidak ada antrian sekam", "Semua laporan sekam petani telah diverifikasi atau belum ada laporan baru.")}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="4">${emptyState("📦", "Tidak ada antrian biomassa", "Semua laporan biomassa petani telah diverifikasi atau belum ada laporan baru.")}</td></tr>`;
       return;
     }
 
@@ -2992,7 +3021,7 @@ function selectVerifyItem(id) {
   $("v-weight").value = item.quantity_kg || "";
   const est = [item.farmer_moisture_est != null ? `air ±${num(item.farmer_moisture_est)}%` : "", item.farmer_grade_est ? `grade ${item.farmer_grade_est}` : ""]
     .filter(Boolean).join(", ");
-  $("col-verify-target").innerText = `Memverifikasi Sekam #${id} dari ${item.farmer_name || "Petani"} (estimasi petani ${num(item.quantity_kg,0)} kg${est ? ` · ${est}` : ""})`;
+  $("col-verify-target").innerText = `Memverifikasi ${item.commodity_name || item.commodity || "Biomassa"} #${id} dari ${item.farmer_name || "Petani"} (estimasi petani ${num(item.quantity_kg,0)} kg${est ? ` · ${est}` : ""})`;
   $("btn-submit-verify").disabled = false;
   $("btn-reject-lot").disabled = false;
   $("btn-submit-verify").innerText = `Verifikasi Mutu #${id} ➔`;
@@ -3017,24 +3046,24 @@ function submitVerify(e) {
         contamination: optNum("v-contam") ?? 0,
         pyrolysis_temp_c: Number($("v-temp").value),
         evidence_photo_url: $("v-photo") && $("v-photo").value.trim() ? $("v-photo").value.trim() : null,
-    }, `Verifikasi sekam #${id}`);
+    }, `Verifikasi biomassa #${id}`);
     showToast(res.queued ? "Offline: hasil uji disimpan & dikirim otomatis saat online." : res.message,
               res.queued ? "📵" : "✅");
     // Serah-terima: tampilkan resi bulanan unik (TRX-<pengirim>-<penerima>-<YYMM>-<urut>) untuk ditunjukkan ke petani
     if (!res.queued && res.verification_code) {
-      openModal("Resi Serah-Terima Sekam", res.verification_code,
+      openModal("Resi Serah-Terima Biomassa", res.verification_code,
                 `${num(res.weighed_kg, 0)} kg · Grade ${res.grade} · ${rp(res.total_price)} — tunjukkan/foto resi ini bersama petani`);
     }
     loadCollectorData();
     $("v-harvest-id").value = "";
-    $("col-verify-target").innerText = `Pilih sekam dari tabel antrian di samping`;
+    $("col-verify-target").innerText = `Pilih biomassa dari tabel antrian di samping`;
   } catch (err) {
     showToast(err.message, "❌");
   } }).finally(() => { if (!$("v-harvest-id").value) $("btn-submit-verify").disabled = true; });
 }
 
 let driverMap, driverLayer;
-const FAIL_REASONS = [["stok_tidak_ada", "Sekam tidak ada / sudah dijual"], ["dibatalkan_pengepul", "Dibatalkan pengepul"],
+const FAIL_REASONS = [["stok_tidak_ada", "Biomassa tidak ada / sudah dijual"], ["dibatalkan_pengepul", "Dibatalkan pengepul"],
   ["mutu_buruk", "Basah / berjamur"], ["akses_jalan", "Jalan tidak bisa dilalui"],
   ["penggilingan_tutup", "Penggilingan tutup"], ["truk_penuh", "Bak truk penuh"], ["lainnya", "Lainnya"]];
 const STOP_BADGE = { picked_up: ["badge-green", "DIJEMPUT"], failed: ["badge-red", "GAGAL"],
@@ -3113,7 +3142,7 @@ async function loadDriverData() {
         const done = s.stop_status === "picked_up";
         L.circleMarker([s.mill.lat, s.mill.lon], {
           radius: 8, color: done ? "#15803d" : "#d97706", fillColor: done ? "#22c55e" : "#f59e0b", fillOpacity: 0.9,
-        }).addTo(driverLayer).bindPopup(`<b>Stop #${s.order}: ${esc(s.mill.name)}</b><br>${s.planned_ton} Ton Sekam`);
+        }).addTo(driverLayer).bindPopup(`<b>Stop #${s.order}: ${esc(s.mill.name)}</b><br>${s.planned_ton} Ton Biomassa`);
       }
     });
     if (waypoints.length > 1) {
@@ -3240,7 +3269,7 @@ async function loadFactoryData() {
           data: {
             labels,
             datasets: [{
-              label: "Prediksi Pasokan Sekam (Ton/Hari)",
+              label: "Prediksi Pasokan Biomassa (Ton/Hari)",
               data: values,
               borderColor: "#15803d",
               backgroundColor: "rgba(34, 197, 94, 0.12)",
@@ -3251,7 +3280,7 @@ async function loadFactoryData() {
           options: {
             responsive: true,
             plugins: { legend: { display: false } },
-            scales: { y: { title: { display: true, text: "Ton Sekam" } } },
+            scales: { y: { title: { display: true, text: "Ton Biomassa" } } },
           },
         });
       }
@@ -3305,7 +3334,7 @@ async function loadAdminPanel() {
       statsRow.innerHTML = `
         <div class="kpi-tile"><div class="kpi-lbl">Total Pengguna</div><div class="kpi-val">${stats.total_users}</div><div class="kpi-lbl">User Terdaftar</div></div>
         <div class="kpi-tile kpi-amber"><div class="kpi-lbl">Total Penggilingan</div><div class="kpi-val">${stats.total_mills}</div><div class="kpi-lbl">Titik Pemasok</div></div>
-        <div class="kpi-tile kpi-blue"><div class="kpi-lbl">Total Laporan Panen</div><div class="kpi-val">${stats.total_harvests}</div><div class="kpi-lbl">Transaksi Sekam</div></div>
+        <div class="kpi-tile kpi-blue"><div class="kpi-lbl">Total Laporan Panen</div><div class="kpi-val">${stats.total_harvests}</div><div class="kpi-lbl">Transaksi Biomassa</div></div>
         <div class="kpi-tile kpi-purple"><div class="kpi-lbl">Rute Armada</div><div class="kpi-val">${stats.total_routes}</div><div class="kpi-lbl">Rute Pengiriman</div></div>
       `;
     }
@@ -3497,7 +3526,7 @@ async function runEnergy() {
     (r.data_source.demo_rows ? ` (${r.data_source.demo_rows} baris DEMO)` : "");
   $("en-kpis").innerHTML = `
     <div class="kpi-tile"><div class="kpi-lbl">IKE gedung (12 bln)</div><div class="kpi-val">${num(s.ike_kwh_m2_month_avg_12m, 1)}</div><div class="kpi-lbl">kWh/m²/bln · <b>${esc(s.ike_category)}</b></div></div>
-    <div class="kpi-tile kpi-blue"><div class="kpi-lbl">SEC proses</div><div class="kpi-val">${num(s.sec_kwh_per_ton_avg, 0)}</div><div class="kpi-lbl">kWh/ton sekam</div></div>
+    <div class="kpi-tile kpi-blue"><div class="kpi-lbl">SEC proses</div><div class="kpi-val">${num(s.sec_kwh_per_ton_avg, 0)}</div><div class="kpi-lbl">kWh/ton biomassa</div></div>
     <div class="kpi-tile kpi-amber"><div class="kpi-lbl">Bulan anomali</div><div class="kpi-val">${s.anomaly_months}</div><div class="kpi-lbl">pemborosan ${num(s.waste_kwh, 0)} kWh</div></div>
     <div class="kpi-tile kpi-purple"><div class="kpi-lbl">Biaya pemborosan</div><div class="kpi-val">${rp(s.waste_rp)}</div><div class="kpi-lbl">baseline R² ${num(b.r2, 2)} · beban dasar ${num(b.base_load_kwh_per_month, 0)} kWh</div></div>`;
   if (typeof Chart !== "undefined") {

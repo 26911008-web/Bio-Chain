@@ -59,6 +59,77 @@ async def get_biomass(db: AsyncSession, code: str | None, allow_inactive: bool =
     return b
 
 
+async def create_biomass(db: AsyncSession, user: User, data: dict) -> dict:
+    import re
+    name = (data.get("name") or "").strip()
+    if not name:
+        raise HTTPException(422, "Nama biomassa wajib diisi.")
+
+    raw_code = (data.get("code") or "").strip()
+    if not raw_code:
+        slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
+        raw_code = slug[:24] if slug else f"bio_{int(datetime.now(timezone.utc).timestamp())}"
+    code = raw_code.lower()[:24]
+
+    existing = await db.get(BiomassParameter, code)
+    if existing:
+        return biomass_dict(existing)
+
+    now = datetime.now(timezone.utc)
+    source = (data.get("source") or "").strip() or f"Input pengguna ({user.username or user.full_name or 'operator'})"
+    moisture_ref = float(data.get("moisture_ref_pct") if data.get("moisture_ref_pct") is not None else 15.0)
+    moisture_rej = float(data.get("moisture_reject_pct") if data.get("moisture_reject_pct") is not None else max(25.0, moisture_ref + 5.0))
+    if moisture_rej <= moisture_ref:
+        moisture_rej = moisture_ref + 5.0
+
+    moisture_typ = float(data.get("moisture_typ_pct") if data.get("moisture_typ_pct") is not None else moisture_ref)
+    ash_pct = float(data.get("ash_pct_db") if data.get("ash_pct_db") is not None else 3.0)
+    lhv = float(data.get("lhv_db_mj_kg") if data.get("lhv_db_mj_kg") is not None else 16.0)
+    contam = float(data.get("contaminant_tol_pct") if data.get("contaminant_tol_pct") is not None else 2.0)
+
+    b = BiomassParameter(
+        code=code,
+        name=name,
+        is_active=True,
+        moisture_typ_pct=moisture_typ,
+        moisture_min_pct=data.get("moisture_min_pct", max(0.0, moisture_typ - 5.0)),
+        moisture_max_pct=data.get("moisture_max_pct", min(95.0, moisture_rej + 5.0)),
+        moisture_ref_pct=moisture_ref,
+        moisture_reject_pct=moisture_rej,
+        contaminant_tol_pct=contam,
+        ash_pct_db=ash_pct,
+        lhv_db_mj_kg=lhv,
+        hhv_db_mj_kg=data.get("hhv_db_mj_kg", round(lhv * 1.08, 2)),
+        volatile_pct_db=data.get("volatile_pct_db", 75.0),
+        fixed_carbon_pct_db=data.get("fixed_carbon_pct_db", 18.0),
+        bulk_density_kg_m3=data.get("bulk_density_kg_m3", 150.0),
+        sulfur_pct_db=data.get("sulfur_pct_db", 0.05),
+        chlorine_pct_db=data.get("chlorine_pct_db", 0.1),
+        sio2_pct_ash=data.get("sio2_pct_ash", 30.0),
+        k2o_pct_ash=data.get("k2o_pct_ash", 15.0),
+        na2o_pct_ash=data.get("na2o_pct_ash", 1.0),
+        cao_pct_ash=data.get("cao_pct_ash", 10.0),
+        mgo_pct_ash=data.get("mgo_pct_ash", 4.0),
+        fe2o3_pct_ash=data.get("fe2o3_pct_ash", 2.0),
+        al2o3_pct_ash=data.get("al2o3_pct_ash", 2.0),
+        p2o5_pct_ash=data.get("p2o5_pct_ash", 3.0),
+        base_price_per_kg=data.get("base_price_per_kg"),
+        source=source,
+        updated_by_id=user.id,
+        updated_at=now,
+    )
+    db.add(b)
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        existing = await db.get(BiomassParameter, code)
+        if existing:
+            return biomass_dict(existing)
+        raise HTTPException(409, f"Komoditas dengan kode '{code}' sudah ada.")
+    return biomass_dict(b)
+
+
 async def update_biomass(db: AsyncSession, user: User, code: str, changes: dict, source: str) -> dict:
     b = (await db.execute(select(BiomassParameter).where(BiomassParameter.code == code).with_for_update())).scalar_one_or_none()
     if b is None:

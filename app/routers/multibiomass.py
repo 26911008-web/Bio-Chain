@@ -78,6 +78,41 @@ class BiomassUpdate(BaseModel):
     source: str = Field(..., min_length=5, max_length=500, description="Dasar perubahan: no. laporan lab / sumber")
 
 
+class BiomassCreate(BaseModel):
+    name: str = Field(..., min_length=2, max_length=80, pattern=r"^[^<>\"'`]+$")
+    code: str | None = Field(None, min_length=2, max_length=24, pattern=r"^[a-z0-9_]+$")
+    moisture_typ_pct: float = Field(15.0, ge=0, le=95)
+    moisture_min_pct: float | None = Field(None, ge=0, le=95)
+    moisture_max_pct: float | None = Field(None, ge=0, le=95)
+    moisture_ref_pct: float = Field(15.0, ge=0, le=95)
+    moisture_reject_pct: float = Field(25.0, ge=0, le=95)
+    contaminant_tol_pct: float = Field(2.0, ge=0, le=50)
+    ash_pct_db: float = Field(3.0, ge=0, lt=60)
+    lhv_db_mj_kg: float = Field(16.0, gt=5, lt=35)
+    hhv_db_mj_kg: float | None = Field(None, gt=5, lt=35)
+    volatile_pct_db: _Pct = None
+    fixed_carbon_pct_db: _Pct = None
+    bulk_density_kg_m3: float | None = Field(None, gt=0, le=2000)
+    sulfur_pct_db: _Pct = None
+    chlorine_pct_db: _Pct = None
+    sio2_pct_ash: _Pct = None
+    k2o_pct_ash: _Pct = None
+    na2o_pct_ash: _Pct = None
+    cao_pct_ash: _Pct = None
+    mgo_pct_ash: _Pct = None
+    fe2o3_pct_ash: _Pct = None
+    al2o3_pct_ash: _Pct = None
+    p2o5_pct_ash: _Pct = None
+    base_price_per_kg: float | None = Field(None, ge=0, le=100_000)
+    source: str | None = Field(None, max_length=500)
+
+
+@router.post("/biomass", status_code=201)
+async def biomass_create(req: BiomassCreate, db: DB, user: Annotated[User, Depends(get_current_user)]):
+    """Pendaftaran jenis komoditas biomassa baru secara dinamis."""
+    return await svc.create_biomass(db, user, req.model_dump(exclude_unset=True))
+
+
 @router.put("/biomass/{code}")
 async def biomass_update(code: str, req: BiomassUpdate, db: DB, user: Annotated[User, Depends(_operator)]):
     from fastapi import HTTPException

@@ -176,3 +176,40 @@ def test_master_update_is_typed_no_mass_assignment(env):
     ok = env.ok("pabrik", "PUT", "/biomass/sekam_padi", {"changes": {"base_price_per_kg": 470, "name": "Sekam padi IR64"},
                                                           "source": "uji keamanan"})
     assert ok["base_price_per_kg"] == 470 and ok["name"] == "Sekam padi IR64"
+
+
+def test_dynamic_biomass_creation_and_trade(env):
+    """Pengguna dapat mendaftarkan jenis biomassa apa pun secara dinamis dan langsung bertransaksi."""
+    # 1. Daftarkan komoditas baru (misal Kulit Kopi)
+    coffee = env.ok("petani", "POST", "/biomass", {
+        "name": "Kulit Kopi Robusta",
+        "base_price_per_kg": 850,
+        "moisture_ref_pct": 14.0,
+        "moisture_reject_pct": 22.0
+    }, status=201)
+    assert coffee["code"] == "kulit_kopi_robusta"
+    assert coffee["name"] == "Kulit Kopi Robusta"
+    assert coffee["base_price_per_kg"] == 850
+
+    # 2. Muncul di daftar biomassa
+    all_b = env.ok("petani", "GET", "/biomass")
+    assert any(b["code"] == "kulit_kopi_robusta" for b in all_b)
+
+    # 3. Petani lapor panen menggunakan komoditas baru ini
+    h = env.ok("petani", "POST", "/farmer/harvest", {
+        "quantity_kg": 750,
+        "mill_id": env.mill["M01"],
+        "commodity": "kulit_kopi_robusta"
+    }, status=201)
+    assert h["commodity"] == "kulit_kopi_robusta"
+
+    # 4. Pengepul verifikasi mutu komoditas baru ini
+    v = env.ok("pengepul", "POST", "/collector/verify", {
+        "harvest_id": h["id"],
+        "weighed_kg": 750,
+        "moisture": 14.0,
+        "contamination": 1.0
+    })
+    assert v["commodity"] == "kulit_kopi_robusta"
+    assert v["total_price"] > 0
+
