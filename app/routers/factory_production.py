@@ -14,8 +14,8 @@ from ..dependencies import require_role
 from ..models.user import User, UserRole
 from ..models.industrial import LoadingRamp, ProductionBlend, ByProductLedger
 
-_pabrik_only = require_role([UserRole.PABRIK, UserRole.ADMIN])
-_audit_read = require_role([UserRole.PABRIK, UserRole.ADMIN, UserRole.AUDITOR])
+_pabrik_only = require_role(UserRole.PABRIK, UserRole.ADMIN)
+_audit_read = require_role(UserRole.PABRIK, UserRole.ADMIN, UserRole.AUDITOR)
 
 router = APIRouter()
 

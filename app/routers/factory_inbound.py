@@ -19,8 +19,8 @@ from ..services.custody import shrinkage_fields
 import logging
 
 _audit = logging.getLogger("biochain.audit")
-_pabrik_only = require_role([UserRole.PABRIK, UserRole.ADMIN])
-_audit_read = require_role([UserRole.PABRIK, UserRole.ADMIN, UserRole.AUDITOR])
+_pabrik_only = require_role(UserRole.PABRIK, UserRole.ADMIN)
+_audit_read = require_role(UserRole.PABRIK, UserRole.ADMIN, UserRole.AUDITOR)
 
 router = APIRouter()
 

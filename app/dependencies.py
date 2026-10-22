@@ -79,7 +79,7 @@ async def get_current_user(
     return user
 
 
-def require_role(*allowed_roles: UserRole):
+def require_role(*allowed_roles):
     """Dependency factory: hanya izinkan role tertentu mengakses endpoint.
 
     Contoh:
@@ -87,14 +87,26 @@ def require_role(*allowed_roles: UserRole):
         async def admin_endpoint(user = Depends(require_role(UserRole.ADMIN))):
             ...
     """
+    flat_roles = []
+    for r in allowed_roles:
+        if isinstance(r, (list, tuple, set)):
+            flat_roles.extend(r)
+        else:
+            flat_roles.append(r)
+
+    role_values = {
+        r.value if hasattr(r, "value") else str(r)
+        for r in flat_roles
+    }
+
     async def role_checker(
         user: Annotated[User, Depends(get_current_user)],
     ) -> User:
         user_role_str = user.role.value if hasattr(user.role, 'value') else str(user.role)
-        if user_role_str not in [r.value for r in allowed_roles]:
+        if user_role_str not in role_values:
             raise HTTPException(
                 status.HTTP_403_FORBIDDEN,
-                f"Akses ditolak. Dibutuhkan role: {', '.join(r.value for r in allowed_roles)}",
+                f"Akses ditolak. Dibutuhkan role: {', '.join(sorted(role_values))}",
             )
         return user
     return role_checker
