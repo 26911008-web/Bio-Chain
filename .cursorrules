@@ -1,0 +1,28 @@
+# bio-chain-prototype Architecture & Engineering Rules
+
+## 1. Directory Structure Standards
+- `app/routers/`: FastAPI routes. Keep domain controllers under 600 lines; use sub-routers when decomposing (e.g. `factory_inbound.py`, `factory_production.py`).
+- `app/models/`: SQLAlchemy 2.0 ORM models and Pydantic schemas.
+- `app/services/`: Reusable business logic, blockchain/custody proofs, and security filters.
+- `app/engines/`: Computation and optimization algorithms (`cvrp_advanced.py`, `product_optimization.py`).
+- `app/static/js/modules/`: Single-responsibility frontend modules (modals, calculators, widgets) exposed via `window.<ModuleName>`.
+- `tests/`: Pytest suites (`test_*.py`), Playwright specs (`*.spec.ts`), and typed contracts (`tests/types.ts`).
+
+## 2. Core Laws (Anti-Vibe-Coding)
+- **Modularity**: Keep new files under 500 lines. Refactor god files proactively.
+- **Centralized API Client**: In frontend, always call `api(path, options)` wrapper. Never use raw `fetch()` directly.
+- **Type Safety**: Strictly annotate Python code; avoid `: any` in Playwright tests (use `tests/types.ts`).
+- **Security**: Never hardcode secrets or localhost URLs. Never leak hashed passwords or salt in API responses. Keep `.env` strictly untracked.
+- **Protected Files**: Never delete `app/main.py`, `app/static/index.html`, `app/static/sw.js`, `app/static/tokens.css`, `app/static/components.css`, `app/migrations.py`, or `playwright.config.ts`.
+
+## 3. Mandatory Pre-Commit Quality Verification
+Run both verification suites before committing:
+```bash
+py -m pytest tests/test_fase_omni_e2e.py tests/test_circular_e2e.py tests/test_audit_hardening.py tests/test_field_compliance.py
+npx playwright test
+```
+Both suites must be 100% green (45/45 pytest, 37/37 playwright).
+
+## 4. Git Rules
+- Explicit staging only: `git add <file1> <file2>`. Never `git add .`.
+- Follow Conventional Commits: `refactor(scope): description`, `feat(scope): description`, `fix(scope): description`.
