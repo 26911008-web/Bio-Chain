@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     DB_STATEMENT_TIMEOUT_MS: int = 5000     # PostgreSQL: batalkan query/lock yang menggantung
     SQLITE_POOL_SIZE: int = 1               # SQLite = 1 penulis; antre FIFO di pool > busy-wait antar koneksi
     DB_NULLPOOL: bool = False               # True khusus tes: tiap event loop membuka koneksinya sendiri (asyncpg)
+    DB_POOL_WARMUP: int = 20                # buka N koneksi (≤ pool) saat start: p95 serbuan awal 1,7 s → ±1,0 s (docs/21)
     AUTO_MIGRATE: bool = True               # False di produksi: skema via migrations/*.sql oleh DBA (peran app tanpa DDL)
     PGBOUNCER: bool = False                 # True → nonaktifkan prepared-statement cache asyncpg
 

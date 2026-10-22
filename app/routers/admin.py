@@ -47,7 +47,9 @@ async def list_users(
     role: str | None = None,
 ):
     """Daftar semua user. Optional filter by role."""
-    query = select(User).order_by(User.created_at.desc())
+    # NULLS LAST + id: di PostgreSQL NULL terurut PALING ATAS pada DESC → baris lama tanpa created_at menutupi
+    # pengguna baru dalam batas 200 (audit: pendaftar baru tak terlihat admin)
+    query = select(User).order_by(User.created_at.desc().nulls_last(), User.id.desc())
     if role:
         query = query.where(User.role == role)
     result = await db.execute(query.limit(200))

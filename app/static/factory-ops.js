@@ -540,7 +540,7 @@
 
   function fbFeeds() {
     return [...document.querySelectorAll("[data-fb-use]:checked")].map(cb => {
-      const c = cb.dataset.fbUse, v = (k) => document.querySelector(`[data-fb-${k}="${c}"]`).value;
+      const c = cb.dataset.fbUse, v = (k) => document.querySelector(`[data-fb-${k}="${CSS.escape(c)}"]`).value;
       return { code: c, available_kg: Number(v("kg")) || 0, price_per_kg: v("price") === "" ? null : Number(v("price")),
                moisture_pct: v("mc") === "" ? null : Number(v("mc")), max_share_pct: Number(v("max")) || 100 };
     });
@@ -603,7 +603,7 @@
     $("fx-fb-sliders").oninput = (e) => {
       const el = e.target.closest("[data-fb-slide]");
       if (!el) return;
-      $("fx-fb-sliders").querySelector(`[data-fb-val="${el.dataset.fbSlide}"]`).textContent = `${el.value}%`;
+      $("fx-fb-sliders").querySelector(`[data-fb-val="${CSS.escape(el.dataset.fbSlide)}"]`).textContent = `${el.value}%`;
       clearTimeout(fbTimer);
       fbTimer = setTimeout(async () => {
         const shares = Object.fromEntries([...document.querySelectorAll("[data-fb-slide]")].map(s => [s.dataset.fbSlide, Number(s.value)]));

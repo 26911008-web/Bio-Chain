@@ -7,7 +7,7 @@
  * - Background Sync (Chrome/Edge Android): saat sinyal kembali, SW membangunkan halaman yang terbuka untuk
  *   mengirim antrean. Safari/Firefox tidak mendukung → halaman memakai event 'online' & interval.
  */
-const VERSION = "biochain-shell-v12";         // v12: multi-biomassa, gudang pengepul, ledger abu (018)
+const VERSION = "biochain-shell-v13";         // v13: prototipe 1–3 + perbaikan audit (UI multi-biomassa)
 const SHELL = ["/", "/static/tokens.css", "/static/components.css", "/static/app.js", "/static/ui-enhance.js", "/static/field-ops.js",
                "/static/factory-ops.js"];  // three.js sengaja tidak di-precache
 

@@ -74,8 +74,21 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"⚠️ Auto-seed note: {e}")
 
-    # 3. Background tasks (e.g. PostgreSQL LISTEN for real-time parameter invalidation)
+    # 3. Pemanasan pool PostgreSQL: koneksi pertama mahal (TCP + auth + pre-ping); uji stres 40 pengguna menunjukkan
+    #    p95 1,7 s saat dingin vs 0,5 s saat hangat (docs/20). Buka beberapa koneksi sekaligus lalu kembalikan ke pool.
     import asyncio
+    if db_module.active_driver == "postgresql" and not settings.DB_NULLPOOL and settings.DB_POOL_WARMUP > 0:
+        async def _touch():
+            async with db_module.engine.connect() as c:
+                await c.exec_driver_sql("SELECT 1")
+                await asyncio.sleep(0.05)               # tahan sebentar agar koneksi paralel benar-benar terpisah
+        try:
+            n = min(settings.DB_POOL_WARMUP, settings.DB_POOL_SIZE)
+            await asyncio.gather(*[_touch() for _ in range(n)])
+        except Exception as e:  # noqa: BLE001
+            print(f"⚠️ Pemanasan pool dilewati: {e.__class__.__name__}")
+
+    # 4. Background tasks (e.g. PostgreSQL LISTEN for real-time parameter invalidation)
     listener_task = None
     if db_module.active_driver == "postgresql" and settings.DATABASE_URL.startswith("postgresql"):
         listener_task = asyncio.create_task(start_pg_listener(settings.DATABASE_URL))

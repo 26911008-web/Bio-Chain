@@ -54,3 +54,15 @@ Sebelumnya, di Fase 5, juga sudah diperbaiki: alokasi abu ganda, serah-terima bi
 | pytest skema PostgreSQL (fitur baru + audit + fase 5) | lulus |
 | pytest PostgreSQL + RLS (`test_postgres`, `test_farmer_feedback`, `test_audit_hardening`) | 36 lulus |
 | Playwright e2e (22 spec) | 22 lulus |
+
+## Perbaikan lanjutan (temuan minor)
+
+| # | Temuan | Perbaikan | Hasil terukur |
+|---|---|---|---|
+| D1 | Ekor lambat saat server PostgreSQL baru menyala (p95 1,7 s pada serbuan 40 pengguna) | (a) Engine berat (LP HiGHS, NNLS, analisis rute) dipindah ke thread pool (`run_cpu`), sehingga event loop tidak tertahan solver. (b) Pemanasan pool koneksi saat start (`DB_POOL_WARMUP`, default = ukuran pool 20). | Dingin: p95 1,74 → ±1,0 s. Hangat: 0,5–0,65 s. Error tetap 0 %. Sisa ekor dingin = persiapan statement & cache PostgreSQL di detik-detik awal; produksi: arahkan trafik setelah *readiness probe* hangat / PgBouncer. Angka bervariasi karena diukur di laptop bersama Docker. |
+| D2 | Titik nol CUSUM diasumsikan 0, padahal model tanpa intercept bisa bias | CUSUM & uji persistensi memakai μ₀ = rata-rata residual periode acuan | Tes drift, lonjakan & beban parsial tetap lulus |
+| D3 | `querySelector` dari kode komoditas error bila kode mengandung tanda kutip | `CSS.escape()` | — |
+| D4 | Judul dialog gudang di-escape dua kali (tampil `&amp;`) | Escape satu kali di `formDialog` | — |
+| D5 | **PostgreSQL: pendaftar baru tak terlihat di daftar pengguna admin.** 260 pengepul ber-`created_at` NULL (insert SQL mentah) terurut paling atas pada DESC dan memenuhi batas 200 | `ORDER BY created_at DESC NULLS LAST, id DESC`; `users.created_at` default server `now()` (model + migrasi 020) | `test_register_and_admin_user_management` lulus di PG dev |
+| D6 | Tes upload duplikat flaky: hanya 250 variasi gambar, folder upload bertahan antar-run | Gambar uji unik dari seed 128-bit | lulus |
+| — | Service worker | v13 agar HP lapangan memuat UI terbaru | — |

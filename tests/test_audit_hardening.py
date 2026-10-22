@@ -122,8 +122,12 @@ def test_down_payment_capped_once_and_netted_at_payment(client):
 
 # ------------------------------------------------------------------ foto bukti & BOM
 def _jpeg(seed: int) -> bytes:
+    """Gambar unik per seed: folder upload bertahan antar-run, jadi 250 warna polos cepat bertabrakan (tes flaky)."""
     from PIL import Image
     img = Image.new("RGB", (64, 48), (seed % 255, 120, 30))
+    px = img.load()
+    for i, byte in enumerate(seed.to_bytes(16, "big")):           # pola piksel dari 128-bit seed
+        px[i % 64, i // 64] = (byte, 255 - byte, (byte * 7) % 256)
     buf = io.BytesIO()
     img.save(buf, "JPEG", quality=90)
     return buf.getvalue()
@@ -131,7 +135,7 @@ def _jpeg(seed: int) -> bytes:
 
 def test_upload_same_photo_is_flagged_duplicate(client):
     hp = demo_headers(client, "petani")
-    data = _jpeg(uuid.uuid4().int % 250)
+    data = _jpeg(uuid.uuid4().int)
     a = client.post("/api/v1/uploads", headers=hp, files={"file": ("a.jpg", data, "image/jpeg")})
     b = client.post("/api/v1/uploads", headers=hp, files={"file": ("b.jpg", data, "image/jpeg")})
     assert a.status_code == 201 and b.status_code == 201

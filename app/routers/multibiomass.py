@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import get_db
 from ..dependencies import get_current_user, require_role
+from ..concurrency import run_cpu
 from ..engines.refraction import refract
 from ..models.user import User, UserRole
 from ..security.url import EvidenceUrl
@@ -339,7 +340,8 @@ async def fuel_blend_optimize(req: FuelBlendRequest, db: DB, user: Annotated[Use
         ai_max=req.ai_max if req.ai_max is not None else P("blending.ai_max_kg_gj"),
         drying_cost_rp_per_kg_water=P("blending.drying_cost_rp_per_kg_water"))
     try:
-        out = optimize(BlendOptimizeRequest(feeds=await _blend_feeds(db, req.feeds), spec=spec))
+        breq = BlendOptimizeRequest(feeds=await _blend_feeds(db, req.feeds), spec=spec)
+        out = await run_cpu(optimize, breq)              # LP HiGHS di thread: event loop tetap melayani request lain
     except ValueError as e:                               # validasi pydantic internal → 422, bukan 500
         raise HTTPException(422, str(e))
     if spec.drying_cost_rp_per_kg_water is None:
@@ -358,7 +360,7 @@ async def fuel_blend_evaluate(req: FuelEvaluateRequest, db: DB, user: Annotated[
     if sum(shares) <= 0:
         raise HTTPException(422, "Porsi campuran masih kosong.")
     try:
-        return evaluate(feeds, shares, req.product_moisture_pct)
+        return await run_cpu(evaluate, feeds, shares, req.product_moisture_pct)
     except ValueError as e:
         raise HTTPException(422, str(e))
 
@@ -379,7 +381,7 @@ async def conversion_analyse(req: ConversionRequest, db: DB, user: Annotated[Use
     pohon keputusan rute konversi (pirolisis/co-firing/pembakaran/gasifikasi)."""
     from ..engines.conversion_energy import ConversionInput, analyse
     b = await svc.get_biomass(db, req.code)
-    return analyse(ConversionInput(
+    return await run_cpu(analyse, ConversionInput(
         code=b.code, name=b.name, ton_per_month=req.ton_per_month,
         moisture_pct=req.moisture_pct if req.moisture_pct is not None else b.moisture_typ_pct,
         ash_pct_db=req.ash_pct_db if req.ash_pct_db is not None else b.ash_pct_db,
@@ -469,7 +471,7 @@ async def ops_analysis(db: DB, user: Annotated[User, Depends(_operator_read)], f
         fuel_mj = max(0.1, lhv_ar(b.lhv_db_mj_kg, b.moisture_typ_pct))
     ref_mc = (await svc.get_biomass(db, feed_code)).moisture_ref_pct if feed_code else None
     try:
-        out = analyse(OpsAnalysisRequest(
+        out = await run_cpu(analyse, OpsAnalysisRequest(
             logs=[OpsLog(label=f"{r.log_date} {r.shift}", kwh_total=r.kwh_total, kwh_dryer=r.kwh_dryer,
                          kwh_hammer_mill=r.kwh_hammer_mill, diesel_l=r.diesel_l, biomass_fuel_kg=r.biomass_fuel_kg,
                          operating_hours=r.operating_hours, product_ton=r.product_ton, feed_moisture_pct=r.feed_moisture_pct,

@@ -625,7 +625,7 @@
 
   async function movementDialog(whId) {
     const d = formDialog({
-      title: `Catat stok · ${H((whCache.find(w => w.id === whId) || {}).name || "")}`, ok: "Simpan",
+      title: `Catat stok · ${(whCache.find(w => w.id === whId) || {}).name || ""}`, ok: "Simpan",   // formDialog meng-escape judul
       body: `<div class="form-group"><label for="fo-mv-kind">Jenis</label><select id="fo-mv-kind" name="movement">
                ${Object.entries(MV_LABEL).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></div>
              <div class="form-group"><label for="fo-mv-com">Komoditas</label><select id="fo-mv-com" name="commodity">${await commodityOptions()}</select></div>

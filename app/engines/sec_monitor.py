@@ -112,6 +112,7 @@ def analyse(req: OpsAnalysisRequest) -> dict:
     expected = np.where(expected > 1e-9, expected, np.nan)
     rel = E / expected - 1
     base_sd = float(np.nanstd(rel[:nb], ddof=1)) or 0.01
+    mu0 = float(np.nanmean(rel[:nb]))           # bias model (tanpa intercept) → titik nol CUSUM & uji persistensi
     base_r2 = 1 - float(np.nansum((E[:nb] - expected[:nb]) ** 2)) / float(np.sum((E[:nb] - E[:nb].mean()) ** 2) or 1)
 
     mc_ref = req.reference_feed_moisture_pct if req.reference_feed_moisture_pct is not None else mc_fill
@@ -130,12 +131,12 @@ def analyse(req: OpsAnalysisRequest) -> dict:
         if i < nb and level:                       # titik acuan = pembentuk baseline: outlier EnB (ISO 50006 §5.6.5), bukan alarm
             baseline_outlier, level = level, None
         if i >= nb:
-            cusum = max(0.0, cusum + r - k)
+            cusum = max(0.0, cusum + (r - mu0) - k)
             if level is None:
                 accepted.append(r)
         recent = [float(v) for v in rel[max(nb, i - 4):i + 1] if not np.isnan(v)]
         # median 5 log terakhir > 1σ: lonjakan tunggal tidak menggeser median, pergeseran nyata menggesernya
-        persistent = i >= nb and len(recent) >= 3 and median(recent) > base_sd
+        persistent = i >= nb and len(recent) >= 3 and median(recent) - mu0 > base_sd
         util = (l.product_ton / (l.rated_capacity_t_h * l.operating_hours)) if l.rated_capacity_t_h else None
         wet_mj = float(beta[2]) * max(0.0, W[i] - _water_t(l.product_ton, mc_ref, req.product_moisture_pct)) if use_w and mc_ref is not None else 0.0
         hm_kwh_t = l.kwh_hammer_mill / l.product_ton if l.kwh_hammer_mill is not None else None
@@ -193,7 +194,8 @@ def analyse(req: OpsAnalysisRequest) -> dict:
                         "β_h dari daya idle terukur atau NNLS bila utilisasi acuan bervariasi; β_t dari regresi",
             "normalisation": "EnPI = E_aktual/E_model; SEC_expected = E_model/ton (beban parsial → SEC mentah naik, EnPI tetap)",
             "anomaly": f"residual relatif > rata-rata bergerak ({req.window}) + {req.sigma_warn:g}σ peringatan / {req.sigma_action:g}σ aksi",
-            "cusum": "S_i = max(0, S_{i−1} + r_i − 0,5σ); alarm bila S > 5σ dan median 5 log terakhir > 1σ (Page 1954)",
+            "cusum": "S_i = max(0, S_{i−1} + (r_i − μ₀) − 0,5σ), μ₀ = rata-rata residual acuan; alarm bila S > 5σ dan "
+                     "median 5 log terakhir − μ₀ > 1σ (Page 1954)",
             "references": ["ISO 50001:2018", "ISO 50006:2023", "Montgomery (2019) Intro. Statistical Quality Control 8th ed.",
                            "Page (1954) Biometrika 41:100–115", "Naimi & Sokhansanj (2018) hammer mill SEC",
                            "Thek & Obernberger (2004) Biomass Bioenergy 27:671 — pengering 2,9–4,0 MJ/kg air"],
