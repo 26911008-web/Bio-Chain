@@ -90,11 +90,10 @@
   - Sub-module 2: `app/static/js/modules/offline-sync-queue.js` — IndexedDB offline outbox, retry scheduler, connectivity monitors.
   - Sub-module 3: `app/static/js/modules/field-kuitansi.js` — Digital payment receipt generator, QR code stamper, PDP masking.
   - Orchestrator: Retain `field-ops.js` as coordinator.
-- [ ] **God File 3: `app/routers/factory.py` (3,038 lines)**
-  - Sub-module 1: `app/routers/factory_inbound.py` — Inbound reception, weighbridge gross/tare measurement, and moisture/ash QC testing.
-  - Sub-module 2: `app/routers/factory_production.py` — Production blend formulation, pyrolysis batch tracking, and mass balance calculus.
-  - Sub-module 3: `app/routers/factory_ash.py` — Industrial ash ledger, toxic heavy metal lab verification, and Poktan circular distribution.
-  - Orchestrator: Retain `factory.py` as unified router mounting inbound, production, and ash endpoints.
+- [x] **God File 3: `app/routers/factory.py` (3,038 lines -> 1,989 lines)**
+  - Sub-module 1: `app/routers/factory_inbound.py` (579 lines) — Gate reception, weighbridge QC, dynamic ramps, factory invoices, and TOP settlements.
+  - Sub-module 2: `app/routers/factory_production.py` (489 lines) — Multi-ramp blend optimizer, commit execution, by-products ledger, and chemical heavy metal safety checks.
+  - Orchestrator: Retained `factory.py` as unified router mounting inbound and production sub-routers with full backward compatibility.
 - [ ] **God File 4: `app/routers/collector.py` (1,933 lines)**
   - Sub-module 1: `app/routers/collector_bidding.py` — Stock listing discovery, competitive bid placement, and price negotiation engine.
   - Sub-module 2: `app/routers/collector_logistics.py` — CVRP multi-stop pickup routing plan, bulk-density checks, driver dispatch.
