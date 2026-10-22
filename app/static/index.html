@@ -1,0 +1,1813 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bio-Chain v2 · Smart Rice-Husk Supply Chain</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Outfit:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --primary: #15803d;
+    --primary-dark: #14532d;
+    --primary-light: #22c55e;
+    --primary-soft: #f0fdf4;
+    --primary-border: #bbf7d0;
+    --bg-mesh: radial-gradient(at 10% 10%, rgba(34, 197, 94, 0.08) 0px, transparent 50%),
+               radial-gradient(at 90% 90%, rgba(21, 128, 61, 0.06) 0px, transparent 50%),
+               #f8faf7;
+    --card: #ffffff;
+    --card-glass: rgba(255, 255, 255, 0.94);
+    --border: #e2e8f0;
+    --ink: #0f172a;
+    --ink-muted: #64748b;
+    --ink-subtle: #94a3b8;
+    --amber: #d97706;
+    --amber-soft: #fffbeb;
+    --amber-border: #fde68a;
+    --red: #dc2626;
+    --red-soft: #fef2f2;
+    --blue: #2563eb;
+    --blue-soft: #eff6ff;
+    --purple: #9333ea;
+    --purple-soft: #faf5ff;
+    --radius-lg: 16px;
+    --radius-md: 10px;
+    --radius-sm: 6px;
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.05);
+    --shadow-md: 0 4px 14px rgba(0,0,0,0.06), 0 2px 6px rgba(0,0,0,0.03);
+    --shadow-lg: 0 12px 28px rgba(0,0,0,0.09), 0 4px 10px rgba(0,0,0,0.04);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg-mesh);
+    color: var(--ink);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  h1, h2, h3, h4, .brand-font {
+    font-family: 'Outfit', sans-serif;
+    letter-spacing: -0.02em;
+  }
+
+  /* UTILITIES & BUTTONS */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 18px;
+    border-radius: var(--radius-md);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.18s ease;
+    border: 1px solid transparent;
+    text-decoration: none;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, #16a34a, #15803d);
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(22, 163, 74, 0.28);
+  }
+  .btn-primary:hover {
+    background: linear-gradient(135deg, #15803d, #14532d);
+    box-shadow: 0 6px 16px rgba(22, 163, 74, 0.36);
+    transform: translateY(-1px);
+  }
+  .btn-secondary {
+    background: #fff;
+    color: var(--ink);
+    border-color: var(--border);
+  }
+  .btn-secondary:hover {
+    background: #f8fafc;
+    border-color: #cbd5e1;
+  }
+  .btn-outline-green {
+    background: var(--primary-soft);
+    color: var(--primary-dark);
+    border-color: var(--primary-border);
+  }
+  .btn-outline-green:hover {
+    background: #dcfce7;
+  }
+  .btn-sm { padding: 6px 12px; font-size: 12px; border-radius: 6px; }
+
+  /* BADGES */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .badge-green { background: #dcfce7; color: #166534; }
+  .badge-amber { background: var(--amber-soft); color: #92400e; }
+  .badge-blue { background: var(--blue-soft); color: #1e40af; }
+  .badge-purple { background: var(--purple-soft); color: #6b21a8; }
+  .badge-gray { background: #f1f5f9; color: #475569; }
+
+  /* LOGIN VIEW */
+  #login-view {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 24px 16px 48px;
+  }
+  .login-card {
+    background: var(--card-glass);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(226, 232, 240, 0.9);
+    border-radius: 24px;
+    box-shadow: var(--shadow-lg);
+    width: 100%;
+    max-width: 580px;
+    padding: 36px 32px;
+  }
+  .login-brand {
+    text-align: center;
+    margin-bottom: 24px;
+  }
+  .brand-logo-icon {
+    width: 64px;
+    height: 64px;
+    border-radius: 18px;
+    background: linear-gradient(135deg, #22c55e, #15803d);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    color: #fff;
+    box-shadow: 0 8px 20px rgba(21, 128, 61, 0.25);
+    margin-bottom: 12px;
+  }
+  .login-brand h1 {
+    margin: 0;
+    font-size: 28px;
+    font-weight: 800;
+    background: linear-gradient(135deg, #14532d, #16a34a);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .login-brand p {
+    margin: 6px 0 0;
+    font-size: 14px;
+    color: var(--ink-muted);
+  }
+
+  /* ROLE SELECTOR CARDS */
+  .role-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+  @media (max-width: 560px) {
+    .role-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+  .role-card {
+    background: #fff;
+    border: 1.5px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 10px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.16s ease;
+    user-select: none;
+    position: relative;
+  }
+  .role-card:hover {
+    border-color: var(--primary-light);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-sm);
+  }
+  .role-card.active {
+    border-color: var(--primary);
+    background: var(--primary-soft);
+    box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.25);
+  }
+  .role-card .r-icon { font-size: 24px; display: block; margin-bottom: 4px; }
+  .role-card .r-name { font-size: 13px; font-weight: 700; color: var(--ink); }
+  .role-card .r-user { font-size: 11px; color: var(--ink-muted); margin-top: 2px; }
+
+  /* FORM STYLING */
+  .form-group {
+    margin-bottom: 16px;
+    text-align: left;
+  }
+  .form-group label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+    margin-bottom: 6px;
+  }
+  .input-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+  .input-wrap .prefix-icon {
+    position: absolute;
+    left: 12px;
+    font-size: 16px;
+    color: var(--ink-subtle);
+    pointer-events: none;
+  }
+  .input-wrap input {
+    width: 100%;
+    padding: 11px 14px 11px 38px;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-md);
+    font-family: inherit;
+    font-size: 14px;
+    transition: all 0.15s ease;
+    background: #fff;
+  }
+  .input-wrap input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.2);
+  }
+  .input-wrap .toggle-pass {
+    position: absolute;
+    right: 12px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    color: var(--ink-subtle);
+    padding: 4px;
+  }
+
+  .demo-hint-box {
+    background: #f8fafc;
+    border: 1px dashed #cbd5e1;
+    border-radius: var(--radius-md);
+    padding: 10px 14px;
+    margin-bottom: 18px;
+    font-size: 12px;
+    color: var(--ink-muted);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* AUTHENTICATED APP SHELL */
+  #app-view {
+    display: none;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+  header.app-header {
+    background: #ffffff;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+  }
+  .header-inner {
+    max-width: 1260px;
+    margin: 0 auto;
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .header-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .header-brand .logo-badge {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #22c55e, #15803d);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 20px;
+    box-shadow: 0 4px 10px rgba(22, 163, 74, 0.22);
+  }
+  .header-brand-title {
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--ink);
+    line-height: 1.1;
+  }
+  .header-brand-sub {
+    font-size: 11px;
+    color: var(--ink-muted);
+    font-weight: 500;
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .user-pill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #f8fafc;
+    border: 1px solid var(--border);
+    padding: 5px 12px;
+    border-radius: 30px;
+    font-size: 13px;
+  }
+
+  /* NAV TABS */
+  nav.main-nav {
+    background: #ffffff;
+    border-bottom: 1px solid var(--border);
+    padding: 0 20px;
+  }
+  .nav-inner {
+    max-width: 1260px;
+    margin: 0 auto;
+    display: flex;
+    gap: 4px;
+    overflow-x: auto;
+  }
+  .nav-btn {
+    background: none;
+    border: none;
+    padding: 12px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink-muted);
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .nav-btn:hover { color: var(--primary); }
+  .nav-btn.active {
+    color: var(--primary);
+    border-bottom-color: var(--primary);
+  }
+
+  /* MAIN CONTENT LAYOUT */
+  main.app-main {
+    max-width: 1260px;
+    margin: 0 auto;
+    padding: 24px 20px 48px;
+    width: 100%;
+    flex: 1;
+  }
+  .tab-pane { display: none; }
+  .tab-pane.active { display: block; animation: fadeIn 0.2s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* CARDS & GRIDS */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .grid-sidebar { display: grid; grid-template-columns: 380px 1fr; gap: 20px; }
+  @media (max-width: 900px) {
+    .grid-2, .grid-sidebar { grid-template-columns: 1fr; }
+  }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    box-shadow: var(--shadow-sm);
+    margin-bottom: 20px;
+  }
+  .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .card-title {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--ink);
+  }
+  .card-sub {
+    margin: 2px 0 0;
+    font-size: 12px;
+    color: var(--ink-muted);
+  }
+
+  /* KPI TILES */
+  .kpi-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px;
+    margin-bottom: 20px;
+  }
+  .kpi-tile {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 16px;
+    position: relative;
+    overflow: hidden;
+  }
+  .kpi-tile::after {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0; height: 3px;
+    background: var(--primary);
+  }
+  .kpi-tile.kpi-amber::after { background: var(--amber); }
+  .kpi-tile.kpi-blue::after { background: var(--blue); }
+  .kpi-tile.kpi-purple::after { background: var(--purple); }
+
+  .kpi-val {
+    font-size: 24px;
+    font-weight: 800;
+    font-family: 'Outfit', sans-serif;
+    color: var(--ink);
+    margin: 4px 0 2px;
+  }
+  .kpi-lbl {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  /* TABLES */
+  table.data-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 13px;
+  }
+  table.data-table th {
+    background: #f8fafc;
+    color: var(--ink-muted);
+    font-weight: 600;
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 1.5px solid var(--border);
+  }
+  table.data-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    color: var(--ink);
+  }
+  table.data-table tr:hover td {
+    background: #fcfdfd;
+  }
+  table.data-table td.num, table.data-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+  /* MAP */
+  #map { height: 480px; width: 100%; border-radius: var(--radius-md); border: 1px solid var(--border); }
+
+  /* TOAST NOTIFICATION */
+  #toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: #0f172a;
+    color: #fff;
+    padding: 12px 20px;
+    border-radius: 10px;
+    box-shadow: var(--shadow-lg);
+    font-size: 13px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    z-index: 9999;
+    opacity: 0;
+    transform: translateY(20px);
+    transition: all 0.25s ease;
+    pointer-events: none;
+  }
+  #toast.show {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+
+  /* MODAL */
+  .modal-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(15, 23, 42, 0.6);
+    backdrop-filter: blur(4px);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 5000;
+    padding: 16px;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal-box {
+    background: #fff;
+    border-radius: 20px;
+    max-width: 440px;
+    width: 100%;
+    padding: 24px;
+    box-shadow: var(--shadow-lg);
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<!-- ============================================================== -->
+<!-- 1. LOGIN SCREEN -->
+<!-- ============================================================== -->
+<div id="login-view">
+  <div class="login-card">
+    <div class="login-brand">
+      <div class="brand-logo-icon">🌿</div>
+      <h1>Bio-Chain v2</h1>
+      <p>Smart Rice-Husk Supply Chain for Pyrolysis Biochar<br>
+         <span style="font-size:12px; color:var(--primary); font-weight:600;">ANGEL Hackathon 2026 · Feedstock Optimization</span>
+      </p>
+    </div>
+
+    <!-- Role Quick Selectors (Demo Presets) -->
+    <div style="margin-bottom:10px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <span style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--ink-muted);">
+          Pilih Peran Akun Demo
+        </span>
+        <span class="badge badge-green" id="db-indicator">🟢 SQLite Lokal Aktif</span>
+      </div>
+      <div class="role-grid" id="role-selector-grid">
+        <!-- Dynamically injected or fallback -->
+      </div>
+    </div>
+
+    <!-- Login Form -->
+    <form id="login-form">
+      <div class="form-group">
+        <label for="login-ident">Username atau Nomor Telepon</label>
+        <div class="input-wrap">
+          <span class="prefix-icon">👤</span>
+          <input type="text" id="login-ident" placeholder="Contoh: admin atau 081234567890" required autocomplete="username">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="login-pass">Password</label>
+        <div class="input-wrap">
+          <span class="prefix-icon">🔒</span>
+          <input type="password" id="login-pass" placeholder="Masukkan password" required autocomplete="current-password">
+          <button type="button" class="toggle-pass" id="btn-toggle-pass" title="Tampilkan/Sembunyikan password">👁️</button>
+        </div>
+      </div>
+
+      <div class="demo-hint-box" id="demo-hint">
+        <span>💡</span>
+        <span id="hint-text">Klik salah satu kartu peran di atas untuk mengisi kredensial contoh secara otomatis.</span>
+      </div>
+
+      <button type="submit" class="btn btn-primary" style="width:100%; padding:12px; font-size:15px; margin-bottom:10px;" id="btn-submit-login">
+        Masuk ke Sistem Bio-Chain ➔
+      </button>
+
+      <button type="button" class="btn btn-secondary" style="width:100%;" id="btn-guest-login">
+        ⚡ Masuk Cepat sebagai Tamu Demo (Admin)
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- ============================================================== -->
+<!-- 2. AUTHENTICATED APP VIEW -->
+<!-- ============================================================== -->
+<div id="app-view">
+  <!-- Sticky Header -->
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="header-brand">
+        <div class="logo-badge">🌿</div>
+        <div>
+          <div class="header-brand-title">Bio-Chain v2</div>
+          <div class="header-brand-sub">Sleman &amp; Klaten Feedstock Optimizer</div>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <!-- Persona Quick Switcher -->
+        <select id="persona-switcher" class="btn btn-secondary btn-sm" style="font-weight:600;" title="Ganti persona aktif">
+          <option value="">Switch Persona...</option>
+        </select>
+
+        <div class="user-pill" id="user-info-pill">
+          <span id="u-icon">👤</span>
+          <div>
+            <strong id="u-name">User</strong>
+            <span class="badge badge-green" id="u-role-badge">PETANI</span>
+          </div>
+        </div>
+
+        <button class="btn btn-secondary btn-sm" id="btn-reset-demo" title="Reset & isi ulang seluruh data demo ke kondisi awal">
+          🔄 Reset Data Demo
+        </button>
+
+        <button class="btn btn-secondary btn-sm" id="btn-logout" title="Keluar dari sesi">
+          Keluar 🚪
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Navigation Tabs -->
+  <nav class="main-nav">
+    <div class="nav-inner" id="nav-tabs">
+      <button class="nav-btn active" data-tab="tab-persona" id="nav-persona-btn">🌾 Portal Persona</button>
+      <button class="nav-btn" data-tab="tab-engines">🧪 Lab 7 Engine</button>
+      <button class="nav-btn" data-tab="tab-admin">⚙️ Panel Admin</button>
+    </div>
+  </nav>
+
+  <!-- App Main Content -->
+  <main class="app-main">
+
+    <!-- TAB 1: PERSONA SPECIFIC DASHBOARD -->
+    <div id="tab-persona" class="tab-pane active">
+      <!-- Persona views are injected dynamically based on current user's role -->
+      <div id="persona-content"></div>
+    </div>
+
+    <!-- TAB 2: LAB 7 ENGINE (STANDALONE ENGINE WORKBENCH) -->
+    <div id="tab-engines" class="tab-pane">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h2 class="card-title">🧪 Bio-Chain Engine Workbench</h2>
+            <p class="card-sub">Eksplorasi langsung model matematika dan algoritma inti rantai pasok sekam padi</p>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button class="btn btn-outline-green btn-sm" onclick="switchEngineSub('eng-quality')">② Skor Mutu &amp; Rendemen</button>
+            <button class="btn btn-outline-green btn-sm" onclick="switchEngineSub('eng-blend')">③ Blending HiGHS</button>
+            <button class="btn btn-outline-green btn-sm" onclick="switchEngineSub('eng-route')">⑤ Rute Clarke-Wright</button>
+          </div>
+        </div>
+
+        <!-- Engine Sub: Quality -->
+        <div id="eng-quality" class="eng-sub">
+          <div class="grid-sidebar">
+            <div>
+              <label style="font-weight:600; font-size:13px;">Parameter Uji Proksimat Sekam:</label>
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:8px;">
+                <div><label class="kpi-lbl">Kadar Air (% bb)</label><input type="number" id="q-moisture" class="btn btn-secondary" style="width:100%;" value="11" step="0.1"></div>
+                <div><label class="kpi-lbl">Kontaminan (%)</label><input type="number" id="q-contam" class="btn btn-secondary" style="width:100%;" value="1.5" step="0.1"></div>
+                <div><label class="kpi-lbl">Kadar Abu (% bk)</label><input type="number" id="q-ash" class="btn btn-secondary" style="width:100%;" value="18" step="0.1"></div>
+                <div><label class="kpi-lbl">Volatile Matter (%)</label><input type="number" id="q-vm" class="btn btn-secondary" style="width:100%;" value="66" step="0.1"></div>
+                <div><label class="kpi-lbl">Fixed Carbon (%)</label><input type="number" id="q-fc" class="btn btn-secondary" style="width:100%;" value="16" step="0.1"></div>
+                <div><label class="kpi-lbl">Suhu Pirolisis (°C)</label><input type="number" id="q-temp" class="btn btn-secondary" style="width:100%;" value="500" step="10"></div>
+              </div>
+              <button class="btn btn-primary" style="width:100%; margin-top:14px;" id="btn-run-quality">Hitung Skor &amp; Rendemen ➔</button>
+            </div>
+            <div>
+              <div id="q-result-box" style="margin-bottom:12px;"></div>
+              <canvas id="q-chart" height="120"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Engine Sub: Blending -->
+        <div id="eng-blend" class="eng-sub" style="display:none;">
+          <div class="grid-sidebar">
+            <div>
+              <label style="font-weight:600; font-size:13px;">Target Spesifikasi Pirolisis:</label>
+              <select id="b-product" class="btn btn-secondary" style="width:100%; margin:8px 0;"></select>
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                <div><label class="kpi-lbl">Air Maks (%)</label><input id="b-mmax" type="number" class="btn btn-secondary" style="width:100%;" step="0.5"></div>
+                <div><label class="kpi-lbl">Abu Maks (%)</label><input id="b-amax" type="number" class="btn btn-secondary" style="width:100%;" step="0.5"></div>
+                <div><label class="kpi-lbl">FC Min (%)</label><input id="b-fcmin" type="number" class="btn btn-secondary" style="width:100%;" step="0.5"></div>
+                <div><label class="kpi-lbl">Target Ton</label><input id="b-target" type="number" class="btn btn-secondary" style="width:100%;" value="50"></div>
+              </div>
+              <button class="btn btn-primary" style="width:100%; margin-top:14px;" id="btn-run-blend">Optimasi Campuran (HiGHS) ➔</button>
+            </div>
+            <div>
+              <table class="data-table" id="b-table"><thead><tr><th>Feedstock</th><th class="num">Rp/ton</th><th class="num">Stok (t)</th><th class="num">Air%</th><th class="num">Abu%</th><th class="num">FC%</th></tr></thead><tbody></tbody></table>
+              <div id="b-result-box" style="margin-top:14px;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Engine Sub: Route -->
+        <div id="eng-route" class="eng-sub" style="display:none;">
+          <div class="grid-sidebar">
+            <div>
+              <label style="font-weight:600; font-size:13px;">Armada Pengambilan Sleman-Klaten:</label>
+              <div style="margin-top:8px;">
+                <label class="kpi-lbl">Volume Bak Truk (m³)</label><input id="r-m3" type="number" class="btn btn-secondary" style="width:100%; margin-bottom:8px;" value="30">
+                <label class="kpi-lbl">Densitas Curah Sekam (kg/m³)</label><input id="r-dens" type="number" class="btn btn-secondary" style="width:100%; margin-bottom:8px;" value="110">
+                <label class="kpi-lbl">Biaya Bahan Bakar per km (Rp)</label><input id="r-cost" type="number" class="btn btn-secondary" style="width:100%; margin-bottom:8px;" value="4000">
+              </div>
+              <button class="btn btn-primary" style="width:100%; margin-top:10px;" id="btn-run-route">Hitung Rute Clarke-Wright ➔</button>
+              <div id="r-route-list" style="margin-top:14px;"></div>
+            </div>
+            <div>
+              <div class="kpi-row" id="r-kpis"></div>
+              <div id="map"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 3: ADMIN PANEL -->
+    <div id="tab-admin" class="tab-pane">
+      <div class="kpi-row" id="admin-stats-row"></div>
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h2 class="card-title">👥 Manajemen Pengguna Platform</h2>
+            <p class="card-sub">Daftar persona aktif yang terdaftar dalam ekosistem Bio-Chain</p>
+          </div>
+          <button class="btn btn-outline-green btn-sm" onclick="loadAdminPanel()">Muat Ulang</button>
+        </div>
+        <table class="data-table" id="admin-users-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Nama Lengkap</th>
+              <th>Username / Telepon</th>
+              <th>Role</th>
+              <th>Wilayah</th>
+              <th>XP / Tier</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- QR CODE MODAL POPUP -->
+<div class="modal-overlay" id="qr-modal">
+  <div class="modal-box">
+    <h3 style="margin:0 0 6px;" id="modal-qr-title">Bukti Setor Sekam</h3>
+    <p style="margin:0 0 16px; font-size:13px; color:var(--ink-muted);">Tunjukkan kode QR ini kepada sopir armada saat penjemputan sekam.</p>
+    <div style="background:#f8fafc; border:2px dashed #94a3b8; border-radius:14px; padding:24px; display:inline-block; margin-bottom:16px;">
+      <div style="font-size:54px; letter-spacing:4px; font-family:monospace; font-weight:800; color:#14532d;" id="modal-qr-code">
+        BIO-2026
+      </div>
+      <div style="font-size:12px; color:var(--ink-muted); margin-top:6px;" id="modal-qr-sub">Verifikasi Digital Bio-Chain</div>
+    </div>
+    <div>
+      <button class="btn btn-secondary" onclick="closeModal()">Tutup</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast">
+  <span id="toast-icon">✅</span>
+  <span id="toast-msg">Pesan notifikasi</span>
+</div>
+
+<script>
+// ==============================================================
+// STATE & HELPERS
+// ==============================================================
+const STATE = {
+  token: localStorage.getItem("biochain_token") || null,
+  user: JSON.parse(localStorage.getItem("biochain_user") || "null"),
+  demoAccounts: [],
+  mills: [],
+  selectedRoleKey: null,
+};
+
+const $ = id => document.getElementById(id);
+const rp = n => "Rp " + Math.round(Number(n) || 0).toLocaleString("id-ID");
+const num = (n, d=1) => Number(n || 0).toLocaleString("id-ID", {maximumFractionDigits: d});
+
+function showToast(msg, icon="✅") {
+  const t = $("toast");
+  $("toast-msg").innerText = msg;
+  $("toast-icon").innerText = icon;
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 3500);
+}
+
+function openModal(title, code, sub) {
+  $("modal-qr-title").innerText = title;
+  $("modal-qr-code").innerText = code;
+  $("modal-qr-sub").innerText = sub;
+  $("qr-modal").classList.add("open");
+}
+function closeModal() {
+  $("qr-modal").classList.remove("open");
+}
+
+async function api(path, options = {}) {
+  const headers = options.headers || {};
+  if (options.body && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
+  }
+  if (STATE.token) {
+    headers["Authorization"] = `Bearer ${STATE.token}`;
+  }
+  const res = await fetch(path, {
+    method: options.method || (options.body ? "POST" : "GET"),
+    headers,
+    body: options.body ? JSON.stringify(options.body) : undefined,
+  });
+
+  if (res.status === 401 && STATE.token) {
+    logout("Sesi berakhir, silakan login kembali.");
+    throw new Error("Sesi berakhir");
+  }
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = data.detail || res.statusText || "Terjadi kesalahan";
+    throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
+  }
+  return data;
+}
+
+// ==============================================================
+// INITIALIZATION & AUTH FLOW
+// ==============================================================
+async function initApp() {
+  // Check system status
+  try {
+    const sys = await api("/api/v1/system/status");
+    if ($("db-indicator")) {
+      const isSqlite = sys.database === "sqlite";
+      $("db-indicator").innerText = isSqlite ? "🟢 SQLite Lokal (biochain.db)" : "🔵 PostgreSQL 16";
+      $("db-indicator").className = isSqlite ? "badge badge-green" : "badge badge-blue";
+    }
+  } catch (e) {
+    console.warn("Status check:", e);
+  }
+
+  // Load demo accounts list for login screen
+  try {
+    STATE.demoAccounts = await api("/api/v1/auth/demo-accounts");
+    renderRoleSelector();
+
+    // Support direct role URL query param (?role=petani|pengepul|driver|pabrik|admin&tab=tab-engines)
+    const urlParams = new URLSearchParams(window.location.search);
+    const autoRole = urlParams.get("role");
+    const autoTab = urlParams.get("tab");
+    if (autoRole) {
+      const acc = STATE.demoAccounts.find(a => a.role === autoRole || a.username.includes(autoRole));
+      if (acc) {
+        const res = await api("/api/v1/auth/login", {
+          body: { identifier: acc.username, password: acc.password },
+        });
+        STATE.token = res.access_token;
+        STATE.user = res;
+        localStorage.setItem("biochain_token", res.access_token);
+        localStorage.setItem("biochain_user", JSON.stringify(res));
+        showAuthenticatedApp();
+        if (autoTab) {
+          setTimeout(() => {
+            const tabBtn = document.querySelector(`[data-tab="${autoTab}"]`);
+            if (tabBtn) tabBtn.click();
+          }, 300);
+        }
+        return;
+      }
+    }
+  } catch (e) {
+    console.error("Gagal memuat akun demo:", e);
+  }
+
+  // Check existing session
+  if (STATE.token && STATE.user) {
+    try {
+      const me = await api("/api/v1/auth/me");
+      STATE.user = me;
+      localStorage.setItem("biochain_user", JSON.stringify(me));
+      showAuthenticatedApp();
+      return;
+    } catch (e) {
+      console.warn("Auto-login token expired:", e);
+      logout();
+    }
+  }
+
+  showLoginScreen();
+}
+
+function showLoginScreen() {
+  $("login-view").style.display = "flex";
+  $("app-view").style.display = "none";
+}
+
+function showAuthenticatedApp() {
+  $("login-view").style.display = "none";
+  $("app-view").style.display = "flex";
+
+  const u = STATE.user;
+  $("u-name").innerText = u.full_name || u.username;
+  const roleStr = (u.role || "").toUpperCase();
+  $("u-role-badge").innerText = roleStr;
+
+  const roleIcons = { petani: "🌾", pengepul: "📦", driver: "🚛", pabrik: "🏭", admin: "⚙️" };
+  $("u-icon").innerText = roleIcons[u.role] || "👤";
+
+  // Populate persona switcher dropdown
+  const switcher = $("persona-switcher");
+  switcher.innerHTML = `<option value="">Ganti Akun Demo...</option>` +
+    STATE.demoAccounts.map(a => `<option value="${a.username}">${a.icon} ${a.full_name} (${a.role.toUpperCase()})</option>`).join("");
+  switcher.onchange = (e) => {
+    if (e.target.value) switchPersona(e.target.value);
+  };
+
+  // Render dashboard for user's persona
+  renderPersonaDashboard(u.role);
+}
+
+function renderRoleSelector() {
+  const grid = $("role-selector-grid");
+  if (!grid || !STATE.demoAccounts.length) return;
+
+  grid.innerHTML = STATE.demoAccounts.map(a => `
+    <div class="role-card ${STATE.selectedRoleKey === a.username ? 'active' : ''}" onclick="selectRolePreset('${a.username}')">
+      <span class="r-icon">${a.icon}</span>
+      <div class="r-name">${a.role_label}</div>
+      <div class="r-user">${a.username}</div>
+    </div>
+  `).join("");
+
+  // Select first role by default if none selected
+  if (!STATE.selectedRoleKey && STATE.demoAccounts.length > 0) {
+    selectRolePreset(STATE.demoAccounts[0].username);
+  }
+}
+
+function selectRolePreset(username) {
+  const acc = STATE.demoAccounts.find(a => a.username === username);
+  if (!acc) return;
+
+  STATE.selectedRoleKey = username;
+  document.querySelectorAll(".role-card").forEach(c => c.classList.remove("active"));
+  const cards = document.querySelectorAll(".role-card");
+  const idx = STATE.demoAccounts.findIndex(a => a.username === username);
+  if (cards[idx]) cards[idx].classList.add("active");
+
+  $("login-ident").value = acc.username;
+  $("login-pass").value = acc.password;
+  $("hint-text").innerHTML = `Kredensial demo <b>${acc.full_name}</b> (${acc.role_label}) siap digunakan. Password: <code>${acc.password}</code>`;
+}
+
+// Password toggle
+$("btn-toggle-pass").onclick = () => {
+  const p = $("login-pass");
+  if (p.type === "password") {
+    p.type = "text";
+    $("btn-toggle-pass").innerText = "🙈";
+  } else {
+    p.type = "password";
+    $("btn-toggle-pass").innerText = "👁️";
+  }
+};
+
+// Handle Login Submit
+$("login-form").onsubmit = async (e) => {
+  e.preventDefault();
+  const ident = $("login-ident").value.trim();
+  const pass = $("login-pass").value.trim();
+  const btn = $("btn-submit-login");
+
+  btn.disabled = true;
+  btn.innerText = "Memverifikasi Kredensial...";
+
+  try {
+    const res = await api("/api/v1/auth/login", {
+      body: { identifier: ident, password: pass },
+    });
+    STATE.token = res.access_token;
+    STATE.user = res;
+    localStorage.setItem("biochain_token", res.access_token);
+    localStorage.setItem("biochain_user", JSON.stringify(res));
+
+    showToast(`Selamat datang, ${res.full_name}!`, "🌿");
+    showAuthenticatedApp();
+  } catch (err) {
+    showToast(err.message, "❌");
+  } finally {
+    btn.disabled = false;
+    btn.innerText = "Masuk ke Sistem Bio-Chain ➔";
+  }
+};
+
+// Fast guest login
+$("btn-guest-login").onclick = async () => {
+  selectRolePreset("admin");
+  $("login-form").requestSubmit();
+};
+
+async function switchPersona(targetUsername) {
+  const acc = STATE.demoAccounts.find(a => a.username === targetUsername);
+  if (!acc) return;
+  try {
+    const res = await api("/api/v1/auth/login", {
+      body: { identifier: acc.username, password: acc.password },
+    });
+    STATE.token = res.access_token;
+    STATE.user = res;
+    localStorage.setItem("biochain_token", res.access_token);
+    localStorage.setItem("biochain_user", JSON.stringify(res));
+    showToast(`Beralih persona ke: ${res.full_name}`, acc.icon);
+    showAuthenticatedApp();
+  } catch (err) {
+    showToast("Gagal beralih persona: " + err.message, "❌");
+  }
+}
+
+function logout(msg="Sampai jumpa!") {
+  STATE.token = null;
+  STATE.user = null;
+  localStorage.removeItem("biochain_token");
+  localStorage.removeItem("biochain_user");
+  showToast(msg, "👋");
+  showLoginScreen();
+}
+$("btn-logout").onclick = () => logout();
+
+// Reset demo data button
+$("btn-reset-demo").onclick = async () => {
+  if (!confirm("Reset seluruh data demo ke kondisi awal (users, penggilingan, laporan, rute, pirolisis)?")) return;
+  try {
+    const res = await api("/api/v1/auth/reset-demo", { method: "POST" });
+    showToast(res.message || "Data demo berhasil di-reset!", "🔄");
+    showAuthenticatedApp();
+  } catch (err) {
+    showToast("Gagal reset data: " + err.message, "❌");
+  }
+};
+
+// Tab switching
+document.querySelectorAll(".nav-btn").forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".tab-pane").forEach(p => p.classList.remove("active"));
+    btn.classList.add("active");
+    const pane = $(btn.dataset.tab);
+    if (pane) pane.classList.add("active");
+
+    if (btn.dataset.tab === "tab-engines") {
+      initRoute();
+      initBlend();
+      runQuality();
+    } else if (btn.dataset.tab === "tab-admin") {
+      loadAdminPanel();
+    }
+  };
+});
+
+// ==============================================================
+// 3. PERSONA DASHBOARDS RENDERING
+// ==============================================================
+async function renderPersonaDashboard(role) {
+  const container = $("persona-content");
+  $("nav-persona-btn").innerText = `Portal ${role.toUpperCase()}`;
+
+  if (role === "petani") {
+    container.innerHTML = `
+      <div class="kpi-row" id="petani-kpi">
+        <div class="kpi-tile"><div class="kpi-lbl">Total Laporan Sekam</div><div class="kpi-val" id="p-tot-harvest">0</div><div class="kpi-lbl">Batch</div></div>
+        <div class="kpi-tile kpi-amber"><div class="kpi-lbl">Total Tonase Terkirim</div><div class="kpi-val" id="p-tot-ton">0</div><div class="kpi-lbl">Ton Sekam</div></div>
+        <div class="kpi-tile kpi-purple"><div class="kpi-lbl">XP Gamifikasi</div><div class="kpi-val" id="p-xp">0</div><div class="kpi-lbl" id="p-tier-lbl">Mitra Emas</div></div>
+        <div class="kpi-tile kpi-blue"><div class="kpi-lbl">Harga Acuan Dasar</div><div class="kpi-val">Rp 450</div><div class="kpi-lbl">/ kg Grade A</div></div>
+      </div>
+
+      <div class="grid-2">
+        <!-- Form Lapor Panen -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title">🌾 Lapor Stok Sekam Siap Jual</h3>
+              <p class="card-sub">One-click report untuk penjemputan armada logistik</p>
+            </div>
+          </div>
+          <form id="form-lapor-sekam">
+            <div class="form-group">
+              <label>Jumlah Sekam (kg)</label>
+              <input type="number" id="f-qty" class="btn btn-secondary" style="width:100%; text-align:left;" value="2500" min="100" max="50000" step="50" required>
+            </div>
+            <div class="form-group">
+              <label>Lokasi Penggilingan Padi</label>
+              <select id="f-mill" class="btn btn-secondary" style="width:100%; text-align:left;"></select>
+            </div>
+            <div style="background:var(--primary-soft); padding:12px; border-radius:var(--radius-md); margin-bottom:14px; font-size:13px;">
+              <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                <span>Estimasi Pendapatan:</span>
+                <strong id="f-est-earning" style="color:var(--primary-dark); font-size:16px;">Rp 1.125.000</strong>
+              </div>
+              <span style="font-size:11px; color:var(--ink-muted);">Dihitung dengan pengali mutu Grade A (+10% insentif)</span>
+            </div>
+            <button type="submit" class="btn btn-primary" style="width:100%;">
+              🚀 Kirim Laporan Stok Sekam
+            </button>
+          </form>
+        </div>
+
+        <!-- Riwayat Penyetoran -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title">📜 Riwayat Laporan Sekam</h3>
+              <p class="card-sub">Tracking status verifikasi dan bukti QR setor</p>
+            </div>
+          </div>
+          <div style="overflow-x:auto;">
+            <table class="data-table" id="table-petani-harvests">
+              <thead><tr><th>ID</th><th class="num">Berat (kg)</th><th>Status</th><th>Grade</th><th>QR</th></tr></thead>
+              <tbody><tr><td colspan="5" style="text-align:center;">Memuat data...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Bind event for qty change
+    const updateEarning = () => {
+      const q = Number($("f-qty").value) || 0;
+      $("f-est-earning").innerText = rp(q * 450);
+    };
+    $("f-qty").oninput = updateEarning;
+
+    // Load mills for dropdown
+    const millsData = await api("/supply/mills");
+    $("f-mill").innerHTML = millsData.mills.map(m => `<option value="${m.id}">${m.name} (${m.kecamatan})</option>`).join("");
+
+    // Submit report
+    $("form-lapor-sekam").onsubmit = async (e) => {
+      e.preventDefault();
+      try {
+        const res = await api("/api/v1/farmer/harvest", {
+          body: { quantity_kg: Number($("f-qty").value) },
+        });
+        showToast(res.message || "Laporan berhasil dikirim!", "🎉");
+        openModal("Laporan Sekam Berhasil!", res.qr_code, `${res.quantity_kg} kg · Siap Diambil`);
+        loadPetaniData();
+      } catch (err) {
+        showToast(err.message, "❌");
+      }
+    };
+
+    loadPetaniData();
+  } else if (role === "pengepul") {
+    container.innerHTML = `
+      <div class="kpi-row">
+        <div class="kpi-tile"><div class="kpi-lbl">Antrian Verifikasi</div><div class="kpi-val" id="col-pending">0</div><div class="kpi-lbl">Laporan Petani</div></div>
+        <div class="kpi-tile kpi-amber"><div class="kpi-lbl">Stok Terverifikasi</div><div class="kpi-val" id="col-verified-kg">0</div><div class="kpi-lbl">kg Sekam</div></div>
+        <div class="kpi-tile kpi-blue"><div class="kpi-lbl">Rata-rata Skor Mutu</div><div class="kpi-val" id="col-avg-score">88.5</div><div class="kpi-lbl">Skala 100</div></div>
+      </div>
+
+      <div class="grid-2">
+        <!-- Antrian Verifikasi Sekam -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title">📦 Antrian Sekam Masuk</h3>
+              <p class="card-sub">Pilih batch untuk diverifikasi dengan hasil uji proksimat</p>
+            </div>
+          </div>
+          <div style="overflow-x:auto;">
+            <table class="data-table" id="table-col-queue">
+              <thead><tr><th>ID</th><th>Petani</th><th class="num">kg</th><th>Aksi</th></tr></thead>
+              <tbody><tr><td colspan="4" style="text-align:center;">Memuat antrian...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Form Verifikasi Proksimat -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title">🔬 Uji Mutu Proksimat Sekam</h3>
+              <p class="card-sub" id="col-verify-target">Pilih sekam dari tabel antrian di samping</p>
+            </div>
+          </div>
+          <form id="form-verify-harvest">
+            <input type="hidden" id="v-harvest-id">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+              <div><label class="kpi-lbl">Kadar Air (% bb)</label><input type="number" id="v-moisture" class="btn btn-secondary" style="width:100%;" value="11.2" step="0.1"></div>
+              <div><label class="kpi-lbl">Kadar Abu (% bk)</label><input type="number" id="v-ash" class="btn btn-secondary" style="width:100%;" value="17.8" step="0.1"></div>
+              <div><label class="kpi-lbl">Volatile Matter (%)</label><input type="number" id="v-vm" class="btn btn-secondary" style="width:100%;" value="65.5" step="0.1"></div>
+              <div><label class="kpi-lbl">Fixed Carbon (%)</label><input type="number" id="v-fc" class="btn btn-secondary" style="width:100%;" value="16.7" step="0.1"></div>
+              <div><label class="kpi-lbl">Kontaminan (%)</label><input type="number" id="v-contam" class="btn btn-secondary" style="width:100%;" value="1.2" step="0.1"></div>
+              <div><label class="kpi-lbl">Suhu Pirolisis (°C)</label><input type="number" id="v-temp" class="btn btn-secondary" style="width:100%;" value="500" step="10"></div>
+            </div>
+            <div id="v-preview" style="background:#f8fafc; border:1px solid var(--border); border-radius:var(--radius-md); padding:10px; margin:12px 0; font-size:12px;">
+              Preview Mutu: <b>Grade A</b> · Skor 91.2 · Pengali Harga: <b>×1.10</b>
+            </div>
+            <button type="submit" class="btn btn-primary" style="width:100%;" id="btn-submit-verify" disabled>
+              Verifikasi Mutu &amp; Terbitkan Harga ➔
+            </button>
+          </form>
+        </div>
+      </div>
+    `;
+    loadCollectorData();
+  } else if (role === "driver") {
+    container.innerHTML = `
+      <div class="kpi-row">
+        <div class="kpi-tile"><div class="kpi-lbl">Status Rute</div><div class="kpi-val" id="d-status">AKTIF</div><div class="kpi-lbl" id="d-plate">AB 8452 QE</div></div>
+        <div class="kpi-tile kpi-blue"><div class="kpi-lbl">Total Jarak</div><div class="kpi-val" id="d-km">42.8</div><div class="kpi-lbl">km penjemputan</div></div>
+        <div class="kpi-tile kpi-amber"><div class="kpi-lbl">Penghematan Jarak</div><div class="kpi-val" id="d-saving">37.5%</div><div class="kpi-lbl">vs satu per satu</div></div>
+        <div class="kpi-tile kpi-purple"><div class="kpi-lbl">Utilisasi Bak</div><div class="kpi-val" id="d-util">95.3%</div><div class="kpi-lbl">30 m³ kapasitas</div></div>
+      </div>
+
+      <div class="grid-sidebar">
+        <!-- Stops list -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title">🚛 Titik Penjemputan Sekam</h3>
+              <p class="card-sub">Scan QR petani di setiap penggilingan</p>
+            </div>
+          </div>
+          <div id="driver-stops-list">Memuat daftar stop...</div>
+        </div>
+
+        <!-- Map Leaflet -->
+        <div>
+          <div class="card" style="padding:10px;">
+            <div id="driver-map" style="height:480px; border-radius:12px;"></div>
+          </div>
+        </div>
+      </div>
+    `;
+    loadDriverData();
+  } else if (role === "pabrik") {
+    container.innerHTML = `
+      <div class="kpi-row">
+        <div class="kpi-tile"><div class="kpi-lbl">Emisi Karbon Dihindari</div><div class="kpi-val" id="f-co2">45.48</div><div class="kpi-lbl">tCO₂e (IPCC Tier 2)</div></div>
+        <div class="kpi-tile kpi-amber"><div class="kpi-lbl">Output Biochar</div><div class="kpi-val" id="f-biochar">18.5</div><div class="kpi-lbl">Ton Biochar Terverifikasi</div></div>
+        <div class="kpi-tile kpi-blue"><div class="kpi-lbl">Potensi Biosilika SiO₂</div><div class="kpi-val" id="f-sio2">7.2</div><div class="kpi-lbl">Ton Kemurnian Tinggi</div></div>
+        <div class="kpi-tile kpi-purple"><div class="kpi-lbl">Status Sertifikasi</div><div class="kpi-val" style="font-size:18px;">SRN-PPI Eligible</div><div class="kpi-lbl">Perpres 110/2025 NEK</div></div>
+      </div>
+
+      <div class="grid-2">
+        <!-- 30 Days Forecast Chart -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title">📈 Proyeksi Pasokan Sekam 30 Hari</h3>
+              <p class="card-sub">Model cosinus musiman panen Sleman &amp; Klaten (BPS)</p>
+            </div>
+          </div>
+          <canvas id="factory-forecast-chart" height="150"></canvas>
+        </div>
+
+        <!-- ESG Carbon Calculator -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title">🌿 Kalkulator Pengurangan Emisi Karbon</h3>
+              <p class="card-sub">Metodologi IPCC 2006 Tier 2 untuk pirolisis biochar</p>
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+            <div><label class="kpi-lbl">Biomassa Sekam (ton)</label><input type="number" id="c-ton" class="btn btn-secondary" style="width:100%;" value="50"></div>
+            <div><label class="kpi-lbl">Jarak Angkut (km)</label><input type="number" id="c-km" class="btn btn-secondary" style="width:100%;" value="45"></div>
+          </div>
+          <button class="btn btn-primary" style="width:100%; margin-top:12px;" onclick="calcCarbon()">Hitung Pengurangan CO₂ ➔</button>
+          <div id="carbon-res-box" style="margin-top:12px;"></div>
+        </div>
+      </div>
+    `;
+    loadFactoryData();
+  } else if (role === "admin") {
+    container.innerHTML = `
+      <div class="kpi-row" id="admin-summary-kpis">
+        <div class="kpi-tile"><div class="kpi-lbl">Total Pengguna</div><div class="kpi-val" id="a-tot-users">6</div><div class="kpi-lbl">5 Persona Aktif</div></div>
+        <div class="kpi-tile kpi-amber"><div class="kpi-lbl">Penggilingan Padi</div><div class="kpi-val" id="a-tot-mills">36</div><div class="kpi-lbl">Sleman &amp; Klaten</div></div>
+        <div class="kpi-tile kpi-blue"><div class="kpi-lbl">Laporan Sekam</div><div class="kpi-val" id="a-tot-harvests">5</div><div class="kpi-lbl">Batch Transaksi</div></div>
+        <div class="kpi-tile kpi-purple"><div class="kpi-lbl">Armada Logistik</div><div class="kpi-val" id="a-tot-routes">1</div><div class="kpi-lbl">Rute Penjemputan</div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h3 class="card-title">⚙️ Kendali Platform &amp; Data Demo</h3>
+            <p class="card-sub">Operasional sistem Bio-Chain v2</p>
+          </div>
+        </div>
+        <div style="display:flex; gap:12px; flex-wrap:wrap;">
+          <button class="btn btn-primary" onclick="$('btn-reset-demo').click()">
+            🔄 Reset &amp; Re-seed Data Demo Lengkap
+          </button>
+          <button class="btn btn-secondary" onclick="document.querySelector('[data-tab=tab-engines]').click()">
+            🧪 Buka Lab 7 Engine
+          </button>
+          <button class="btn btn-secondary" onclick="document.querySelector('[data-tab=tab-admin]').click()">
+            👥 Buka Daftar Seluruh User
+          </button>
+        </div>
+      </div>
+    `;
+  }
+}
+
+// ==============================================================
+// 4. PERSONA DATA LOADERS
+// ==============================================================
+async function loadPetaniData() {
+  try {
+    const [harvests, inc] = await Promise.all([
+      api("/api/v1/farmer/harvests"),
+      api("/api/v1/farmer/incentive"),
+    ]);
+
+    if ($("p-tot-harvest")) $("p-tot-harvest").innerText = inc.total_harvests;
+    if ($("p-tot-ton")) $("p-tot-ton").innerText = (inc.total_kg / 1000).toFixed(1);
+    if ($("p-xp")) $("p-xp").innerText = inc.xp_total;
+    if ($("p-tier-lbl")) $("p-tier-lbl").innerText = `Tier ${inc.tier.toUpperCase()}`;
+
+    const tbody = $("table-petani-harvests").querySelector("tbody");
+    if (!harvests.length) {
+      tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;">Belum ada laporan sekam.</td></tr>`;
+      return;
+    }
+
+    const badgeClass = s => {
+      if (s === "delivered") return "badge-green";
+      if (s === "verified") return "badge-blue";
+      if (s === "collected") return "badge-purple";
+      return "badge-amber";
+    };
+
+    tbody.innerHTML = harvests.map(h => `
+      <tr>
+        <td>#${h.id}</td>
+        <td class="num"><b>${num(h.quantity_kg, 0)}</b></td>
+        <td><span class="badge ${badgeClass(h.status)}">${h.status}</span></td>
+        <td>${h.grade ? `<b>${h.grade}</b>` : '-'}</td>
+        <td>
+          <button class="btn btn-secondary btn-sm" onclick="openModal('QR Setor Sekam #${h.id}', '${h.qr_code}', '${num(h.quantity_kg, 0)} kg Sekam')">
+            QR 👁️
+          </button>
+        </td>
+      </tr>
+    `).join("");
+  } catch (err) {
+    console.error("loadPetaniData:", err);
+  }
+}
+
+async function loadCollectorData() {
+  try {
+    const list = await api("/api/v1/collector/available-harvests");
+    if ($("col-pending")) $("col-pending").innerText = list.length;
+
+    const tbody = $("table-col-queue").querySelector("tbody");
+    if (!list.length) {
+      tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;">Tidak ada antrian sekam menunggu verifikasi.</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = list.map(item => `
+      <tr>
+        <td>#${item.id}</td>
+        <td><b>${item.farmer_name || 'Petani'}</b><br><span style="font-size:11px; color:var(--ink-muted);">${item.kecamatan || '-'}</span></td>
+        <td class="num">${num(item.quantity_kg, 0)}</td>
+        <td>
+          <button class="btn btn-primary btn-sm" onclick="selectVerifyItem(${item.id}, ${item.quantity_kg}, '${item.farmer_name}')">
+            Uji 🔬
+          </button>
+        </td>
+      </tr>
+    `).join("");
+  } catch (err) {
+    console.error("loadCollectorData:", err);
+  }
+}
+
+function selectVerifyItem(id, kg, name) {
+  $("v-harvest-id").value = id;
+  $("col-verify-target").innerText = `Memverifikasi Sekam #${id} dari ${name} (${num(kg,0)} kg)`;
+  $("btn-submit-verify").disabled = false;
+  $("btn-submit-verify").innerText = `Verifikasi Mutu #${id} ➔`;
+}
+
+$("form-verify-harvest") && ($("form-verify-harvest").onsubmit = async (e) => {
+  e.preventDefault();
+  const id = $("v-harvest-id").value;
+  if (!id) return;
+
+  try {
+    const res = await api("/api/v1/collector/verify", {
+      body: {
+        harvest_id: Number(id),
+        moisture: Number($("v-moisture").value),
+        ash: Number($("v-ash").value),
+        volatile_matter: Number($("v-vm").value),
+        fixed_carbon: Number($("v-fc").value),
+        contamination: Number($("v-contam").value),
+        pyrolysis_temp_c: Number($("v-temp").value),
+      },
+    });
+    showToast(res.message, "✅");
+    loadCollectorData();
+    $("btn-submit-verify").disabled = true;
+    $("col-verify-target").innerText = `Pilih sekam dari tabel antrian di samping`;
+  } catch (err) {
+    showToast(err.message, "❌");
+  }
+});
+
+let driverMap, driverLayer;
+async function loadDriverData() {
+  try {
+    const route = await api("/api/v1/driver/active-route");
+    if (!route.active) {
+      $("driver-stops-list").innerHTML = `<p class="muted">Tidak ada rute aktif saat ini.</p>`;
+      return;
+    }
+
+    if ($("d-status")) $("d-status").innerText = route.status.toUpperCase();
+    if ($("d-km")) $("d-km").innerText = route.total_km;
+    if ($("d-plate")) $("d-plate").innerText = route.vehicle_plate || "Truk 01";
+    if ($("d-util")) $("d-util").innerText = `${route.utilization_pct || 95}%`;
+
+    const stopsContainer = $("driver-stops-list");
+    stopsContainer.innerHTML = route.stops.map(s => `
+      <div style="background:#fff; border:1px solid var(--border); border-radius:var(--radius-md); padding:12px; margin-bottom:10px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <strong>Stop #${s.order}: ${s.mill ? s.mill.name : `Penggilingan #${s.mill_id}`}</strong>
+            <div style="font-size:12px; color:var(--ink-muted); margin-top:2px;">
+              ${s.planned_ton} Ton · ${s.picked_up ? '✅ Selesai Diambil' : '⏳ Menunggu Diambil'}
+            </div>
+          </div>
+          <div>
+            ${s.picked_up
+              ? '<span class="badge badge-green">SELESAI</span>'
+              : `<button class="btn btn-primary btn-sm" onclick="confirmPickupStop(${s.id})">Scan QR 📷</button>`
+            }
+          </div>
+        </div>
+      </div>
+    `).join("");
+
+    // Initialize Driver Map
+    setTimeout(() => {
+      if (!driverMap) {
+        driverMap = L.map("driver-map").setView([-7.74, 110.36], 12);
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OSM" }).addTo(driverMap);
+        driverLayer = L.layerGroup().addTo(driverMap);
+      }
+      driverLayer.clearLayers();
+
+      const waypoints = [];
+      route.stops.forEach(s => {
+        if (s.mill && s.mill.lat && s.mill.lon) {
+          waypoints.push([s.mill.lat, s.mill.lon]);
+          L.circleMarker([s.mill.lat, s.mill.lon], {
+            radius: 8,
+            color: s.picked_up ? "#15803d" : "#d97706",
+            fillColor: s.picked_up ? "#22c55e" : "#f59e0b",
+            fillOpacity: 0.9,
+          }).addTo(driverLayer).bindPopup(`<b>Stop #${s.order}: ${s.mill.name}</b><br>${s.planned_ton} Ton Sekam`);
+        }
+      });
+      if (waypoints.length > 1) {
+        L.polyline(waypoints, { color: "#2563eb", weight: 4, dashArray: "5, 10" }).addTo(driverLayer);
+        driverMap.fitBounds(waypoints, { padding: [30, 30] });
+      }
+    }, 100);
+
+  } catch (err) {
+    console.error("loadDriverData:", err);
+  }
+}
+
+async function confirmPickupStop(stopId) {
+  const code = prompt("Masukkan QR Code Petani (misal: BIO-HVK2601):", "BIO-HVK2601");
+  if (!code) return;
+
+  try {
+    const res = await api("/api/v1/driver/confirm-pickup", {
+      body: { route_stop_id: stopId, qr_code: code },
+    });
+    showToast(res.message || "Pickup berhasil dikonfirmasi!", "🎉");
+    loadDriverData();
+  } catch (err) {
+    showToast(err.message, "❌");
+  }
+}
+
+let factoryChart;
+async function loadFactoryData() {
+  try {
+    const [esg, forecastData] = await Promise.all([
+      api("/api/v1/factory/esg/summary").catch(() => null),
+      api("/api/v1/factory/forecast/30d?harvest_area_ha=600").catch(() => null),
+    ]);
+
+    if (esg) {
+      if ($("f-co2")) $("f-co2").innerText = num(esg.net_carbon_credits_tco2, 2);
+      if ($("f-biochar")) $("f-biochar").innerText = num(esg.total_biomass_ton * 0.37, 1);
+    }
+
+    if (forecastData && forecastData.points) {
+      const labels = forecastData.points.map(p => p.date.slice(5));
+      const values = forecastData.points.map(p => p.pred_husk_ton);
+
+      const ctx = $("factory-forecast-chart");
+      if (ctx) {
+        if (factoryChart) factoryChart.destroy();
+        factoryChart = new Chart(ctx, {
+          type: "line",
+          data: {
+            labels,
+            datasets: [{
+              label: "Prediksi Pasokan Sekam (Ton/Hari)",
+              data: values,
+              borderColor: "#15803d",
+              backgroundColor: "rgba(34, 197, 94, 0.12)",
+              fill: true,
+              tension: 0.3,
+            }],
+          },
+          options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: { y: { title: { display: true, text: "Ton Sekam" } } },
+          },
+        });
+      }
+    }
+  } catch (err) {
+    console.error("loadFactoryData:", err);
+  }
+}
+
+async function calcCarbon() {
+  const ton = Number($("c-ton").value) || 50;
+  const km = Number($("c-km").value) || 45;
+  try {
+    const res = await api("/carbon/calculate", {
+      biomass_ton: ton,
+      transport_km: km,
+      feedstock_type: "rice_husk",
+    });
+    $("carbon-res-box").innerHTML = `
+      <div style="background:var(--primary-soft); border:1px solid var(--primary-border); border-radius:var(--radius-md); padding:12px; font-size:13px;">
+        <div style="font-size:18px; font-weight:800; color:var(--primary-dark); margin-bottom:4px;">
+          🌿 Net Reduksi: ${num(res.net_reduction_tco2, 2)} tCO₂e
+        </div>
+        <div>Emisi dihindari (open burning): ${num(res.emission_avoided_tco2, 2)} tCO₂e</div>
+        <div>Emisi logistik angkut: ${num(res.transport_emission_tco2, 3)} tCO₂e</div>
+        <div style="margin-top:6px; font-size:11px; color:var(--ink-muted);">Potensi Nilai NEK: ${rp(res.net_reduction_tco2 * 150000)} (Rp 150.000/tCO₂e)</div>
+      </div>
+    `;
+  } catch (err) {
+    showToast(err.message, "❌");
+  }
+}
+
+async function loadAdminPanel() {
+  try {
+    const [stats, users] = await Promise.all([
+      api("/api/v1/admin/stats"),
+      api("/api/v1/admin/users"),
+    ]);
+
+    const statsRow = $("admin-stats-row");
+    if (statsRow) {
+      statsRow.innerHTML = `
+        <div class="kpi-tile"><div class="kpi-lbl">Total Pengguna</div><div class="kpi-val">${stats.total_users}</div><div class="kpi-lbl">User Terdaftar</div></div>
+        <div class="kpi-tile kpi-amber"><div class="kpi-lbl">Total Penggilingan</div><div class="kpi-val">${stats.total_mills}</div><div class="kpi-lbl">Titik Pemasok</div></div>
+        <div class="kpi-tile kpi-blue"><div class="kpi-lbl">Total Laporan Panen</div><div class="kpi-val">${stats.total_harvests}</div><div class="kpi-lbl">Transaksi Sekam</div></div>
+        <div class="kpi-tile kpi-purple"><div class="kpi-lbl">Rute Armada</div><div class="kpi-val">${stats.total_routes}</div><div class="kpi-lbl">Rute Pengiriman</div></div>
+      `;
+    }
+
+    const tbody = $("admin-users-table").querySelector("tbody");
+    tbody.innerHTML = users.map(u => `
+      <tr>
+        <td>#${u.id}</td>
+        <td><b>${u.full_name}</b></td>
+        <td><code>${u.phone}</code></td>
+        <td><span class="badge badge-green">${u.role.toUpperCase()}</span></td>
+        <td>${u.kecamatan || 'Sleman'}</td>
+        <td>${u.xp_total || 0} XP</td>
+        <td>${u.is_active ? '🟢 Aktif' : '🔴 Nonaktif'}</td>
+      </tr>
+    `).join("");
+  } catch (err) {
+    console.error("loadAdminPanel:", err);
+  }
+}
+
+// ==============================================================
+// 5. ENGINE LAB STANDALONE LOGIC
+// ==============================================================
+function switchEngineSub(subId) {
+  document.querySelectorAll(".eng-sub").forEach(e => e.style.display = "none");
+  const el = $(subId);
+  if (el) el.style.display = "block";
+  if (subId === "eng-route") setTimeout(() => map && map.invalidateSize(), 60);
+}
+
+let qChart;
+async function runQuality() {
+  const body = {
+    moisture: +$("q-moisture").value,
+    contamination: +$("q-contam").value,
+    ash: +$("q-ash").value,
+    volatile_matter: +$("q-vm").value,
+    fixed_carbon: +$("q-fc").value,
+    pyrolysis_temp_c: +$("q-temp").value,
+  };
+  try {
+    const [r, curve] = await Promise.all([
+      api("/quality/score", { body }),
+      api(`/quality/yield-curve?ash=${body.ash}`),
+    ]);
+
+    $("q-result-box").innerHTML = `
+      <div style="background:var(--primary-soft); border:1px solid var(--primary-border); border-radius:var(--radius-md); padding:12px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <div><strong style="font-size:18px;">Grade ${r.grade}</strong> (Skor: ${num(r.score)}/100)</div>
+          <span class="badge badge-green">Pengali: ×${r.price_multiplier.toFixed(2)}</span>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; font-size:12px;">
+          <div>Rendemen Biochar: <b>${num(r.pred_biochar_yield_pct_db)}%</b></div>
+          <div>Biochar per Ton: <b>${num(r.biochar_kg_per_ton_received,0)} kg</b></div>
+          <div>Estimasi SiO₂: <b>${num(r.pred_sio2_in_biochar_pct)}%</b></div>
+          <div>Biosilika per Ton: <b>${num(r.sio2_kg_per_ton_received,0)} kg</b></div>
+        </div>
+      </div>
+    `;
+
+    const data = {
+      labels: curve.map(p => p.temp_c + "°C"),
+      datasets: [{
+        label: "Rendemen biochar (%)",
+        data: curve.map(p => p.yield_pct),
+        borderColor: "#15803d",
+        backgroundColor: "rgba(22, 163, 74, 0.15)",
+        fill: true,
+        tension: 0.3,
+        pointRadius: curve.map(p => p.temp_c === Math.round(body.pyrolysis_temp_c/25)*25 ? 6 : 0),
+      }],
+    };
+
+    if (qChart) {
+      qChart.data = data;
+      qChart.update();
+    } else {
+      qChart = new Chart($("q-chart"), {
+        type: "line",
+        data,
+        options: { plugins: { legend: { display: false } }, scales: { y: { title: { display: true, text: "% bk" } } } },
+      });
+    }
+  } catch (err) {
+    $("q-result-box").innerHTML = `<div class="badge" style="background:#fee2e2; color:#b91c1c;">${err.message}</div>`;
+  }
+}
+$("btn-run-quality") && ($("btn-run-quality").onclick = runQuality);
+
+let blendDefaults;
+async function initBlend() {
+  if (blendDefaults) return;
+  blendDefaults = await api("/blend/defaults");
+  $("b-product").innerHTML = Object.entries(blendDefaults.products).map(([k,v]) => `<option value="${k}">${v.label}</option>`).join("");
+  $("b-product").onchange = fillBlendSpec;
+  fillBlendSpec();
+
+  $("b-table").querySelector("tbody").innerHTML = blendDefaults.feedstocks.map(f => `
+    <tr data-id="${f.id}" data-name="${f.name}">
+      <td><b>${f.name}</b></td>
+      <td class="num">${rp(f.cost_per_ton)}</td>
+      <td class="num">${f.stock_ton} t</td>
+      <td class="num">${f.moisture}%</td>
+      <td class="num">${f.ash}%</td>
+      <td class="num">${f.fixed_carbon}%</td>
+    </tr>
+  `).join("");
+}
+
+function fillBlendSpec() {
+  if (!blendDefaults) return;
+  const p = blendDefaults.products[$("b-product").value];
+  if (!p) return;
+  const s = p.spec;
+  $("b-mmax").value = s.moisture_max ?? "";
+  $("b-amax").value = s.ash_max ?? "";
+  $("b-fcmin").value = s.fixed_carbon_min ?? "";
+}
+
+async function runBlend() {
+  if (!blendDefaults) await initBlend();
+  const opt = v => v === "" ? null : +v;
+  const body = {
+    feedstocks: blendDefaults.feedstocks,
+    target_ton: +$("b-target").value,
+    pyrolysis_temp_c: 500,
+    spec: {
+      moisture_max: opt($("b-mmax").value),
+      ash_max: opt($("b-amax").value),
+      fixed_carbon_min: opt($("b-fcmin").value),
+    },
+  };
+  try {
+    const r = await api("/blend/recommend", { body });
+    if (!r.feasible) {
+      $("b-result-box").innerHTML = `<div style="background:#fef2f2; color:#991b1b; padding:10px; border-radius:8px;">${r.message}</div>`;
+      return;
+    }
+    $("b-result-box").innerHTML = `
+      <div style="background:var(--primary-soft); border:1px solid var(--primary-border); border-radius:var(--radius-md); padding:12px; font-size:13px;">
+        <div style="font-size:16px; font-weight:800; color:var(--primary-dark); margin-bottom:4px;">
+          Biaya Campuran: ${rp(r.cost_per_ton)} / ton
+        </div>
+        <div>Output Biochar: <b>${num(r.pred_biochar_output_ton)} Ton</b> · Potensi SiO₂: <b>${num(r.pred_sio2_ton)} Ton</b></div>
+        <div style="margin-top:6px;">Komposisi: ${r.composition.map(c => `<b>${c.name}</b> (${num(c.share_pct)}%)`).join(", ")}</div>
+      </div>
+    `;
+  } catch (err) {
+    showToast(err.message, "❌");
+  }
+}
+$("btn-run-blend") && ($("btn-run-blend").onclick = runBlend);
+
+let map, routeLayer;
+const COLORS = ["#15803d","#b45309","#1d4ed8","#b91c1c","#047857","#7c3aed","#0f766e"];
+async function initRoute() {
+  if (map) return;
+  map = L.map("map").setView([-7.71, 110.46], 11);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OSM" }).addTo(map);
+  routeLayer = L.layerGroup().addTo(map);
+
+  const { depot, mills } = await api("/supply/mills");
+  L.marker([depot.lat, depot.lon]).addTo(map).bindPopup(`<b>🏭 ${depot.name}</b>`);
+  mills.forEach(m => {
+    L.circleMarker([m.lat, m.lon], { radius: 5 + m.stock_ton * 2, color: "#166534", fillColor: "#86efac", fillOpacity: 0.85 })
+      .addTo(map).bindPopup(`<b>${m.name}</b><br>Stok: ${m.stock_ton} t · Grade ${m.grade}`);
+  });
+}
+
+async function runRoute() {
+  const body = {
+    vehicle_m3: +$("r-m3").value,
+    bulk_density_kg_m3: +$("r-dens").value,
+    cost_per_km: +$("r-cost").value,
+  };
+  try {
+    const r = await api("/routes/optimize", { body });
+    const s = r.summary;
+    $("r-kpis").innerHTML = `
+      <div class="kpi-tile"><div class="kpi-lbl">Penghematan Jarak</div><div class="kpi-val">${num(s.saving_pct)}%</div><div class="kpi-lbl">vs jemput satu per satu</div></div>
+      <div class="kpi-tile kpi-blue"><div class="kpi-lbl">Total Jarak</div><div class="kpi-val">${num(s.total_km)} km</div><div class="kpi-lbl">baseline ${num(s.baseline_km)} km</div></div>
+      <div class="kpi-tile kpi-amber"><div class="kpi-lbl">Biaya per Ton</div><div class="kpi-val">${rp(s.cost_per_ton)}</div><div class="kpi-lbl">${s.vehicles_trips} trip logistik</div></div>
+    `;
+
+    routeLayer.clearLayers();
+    r.routes.forEach((rt, i) => {
+      L.polyline(rt.path, { color: COLORS[i % COLORS.length], weight: 4, opacity: 0.85 }).addTo(routeLayer)
+        .bindPopup(`<b>Trip ${i+1}</b><br>${rt.km} km · ${rt.load_ton} Ton · Utilisasi: ${num(rt.utilization_pct)}%`);
+    });
+
+    $("r-route-list").innerHTML = `
+      <table class="data-table"><thead><tr><th>Trip</th><th class="num">Titik</th><th class="num">km</th><th class="num">Isi</th></tr></thead>
+      <tbody>${r.routes.map((rt,i) => `
+        <tr><td><span style="color:${COLORS[i % COLORS.length]}">■</span> Trip ${i+1}</td><td class="num">${rt.stops.length}</td><td class="num">${num(rt.km)}</td><td class="num">${num(rt.utilization_pct,0)}%</td></tr>
+      `).join("")}</tbody></table>
+    `;
+  } catch (err) {
+    showToast(err.message, "❌");
+  }
+}
+$("btn-run-route") && ($("btn-run-route").onclick = runRoute);
+
+// Start
+initApp();
+</script>
+</body>
+</html>

@@ -1,0 +1,75 @@
+"""Authentication & authorization dependencies.
+
+JWT-based auth with role guard untuk multi-persona access control.
+Login via nomor telepon — cocok untuk semua level literasi.
+"""
+
+from datetime import datetime, timedelta, timezone
+from typing import Annotated
+
+import jwt
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+
+from .config import settings
+from .database import get_db
+from .models.user import User, UserRole
+
+security = HTTPBearer(auto_error=False)
+
+
+def create_access_token(user_id: int, role: str) -> str:
+    """Buat JWT access token dengan payload {sub, role, exp}."""
+    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.JWT_EXPIRE_MINUTES)
+    payload = {"sub": str(user_id), "role": role, "exp": expire}
+    return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
+
+
+async def get_current_user(
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> User:
+    """Dependency: extract dan validasi user dari JWT token."""
+    if credentials is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token diperlukan")
+
+    try:
+        payload = jwt.decode(
+            credentials.credentials,
+            settings.JWT_SECRET,
+            algorithms=[settings.JWT_ALGORITHM],
+        )
+        user_id = int(payload["sub"])
+    except (jwt.ExpiredSignatureError,):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token kedaluwarsa")
+    except (jwt.InvalidTokenError, KeyError, ValueError):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token tidak valid")
+
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user or not user.is_active:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User tidak ditemukan atau nonaktif")
+    return user
+
+
+def require_role(*allowed_roles: UserRole):
+    """Dependency factory: hanya izinkan role tertentu mengakses endpoint.
+
+    Contoh:
+        @router.get("/admin-only")
+        async def admin_endpoint(user = Depends(require_role(UserRole.ADMIN))):
+            ...
+    """
+    async def role_checker(
+        user: Annotated[User, Depends(get_current_user)],
+    ) -> User:
+        user_role_str = user.role.value if hasattr(user.role, 'value') else str(user.role)
+        if user_role_str not in [r.value for r in allowed_roles]:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                f"Akses ditolak. Dibutuhkan role: {', '.join(r.value for r in allowed_roles)}",
+            )
+        return user
+    return role_checker
