@@ -90,7 +90,8 @@ async def lifespan(app: FastAPI):
 
     # 4. Background tasks (e.g. PostgreSQL LISTEN for real-time parameter invalidation)
     listener_task = None
-    if db_module.active_driver == "postgresql" and settings.DATABASE_URL.startswith("postgresql"):
+    # Transaction pooler (PGBOUNCER) tidak mendukung LISTEN/NOTIFY; parameter tetap dimuat saat startup
+    if db_module.active_driver == "postgresql" and settings.DATABASE_URL.startswith("postgresql") and not settings.PGBOUNCER:
         listener_task = asyncio.create_task(start_pg_listener(settings.DATABASE_URL))
 
     yield

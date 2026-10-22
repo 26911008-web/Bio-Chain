@@ -45,6 +45,7 @@ def _postgres_engine(url: str):
                                         "idle_in_transaction_session_timeout": "30000"}}
     if settings.PGBOUNCER:
         connect_args["statement_cache_size"] = 0          # wajib untuk PgBouncer transaction pooling
+        connect_args["prepared_statement_cache_size"] = 0 # cache prepared statement SQLAlchemy juga (Supavisor :6543)
     if settings.DB_NULLPOOL:
         # Koneksi asyncpg terikat ke event loop pembuatnya; harness tes membuat banyak loop (TestClient,
         # asyncio.run). Produksi (1 loop per proses Uvicorn) tetap memakai pool.
