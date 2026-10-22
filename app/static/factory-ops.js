@@ -31,6 +31,18 @@
         <p class="card-sub">Pengajuan petani untuk sawah. Dompet petani baru berkurang saat karung diserahkan.</p></div></div>
       <div id="fx-br"><p class="muted">Memuat…</p></div></section>` : ""}
 
+    <section class="card" aria-labelledby="fx-bm-title">
+      <div class="card-header"><div><h3 class="card-title" id="fx-bm-title">🌾 Master Multi-Biomassa</h3>
+        <p class="card-sub">Nilai awal = titik tengah literatur (docs/15). Ganti dengan hasil lab per lot; harga dasar beli WAJIB diisi pabrik (tanpa angka bawaan).</p></div></div>
+      <div id="fx-bm"><p class="muted">Memuat…</p></div></section>
+
+    <section class="card" aria-labelledby="fx-ash-title">
+      <div class="card-header"><div><h3 class="card-title" id="fx-ash-title">🪨 Ledger Abu → Kelompok Tani</h3>
+        <p class="card-sub">Abu boiler/pirolisis hanya boleh ke lahan bila lulus uji logam berat (Kepmentan 261/2019). Serah-terima wajib foto &amp; titik lahan.</p></div>
+        ${canWrite() ? `<div style="display:flex; gap:8px; flex-wrap:wrap;"><button type="button" class="btn btn-secondary btn-sm" id="fx-grp-new">➕ Poktan</button>
+          <button type="button" class="btn btn-primary btn-sm" id="fx-ash-new">➕ Catat abu</button></div>` : ""}</div>
+      <div id="fx-ash"><p class="muted">Memuat…</p></div></section>
+
     <section class="card" aria-labelledby="fx-ch-title">
       <div class="card-header"><div><h3 class="card-title" id="fx-ch-title">🚚 Potongan Logistik Pengepul</h3>
         <p class="card-sub">Ongkos jarak kosong (batal saat truk di jalan / stok tidak ada). Dipotong otomatis saat tagihan pengepul ditandai lunas.</p></div></div>
@@ -290,6 +302,162 @@
     } catch (e) { showToast("Gagal mengunduh: " + e.message, "❌"); }
   }
 
+  // ---------------------------------------------------------------- multi-biomassa & abu (018)
+  const ASH_BADGE = { tersedia: "badge-gray", dialokasikan: "badge-blue", diserahkan: "badge-green", dibuang: "badge-red" };
+  const HM_BADGE = { belum_uji: "badge-gray", lulus: "badge-green", gagal: "badge-red" };
+  let bmCache = [], grpCache = [];
+  const alkali = (b) => (b.hhv_db_mj_kg && b.k2o_pct_ash != null
+    ? b.ash_pct_db * ((b.k2o_pct_ash || 0) + (b.na2o_pct_ash || 0)) / (10 * b.hhv_db_mj_kg) : null);
+
+  function dlg(title, body, onOk) {
+    const d = document.createElement("dialog");
+    d.className = "ui-confirm";
+    d.innerHTML = `<form method="dialog"><h3>${H(title)}</h3><div>${body}</div><p class="form-error" role="alert" hidden></p>
+      <div class="ui-confirm-actions"><button value="no" class="btn btn-secondary" formnovalidate>Batal</button>
+      <button value="yes" class="btn btn-primary">Simpan</button></div></form>`;
+    document.body.appendChild(d);
+    const f = d.querySelector("form"), err = d.querySelector(".form-error");
+    f.addEventListener("submit", async (e) => {
+      if (e.submitter && e.submitter.value === "no") return;
+      e.preventDefault();
+      if (!f.reportValidity()) return;
+      try { await onOk(new FormData(f)); d.close(); } catch (ex) { err.hidden = false; err.textContent = ex.message; }
+    });
+    d.addEventListener("close", () => d.remove());
+    d.showModal();
+  }
+  const numOrNull = (v) => (v === "" || v == null ? null : Number(v));
+
+  async function loadBiomass() {
+    const box = $("fx-bm");
+    if (!box) return;
+    try {
+      bmCache = await api("/api/v1/biomass");
+      box.innerHTML = `<div class="table-scroll"><table class="data-table"><thead><tr><th>Komoditas</th><th class="num">MC tipikal / acuan / tolak (%)</th>
+        <th class="num">Abu (% bk)</th><th class="num">LHV bk (MJ/kg)</th><th class="num">Indeks alkali (kg/GJ)</th><th class="num">Harga dasar</th><th></th></tr></thead>
+        <tbody>${bmCache.map(b => { const ai = alkali(b); return `<tr>
+          <td><b>${H(b.name)}</b><br><span class="kpi-lbl" title="${H(b.source)}">${H(b.code)}</span></td>
+          <td class="num">${num(b.moisture_typ_pct, 0)} / ${num(b.moisture_ref_pct, 0)} / ${num(b.moisture_reject_pct, 0)}</td>
+          <td class="num">${num(b.ash_pct_db, 1)}</td><td class="num">${num(b.lhv_db_mj_kg, 1)}</td>
+          <td class="num">${ai == null ? "–" : `<span class="badge ${ai > 0.34 ? "badge-red" : ai > 0.17 ? "badge-amber" : "badge-green"}" title="Miles 1996: >0,17 mungkin terak, >0,34 hampir pasti">${num(ai, 2)}</span>`}</td>
+          <td class="num">${b.base_price_per_kg == null ? '<span class="badge badge-amber">belum diisi</span>' : rp(b.base_price_per_kg) + "/kg"}</td>
+          <td>${canWrite() ? `<button type="button" class="btn btn-secondary btn-sm" data-fx-bm="${H(b.code)}">Ubah</button>` : ""}</td></tr>`; }).join("")}</tbody></table></div>`;
+    } catch (e) { box.innerHTML = `<div class="banner banner-error" role="alert">⚠️ ${H(e.message)}</div>`; }
+  }
+
+  function editBiomass(code) {
+    const b = bmCache.find(x => x.code === code);
+    if (!b) return;
+    const f = (k, label, step = "0.1") => `<div class="form-group"><label for="fx-bm-${k}">${label}</label>
+      <input id="fx-bm-${k}" name="${k}" type="number" step="${step}" min="0" value="${b[k] ?? ""}" inputmode="decimal"></div>`;
+    dlg(`Ubah ${b.name}`, `${f("base_price_per_kg", "Harga dasar beli (Rp/kg)", "1")}${f("moisture_ref_pct", "Kadar air acuan harga (%)")}
+      ${f("moisture_reject_pct", "Kadar air tolak (%)")}${f("contaminant_tol_pct", "Toleransi kotoran (%)")}
+      ${f("ash_pct_db", "Abu hasil lab (% bk)")}${f("lhv_db_mj_kg", "LHV bk hasil lab (MJ/kg)")}${f("k2o_pct_ash", "K₂O dalam abu (%)")}
+      <div class="form-group"><label for="fx-bm-src">Dasar perubahan (no. laporan lab / sumber harga)</label>
+        <input id="fx-bm-src" name="source" required minlength="5" maxlength="500"></div>`, async (fd) => {
+      const changes = {};
+      for (const k of ["base_price_per_kg", "moisture_ref_pct", "moisture_reject_pct", "contaminant_tol_pct", "ash_pct_db", "lhv_db_mj_kg", "k2o_pct_ash"]) {
+        const v = numOrNull(fd.get(k));
+        if (v !== (b[k] ?? null)) changes[k] = v;
+      }
+      if (!Object.keys(changes).length) throw new Error("Tidak ada perubahan.");
+      await api(`/api/v1/biomass/${code}`, { method: "PUT", body: { changes, source: fd.get("source") } });
+      showToast(`${b.name} diperbarui`, "🌾"); loadBiomass();
+    });
+  }
+
+  async function loadAsh() {
+    const box = $("fx-ash");
+    if (!box) return;
+    try {
+      const [rows, groups] = await Promise.all([api("/api/v1/factory/ash"), api("/api/v1/factory/farmer-groups")]);
+      grpCache = groups;
+      const act = (a) => !canWrite() ? "" : a.status === "tersedia"
+        ? `<button type="button" class="btn btn-secondary btn-sm" data-fx-ash-lab="${a.id}">🧪 Lab</button>
+           ${a.heavy_metal_status === "lulus" ? `<button type="button" class="btn btn-primary btn-sm" data-fx-ash-alloc="${a.id}">→ Poktan</button>` : ""}
+           <button type="button" class="btn btn-secondary btn-sm" data-fx-ash-dispose="${a.id}">Buang</button>`
+        : a.status === "dialokasikan" ? `<button type="button" class="btn btn-primary btn-sm" data-fx-ash-hand="${a.id}">📸 Serahkan</button>` : "";
+      box.innerHTML = rows.length ? `<div class="table-scroll"><table class="data-table"><thead><tr><th>Kode</th><th>Jenis</th><th class="num">kg</th>
+        <th>Logam berat (mg/kg)</th><th>Poktan</th><th>Status</th><th></th></tr></thead><tbody>${rows.map(a => `<tr>
+        <td><b>${H(a.code)}</b></td><td>${H(a.ash_type.replace("_", " "))}</td><td class="num">${num(a.quantity_kg, 0)}</td>
+        <td class="kpi-lbl"><span class="badge ${HM_BADGE[a.heavy_metal_status]}">${H(a.heavy_metal_status.replace("_", " "))}</span>
+          Pb ${a.metals_ppm.pb ?? "–"} · Cd ${a.metals_ppm.cd ?? "–"} · As ${a.metals_ppm.as ?? "–"}
+          ${(a.limits_snapshot?.notes || []).map(n => `<br>⚠️ ${H(n)}`).join("")}</td>
+        <td>${H(a.farmer_group || "–")}</td><td><span class="badge ${ASH_BADGE[a.status]}">${H(a.status)}</span></td>
+        <td style="white-space:nowrap;">${act(a)}</td></tr>`).join("")}</tbody></table></div>`
+        : emptyState("🪨", "Belum ada catatan abu", "Catat abu sisa boiler/pirolisis, uji logam berat, lalu alokasikan ke Poktan.");
+    } catch (e) { box.innerHTML = `<div class="banner banner-error" role="alert">⚠️ ${H(e.message)}</div>`; }
+  }
+
+  function newGroup() {
+    dlg("Kelompok tani baru", `<div class="form-group"><label for="fx-g-n">Nama Poktan</label><input id="fx-g-n" name="name" required minlength="3"></div>
+      <div class="form-group"><label for="fx-g-l">Nama ketua</label><input id="fx-g-l" name="leader_name" required minlength="2"></div>
+      <div class="form-group"><label for="fx-g-d">Desa</label><input id="fx-g-d" name="desa"></div>
+      <div class="form-group"><label for="fx-g-k">Kecamatan</label><input id="fx-g-k" name="kecamatan" required minlength="2"></div>
+      <div class="form-group"><label for="fx-g-b">Kabupaten</label><input id="fx-g-b" name="kabupaten" required minlength="2"></div>
+      <div class="form-group"><label for="fx-g-s">No. Simluhtan (opsional)</label><input id="fx-g-s" name="simluhtan_id"></div>`, async (fd) => {
+      await api("/api/v1/factory/farmer-groups", { body: { name: fd.get("name"), leader_name: fd.get("leader_name"),
+        desa: fd.get("desa") || null, kecamatan: fd.get("kecamatan"), kabupaten: fd.get("kabupaten"),
+        simluhtan_id: fd.get("simluhtan_id") || null } });
+      showToast("Poktan ditambahkan", "👥"); loadAsh();
+    });
+  }
+
+  function newAsh() {
+    dlg("Catat abu", `<div class="form-group"><label for="fx-a-t">Jenis abu</label><select id="fx-a-t" name="ash_type">
+        <option value="bottom_ash">Bottom ash</option><option value="fly_ash">Fly ash</option><option value="silica_ash">Abu silika</option></select></div>
+      <div class="form-group"><label for="fx-a-c">Asal biomassa</label><select id="fx-a-c" name="source_commodity"><option value="">—</option>
+        ${bmCache.map(b => `<option value="${H(b.code)}">${H(b.name)}</option>`).join("")}</select></div>
+      <div class="form-group"><label for="fx-a-q">Tonase (kg)</label><input id="fx-a-q" name="quantity_kg" type="number" min="1" step="1" required></div>`, async (fd) => {
+      await api("/api/v1/factory/ash", { body: { ash_type: fd.get("ash_type"), source_commodity: fd.get("source_commodity") || null,
+        quantity_kg: Number(fd.get("quantity_kg")) } });
+      showToast("Abu dicatat — lanjutkan uji logam berat", "🪨"); loadAsh();
+    });
+  }
+
+  function ashLab(id) {
+    const m = (k, l) => `<div class="form-group"><label for="fx-l-${k}">${l} (mg/kg)</label><input id="fx-l-${k}" name="${k}_ppm" type="number" min="0" step="0.01" inputmode="decimal" ${["pb", "cd", "as"].includes(k) ? "required" : ""}></div>`;
+    dlg("Hasil uji logam berat", `${m("pb", "Pb")}${m("cd", "Cd")}${m("as", "As")}${m("hg", "Hg")}${m("cr", "Cr")}${m("ni", "Ni")}
+      <div class="form-group"><label for="fx-l-lab">Laboratorium</label><input id="fx-l-lab" name="lab_name"></div>
+      <div class="form-group"><label for="fx-l-no">No. laporan lab</label><input id="fx-l-no" name="lab_report_no" required minlength="2"></div>
+      <div class="form-group"><label for="fx-l-k">K₂O abu (%) — opsional, untuk dosis</label><input id="fx-l-k" name="k2o_pct" type="number" min="0" max="100" step="0.1"></div>`, async (fd) => {
+      const body = { lab_name: fd.get("lab_name") || null, lab_report_no: fd.get("lab_report_no"), k2o_pct: numOrNull(fd.get("k2o_pct")) };
+      for (const k of ["pb", "cd", "as", "hg", "cr", "ni"]) body[`${k}_ppm`] = numOrNull(fd.get(`${k}_ppm`));
+      const r = await api(`/api/v1/factory/ash/${id}/lab`, { body });
+      showToast(`Status uji: ${r.heavy_metal_status}`, r.heavy_metal_status === "lulus" ? "✅" : "⛔"); loadAsh();
+    });
+  }
+
+  function ashAllocate(id) {
+    if (!grpCache.length) return showToast("Tambahkan Poktan dulu.", "👥");
+    dlg("Alokasikan ke kelompok tani", `<div class="form-group"><label for="fx-al-g">Poktan</label><select id="fx-al-g" name="g">
+        ${grpCache.map(g => `<option value="${g.id}">${H(g.name)} · ${H(g.kecamatan)}</option>`).join("")}</select></div>
+      <div class="form-group"><label for="fx-al-ha">Luas lahan (ha)</label><input id="fx-al-ha" name="ha" type="number" min="0.01" step="0.01"></div>`, async (fd) => {
+      await api(`/api/v1/factory/ash/${id}/allocate`, { body: { farmer_group_id: Number(fd.get("g")), land_area_ha: numOrNull(fd.get("ha")) } });
+      showToast("Abu dialokasikan", "👥"); loadAsh();
+    });
+  }
+
+  function ashHandover(id) {
+    dlg("Serah-terima abu di lahan", `<div class="form-group"><label for="fx-h-p">Foto serah-terima</label><input id="fx-h-p" name="photo" type="file" accept="image/*" capture="environment" required></div>
+      <p class="kpi-lbl">Titik lahan diambil dari GPS HP saat menyimpan.</p>`, async (fd) => {
+      const pos = await new Promise((ok, no) => navigator.geolocation.getCurrentPosition(p => ok(p.coords),
+        () => no(new Error("GPS tidak tersedia — aktifkan lokasi untuk merekam titik lahan.")), { timeout: 8000, enableHighAccuracy: true }));
+      const f = fd.get("photo");
+      const up = await photoUpload(window.BiochainImage ? await BiochainImage.compress(f) : f);
+      await api(`/api/v1/factory/ash/${id}/handover`, { body: { photo_url: up.url, lat: pos.latitude, lon: pos.longitude } });
+      showToast("Abu diserahkan & terekam", "📸"); loadAsh();
+    });
+  }
+
+  function ashDispose(id) {
+    dlg("Buang / manfaatkan lain", `<div class="form-group"><label for="fx-d-n">Tujuan (pengolah berizin / pemanfaatan non-lahan)</label>
+      <textarea id="fx-d-n" name="note" required minlength="10" rows="3"></textarea></div>`, async (fd) => {
+      await api(`/api/v1/factory/ash/${id}/dispose`, { body: { note: fd.get("note") } });
+      showToast("Tercatat", "🗑️"); loadAsh();
+    });
+  }
+
   // ---------------------------------------------------------------- klaim removal karbon (F11)
   const CC_BADGE = { diajukan: "badge-amber", diverifikasi: "badge-green", ditolak: "badge-red" };
   let ccPhotoUrl = null;
@@ -399,6 +567,8 @@
       $("fx-cc-photo").addEventListener("change", () => { ccPhotoUrl = null; });
     }
     loadClaims();
+    loadBiomass(); loadAsh();
+    if ($("fx-grp-new")) { $("fx-grp-new").onclick = newGroup; $("fx-ash-new").onclick = newAsh; }
     loadCharges();
     loadEfficiency(); loadEsg();
   };
@@ -414,6 +584,12 @@
           loadRedemptions(); loadEfficiency();
         } catch (err) { showToast(err.message, "❌"); }
       }, "⏳");
+    }
+    const bm = e.target.closest("[data-fx-bm]");
+    if (bm) return editBiomass(bm.dataset.fxBm);
+    for (const [attr, fn] of [["fxAshLab", ashLab], ["fxAshAlloc", ashAllocate], ["fxAshHand", ashHandover], ["fxAshDispose", ashDispose]]) {
+      const el = e.target.closest(`[data-${attr.replace(/[A-Z]/g, c => "-" + c.toLowerCase())}]`);
+      if (el) return fn(Number(el.dataset[attr]));
     }
     const cc = e.target.closest("[data-fx-claim]");
     if (cc) return decideClaim(Number(cc.dataset.fxClaim), cc.dataset.to);

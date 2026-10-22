@@ -69,6 +69,13 @@
         <div id="fo-unpaid"><p class="muted">Memuat…</p></div>
       </section>
     </div>
+    <section class="card" aria-labelledby="fo-wh-title">
+      <div class="card-header"><div>
+        <h3 class="card-title" id="fo-wh-title">🏚️ Gudang &amp; stok multi-biomassa</h3>
+        <p class="card-sub">Stok per gudang × komoditas. Berat bayar otomatis dipotong kadar air &amp; kotoran sesuai acuan komoditas — bisa dicatat tanpa sinyal.</p></div>
+        <button type="button" class="btn btn-secondary btn-sm" id="fo-wh-new">➕ Gudang</button></div>
+      <div id="fo-wh"><p class="muted">Memuat…</p></div>
+    </section>
     <section class="card" aria-labelledby="fo-ch-title">
       <div class="card-header"><div>
         <h3 class="card-title" id="fo-ch-title">🚚 Potongan logistik saya</h3>
@@ -188,11 +195,19 @@
     return millCache.map(m => `<option value="${Number(m.id)}">${H(m.name)} (${H(m.kecamatan)})</option>`).join("");
   }
 
+  async function commodityOptions(selected = "sekam_padi") {
+    const rows = typeof biomassList === "function" ? await biomassList() : [];
+    if (!rows.length) return `<option value="sekam_padi">Sekam padi</option>`;
+    return rows.map(b => `<option value="${H(b.code)}" ${b.code === selected ? "selected" : ""}>${H(b.name)}</option>`).join("");
+  }
+
   async function proxyReport(farmerId, name) {
     const mills = await millOptions();
     formDialog({
-      title: `Lapor sekam · ${name}`, ok: "Laporkan",
-      body: `<div class="form-group"><label for="fo-pr-qty">Jumlah sekam (kg)</label>
+      title: `Lapor biomassa · ${name}`, ok: "Laporkan",
+      body: `<div class="form-group"><label for="fo-pr-com">Jenis biomassa</label>
+               <select id="fo-pr-com" name="commodity">${await commodityOptions()}</select></div>
+             <div class="form-group"><label for="fo-pr-qty">Jumlah (kg)</label>
                <input id="fo-pr-qty" name="qty" type="number" min="50" max="50000" step="50" value="1000" required></div>
              <div class="form-group"><label for="fo-pr-mill">Lokasi penggilingan</label>
                <select id="fo-pr-mill" name="mill_id"><option value="">—</option>${mills}</select></div>
@@ -201,6 +216,7 @@
       onSubmit: async (fd) => {
         const r = await api("/api/v1/collector/proxy-harvest", { body: {
           farmer_id: farmerId, quantity_kg: Number(fd.get("qty")), mill_id: Number(fd.get("mill_id")) || null,
+          commodity: fd.get("commodity") || "sekam_padi",
           moisture_est: fd.get("moisture_est") === "" ? null : Number(fd.get("moisture_est")),
           grade_est: fd.get("grade_est") || null,
           client_event_id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) } });
@@ -550,16 +566,115 @@
     } catch { /* offline: coba lagi saat render berikutnya */ }
   }
 
+  // ================================================================ abu untuk Poktan (018)
+  async function loadGroupAsh() {
+    try {
+      const rows = await api("/api/v1/farmer/ash");
+      if (!rows.length || $("fo-ash-card")) return;
+      const host = $("persona-content") || document.body;
+      host.insertAdjacentHTML("beforeend", `<section class="card" id="fo-ash-card" aria-labelledby="fo-ash-title">
+        <div class="card-header"><div><h3 class="card-title" id="fo-ash-title">🪨 Abu pembenah tanah untuk kelompok Anda</h3>
+          <p class="card-sub">Hanya abu yang lulus uji logam berat (Pb, Cd, As — Kepmentan 261/2019) yang dialokasikan ke Poktan.</p></div></div>
+        <div class="table-scroll"><table class="data-table"><thead><tr><th>Kode</th><th>Jenis</th><th class="num">kg</th><th>Uji lab</th><th>Status</th></tr></thead>
+        <tbody>${rows.map(a => `<tr><td>${H(a.code)}</td><td>${H(a.ash_type.replace("_", " "))}</td><td class="num">${num(a.quantity_kg, 0)}</td>
+          <td class="kpi-lbl">Pb ${num(a.metals_ppm.pb, 1)} · Cd ${num(a.metals_ppm.cd, 2)} · As ${num(a.metals_ppm.as, 1)} mg/kg<br>${H(a.lab_report_no || "")}</td>
+          <td><span class="badge ${a.status === "diserahkan" ? "badge-green" : "badge-blue"}">${H(a.status)}</span></td></tr>`).join("")}</tbody></table></div></section>`);
+    } catch { /* bukan ketua Poktan / offline */ }
+  }
+
+  // ================================================================ gudang (018)
+  const MV_LABEL = { masuk: "Masuk (beli/terima)", keluar: "Keluar (kirim ke pabrik)", susut: "Susut / rusak" };
+  let whCache = [];
+
+  async function loadWarehouses() {
+    const box = $("fo-wh");
+    if (!box) return;
+    try {
+      whCache = await api("/api/v1/collector/warehouses");
+      const names = Object.fromEntries((typeof biomassList === "function" ? await biomassList() : []).map(b => [b.code, b.name]));
+      const queued = myOutbox().filter(i => /\/collector\/warehouses\/\d+\/movements$/.test(i.path)).length;
+      box.innerHTML = (queued ? `<div class="banner banner-warning" role="status">📵 ${queued} mutasi stok menunggu sinyal</div>` : "")
+        + (whCache.length ? whCache.map(w => `<div class="card" style="margin:8px 0; padding:12px;">
+            <div style="display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; align-items:center;">
+              <b>${H(w.name)}</b> ${w.is_covered ? "" : '<span class="badge badge-amber" title="Musim hujan: sekam terbuka cepat basah">tanpa atap</span>'}
+              <button type="button" class="btn btn-primary btn-sm" data-fo-mv="${Number(w.id)}">± Catat stok</button></div>
+            ${w.stock.length ? `<div class="table-scroll"><table class="data-table"><thead><tr><th>Komoditas</th>
+              <th class="num">Timbang (kg)</th><th class="num">Berat bayar (kg)</th></tr></thead><tbody>${w.stock.map(st => `<tr>
+              <td>${H(names[st.commodity] || st.commodity)}</td><td class="num">${num(st.gross_kg, 0)}</td>
+              <td class="num">${num(st.payable_kg, 0)}</td></tr>`).join("")}</tbody></table></div>`
+              : `<p class="kpi-lbl">Belum ada stok.</p>`}</div>`).join("")
+          : emptyState("🏚️", "Belum ada gudang", "Tambahkan gudang untuk mencatat stok per komoditas."));
+    } catch (e) { box.innerHTML = `<div class="banner banner-error" role="alert">⚠️ ${H(e.message)}</div>`; }
+  }
+
+  function newWarehouse() {
+    formDialog({
+      title: "Gudang baru", ok: "Simpan",
+      body: `<div class="form-group"><label for="fo-wh-name">Nama gudang</label><input id="fo-wh-name" name="name" required minlength="2" maxlength="80"></div>
+             <div class="form-group"><label for="fo-wh-cap">Kapasitas (m³, opsional)</label><input id="fo-wh-cap" name="cap" type="number" min="1" step="1"></div>
+             <label style="display:flex; gap:8px; align-items:center;"><input type="checkbox" name="covered" checked> Beratap</label>`,
+      onSubmit: async (fd) => {
+        let pos = null;
+        try { pos = await new Promise((ok, no) => navigator.geolocation.getCurrentPosition(p => ok(p.coords), no, { timeout: 4000 })); } catch {}
+        await api("/api/v1/collector/warehouses", { body: { name: fd.get("name"), capacity_m3: Number(fd.get("cap")) || null,
+          is_covered: fd.get("covered") === "on", lat: pos ? pos.latitude : null, lon: pos ? pos.longitude : null } });
+        showToast("Gudang ditambahkan", "🏚️"); loadWarehouses();
+      },
+    });
+  }
+
+  async function movementDialog(whId) {
+    const d = formDialog({
+      title: `Catat stok · ${H((whCache.find(w => w.id === whId) || {}).name || "")}`, ok: "Simpan",
+      body: `<div class="form-group"><label for="fo-mv-kind">Jenis</label><select id="fo-mv-kind" name="movement">
+               ${Object.entries(MV_LABEL).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></div>
+             <div class="form-group"><label for="fo-mv-com">Komoditas</label><select id="fo-mv-com" name="commodity">${await commodityOptions()}</select></div>
+             <div class="form-group"><label for="fo-mv-kg">Berat timbang (kg)</label><input id="fo-mv-kg" name="kg" type="number" min="1" step="0.1" required inputmode="decimal"></div>
+             <div class="form-group fo-mv-q"><label for="fo-mv-mc">Kadar air (%) — moisture meter</label><input id="fo-mv-mc" name="moisture_pct" type="number" min="0" max="95" step="0.1" inputmode="decimal"></div>
+             <div class="form-group fo-mv-q"><label for="fo-mv-ct">Kotoran tanah/batu (%)</label><input id="fo-mv-ct" name="contaminant_pct" type="number" min="0" max="100" step="0.1" inputmode="decimal"></div>
+             <label class="fo-mv-q" style="display:flex; gap:8px; align-items:center;"><input type="checkbox" name="accept_wet"> Terima basah (saya keringkan sendiri)</label>
+             <div id="fo-mv-prev" class="kpi-lbl" aria-live="polite"></div>`,
+      onSubmit: async (fd) => {
+        const body = { commodity: fd.get("commodity"), movement: fd.get("movement"), kg: Number(fd.get("kg")),
+                       moisture_pct: fd.get("moisture_pct") === "" ? null : Number(fd.get("moisture_pct")),
+                       contaminant_pct: fd.get("contaminant_pct") === "" ? null : Number(fd.get("contaminant_pct")),
+                       accept_wet: fd.get("accept_wet") === "on" };
+        const r = await apiMutation(`/api/v1/collector/warehouses/${whId}/movements`, body, `Stok ${body.movement} ${body.kg} kg`);
+        showToast(r.queued ? "Offline: mutasi disimpan & dikirim saat ada sinyal." :
+          `Tercatat · bayar ${num(Math.abs(r.payable_kg), 1)} kg${r.value_rp ? ` ≈ ${rp(r.value_rp)}` : ""}`, r.queued ? "📵" : "✅");
+        loadWarehouses();
+      },
+    });
+    const prev = async () => {
+      const f = d.querySelector("form"), kind = f.movement.value;
+      d.querySelectorAll(".fo-mv-q").forEach(el => { el.hidden = kind !== "masuk"; });
+      const box = d.querySelector("#fo-mv-prev");
+      if (kind !== "masuk" || !Number(f.kg.value) || navigator.onLine === false) { box.textContent = ""; return; }
+      try {
+        const r = await api("/api/v1/collector/refraction-preview", { body: { commodity: f.commodity.value, kg: Number(f.kg.value),
+          moisture_pct: f.moisture_pct.value === "" ? null : Number(f.moisture_pct.value),
+          contaminant_pct: f.contaminant_pct.value === "" ? null : Number(f.contaminant_pct.value), accept_wet: f.accept_wet.checked } });
+        box.innerHTML = r.accepted
+          ? `Berat bayar <b>${num(r.payable_kg, 1)} kg</b> (potong ${num(r.refraction_kg, 1)} kg · acuan air ${num(r.basis.moisture_ref_pct, 0)}%)`
+            + (r.value_rp != null ? ` ≈ <b>${rp(r.value_rp)}</b>` : " · harga dasar belum diisi pabrik")
+          : `⛔ ${H(r.reason)}`;
+      } catch { box.textContent = ""; }
+    };
+    d.querySelector("form").addEventListener("input", prev);
+    prev();
+  }
+
   // ================================================================ sambungan ke dashboard
   window.renderFieldExtras = function (role, container) {
     if (!container) return;
     if (role === "pengepul") {
       container.insertAdjacentHTML("beforeend", PENGEPUL_HTML);
       $("fo-proxy-new").onclick = newProxyFarmer;
-      loadProxyFarmers(); loadUnpaid(); loadCharges();
+      $("fo-wh-new").onclick = newWarehouse;
+      loadProxyFarmers(); loadUnpaid(); loadCharges(); loadWarehouses();
     } else if (role === "petani") {
       container.insertAdjacentHTML("beforeend", PETANI_HTML);
-      loadPayOverview(); loadMyPayments(); loadBiochar();
+      loadPayOverview(); loadMyPayments(); loadBiochar(); loadGroupAsh();
     }
   };
   // Semua peran, setelah login: wajib ganti password (F6) & banner persetujuan PDP (F12)
@@ -571,6 +686,8 @@
   window.showFarmerContact = showContact;
 
   document.addEventListener("click", (e) => {
+    const mv = e.target.closest("[data-fo-mv]");
+    if (mv) return movementDialog(Number(mv.dataset.foMv));
     const r = e.target.closest("[data-fo-report]");
     if (r) return proxyReport(Number(r.dataset.foReport), r.dataset.name);
     const dpb = e.target.closest("[data-fo-dp]");

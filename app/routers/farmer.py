@@ -21,6 +21,7 @@ from ..models.ledger import BiocharLedgerEntry, CustodyEvent, CustodyStage
 from ..engines.incentive import calculate_incentive, DeliveryEvent, next_tier_xp
 from ..models.trade import StockListing
 from ..services import trade
+from ..services.biomass import get_biomass
 from ..services.qr_sign import new_qr_code
 from ..services.custody import find_replay, trusted_device_time, wallet_balance
 from ..security.url import EvidenceUrl
@@ -30,7 +31,8 @@ router = APIRouter()
 
 class HarvestReportRequest(BaseModel):
     quantity_kg: float = Field(..., gt=0, le=50000,
-                               description="Jumlah sekam dalam kg")
+                               description="Jumlah biomassa dalam kg")
+    commodity: str = Field("sekam_padi", max_length=24, description="Kode komoditas (GET /api/v1/biomass)")
     mill_id: int | None = None
     photo_url: EvidenceUrl | None = Field(None, max_length=1000)
     # Opsional: taksiran petani. Tidak memengaruhi harga — QC pengepul yang menentukan; dipakai untuk umpan balik
@@ -48,6 +50,7 @@ class HarvestResponse(BaseModel):
     qr_code: str
     message: str
     replayed: bool = False
+    commodity: str = "sekam_padi"
 
 
 @router.post("/harvest", response_model=HarvestResponse, status_code=201)
@@ -81,6 +84,7 @@ async def report_harvest(
         farmer_id=user.id,
         mill_id=req.mill_id,
         quantity_kg=req.quantity_kg,
+        commodity=(await get_biomass(db, req.commodity)).code,
         status=HarvestStatus.REPORTED,
         qr_code=qr,
         photo_url=req.photo_url,
@@ -117,7 +121,8 @@ async def report_harvest(
         quantity_kg=harvest.quantity_kg,
         status=status_str,
         qr_code=qr,
-        message=f"✅ {req.quantity_kg} kg sekam berhasil dilaporkan! Pengepul akan segera menghubungi.",
+        commodity=harvest.commodity,
+        message=f"✅ {req.quantity_kg} kg berhasil dilaporkan! Pengepul akan segera menghubungi.",
     )
 
 
@@ -264,6 +269,7 @@ async def list_harvests(
         {
             "id": h.id,
             "quantity_kg": h.quantity_kg,
+            "commodity": h.commodity or "sekam_padi",
             "status": h.status.value if hasattr(h.status, 'value') else str(h.status),
             "grade": (h.grade.value if hasattr(h.grade, 'value') else str(h.grade)) if h.grade else None,
             "qr_code": h.qr_code,
@@ -304,6 +310,7 @@ async def get_incentive_status(
 # ---------------------------------------------------------------- Pasar B2B: listing & pilih tawaran
 class ListingCreate(BaseModel):
     quantity_kg: float = Field(..., gt=0, le=200_000)
+    commodity: str = Field("sekam_padi", max_length=24, description="Kode komoditas (GET /api/v1/biomass)")
     moisture_pct: float | None = Field(None, ge=0, le=60)
     grade_estimate: str | None = Field(None, pattern="^(A|B|C|D)$")
     allow_jemput: bool = True

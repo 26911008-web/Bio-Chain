@@ -61,6 +61,8 @@ class Harvest(Base):
     collector_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
 
     quantity_kg = Column(Double, nullable=False)   # estimasi petani (bukan dasar pembayaran)
+    commodity = Column(String(24), ForeignKey("biomass_parameters.code"), nullable=False, default="sekam_padi",
+                       server_default="sekam_padi")   # 018: multi-biomassa
     status = Column(Enum(HarvestStatus, native_enum=False, values_callable=lambda x: [e.value for e in x]), default=HarvestStatus.REPORTED, index=True)
 
     # Quality assessment

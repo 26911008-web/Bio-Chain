@@ -876,6 +876,23 @@ async function resolvePendingPhotos(body) {
 }
 window.BiochainPhotos = { queue: photoQueue, prefix: PHOTO_PREFIX, resolve: resolvePendingPhotos, refresh: photoCountRefresh };
 
+// 018: daftar komoditas biomassa — disimpan lokal agar form lapor tetap jalan tanpa sinyal
+async function biomassList() {
+  try {
+    const rows = await api("/api/v1/biomass");
+    try { localStorage.setItem("biochain_biomass", JSON.stringify(rows)); } catch {}
+    return rows;
+  } catch {
+    try { return JSON.parse(localStorage.getItem("biochain_biomass") || "[]"); } catch { return []; }
+  }
+}
+async function fillCommoditySelect(sel) {
+  if (!sel) return;
+  const rows = await biomassList();
+  if (!rows.length) return;
+  sel.innerHTML = rows.map(b => `<option value="${esc(b.code)}" ${b.code === "sekam_padi" ? "selected" : ""}>${esc(b.name)}</option>`).join("");
+}
+
 const myUid = () => STATE.user && STATE.user.user_id;
 const ownerName = () => STATE.user && (STATE.user.full_name || STATE.user.username) || null;
 // F18 HP bersama: titik GPS & foto tanpa user_id berasal dari versi lama → dianggap milik pengguna yang sedang masuk
@@ -1844,13 +1861,17 @@ async function renderPersonaDashboard(role) {
         <div class="card">
           <div class="card-header">
             <div>
-              <h3 class="card-title">🌾 Lapor &amp; Jual Sekam</h3>
+              <h3 class="card-title">🌾 Lapor &amp; Jual Biomassa</h3>
               <p class="card-sub">Isi jumlah, lalu pilih cara jual. Info mutu boleh dikosongkan.</p>
             </div>
           </div>
           <form id="form-lapor-sekam">
             <div class="form-group">
-              <label for="f-qty">Jumlah sekam (kg)</label>
+              <label for="f-commodity">Jenis biomassa</label>
+              <select id="f-commodity" class="btn btn-secondary" style="width:100%; text-align:left;"><option value="sekam_padi">Sekam padi</option></select>
+            </div>
+            <div class="form-group">
+              <label for="f-qty">Jumlah (kg)</label>
               <input type="number" id="f-qty" class="btn btn-secondary" style="width:100%; text-align:left;" value="2500" min="50" max="50000" step="50" required>
             </div>
             <div class="form-group">
@@ -1956,11 +1977,15 @@ async function renderPersonaDashboard(role) {
     const mills = await api("/api/v1/farmer/mills").catch(() => []);
     $("f-mill").innerHTML = mills.map(m => `<option value="${m.id}">${esc(m.name)} (${esc(m.kecamatan)})</option>`).join("");
 
+    fillCommoditySelect($("f-commodity"));
+
     // Submit report
     $("form-lapor-sekam").onsubmit = (e) => {
       e.preventDefault();
       return withBusy(e.target.querySelector("[type=submit]"), async () => { try {
         const qty = Number($("f-qty").value);
+        const commodity = $("f-commodity").value || "sekam_padi";
+        const comName = $("f-commodity").selectedOptions[0]?.textContent || "biomassa";
         const millId = Number($("f-mill").value) || null;
         const moist = $("f-moist").value === "" ? null : Number($("f-moist").value);
         const grade = $("f-grade").value || null;
@@ -1968,20 +1993,20 @@ async function renderPersonaDashboard(role) {
           if (!$("ls-jemput").checked && !$("ls-antar").checked) return showToast("Pilih minimal satu skema: dijemput atau diantar.", "⚠️");
           if (!navigator.onLine) return showToast("Lelang perlu sinyal. Pilih 'Jual ke pengepul' agar laporan tersimpan offline.", "📵");
           await api("/api/v1/farmer/listings", { body: {
-            quantity_kg: qty, mill_id: millId, moisture_pct: moist, grade_estimate: grade,
+            quantity_kg: qty, commodity, mill_id: millId, moisture_pct: moist, grade_estimate: grade,
             allow_jemput: $("ls-jemput").checked, ask_price_jemput: $("ls-jemput").checked ? Number($("ls-pj").value) : null,
             allow_antar: $("ls-antar").checked, ask_price_antar: $("ls-antar").checked ? Number($("ls-pa").value) : null } });
           showToast("Stok dipasang. Tunggu tawaran pengepul di 'Stok Lelang & Tawaran'.", "🏷️");
           loadMyListings();
           return;
         }
-        const res = await apiMutation("/api/v1/farmer/harvest", { quantity_kg: qty, mill_id: millId, moisture_est: moist, grade_est: grade },
-                                      `Lapor ${qty} kg sekam`);
+        const res = await apiMutation("/api/v1/farmer/harvest", { quantity_kg: qty, commodity, mill_id: millId, moisture_est: moist, grade_est: grade },
+                                      `Lapor ${qty} kg ${comName.toLowerCase()}`);
         if (res.queued) {
           showToast("Sinyal hilang. Laporan disimpan di HP & dikirim otomatis saat online.", "📵");
         } else {
           showToast(res.message || "Laporan berhasil dikirim!", "🎉");
-          openModal("Laporan Sekam Berhasil!", res.qr_code, `${res.quantity_kg} kg · Siap Diambil`);
+          openModal(`Laporan ${comName} Berhasil!`, res.qr_code, `${res.quantity_kg} kg · Siap Diambil`);
         }
         loadPetaniData();
       } catch (err) {

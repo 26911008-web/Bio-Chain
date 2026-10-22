@@ -40,7 +40,7 @@ test('petani tanpa HP: daftar → lapor → timbang → bayar → kuitansi BYR',
   // Lapor sekam atas namanya → nota QR
   await page.locator(`[data-fo-report][data-name^="${name}"]`).click();
   const rep = page.locator('dialog.ui-confirm[open]');
-  await rep.getByLabel('Jumlah sekam (kg)').fill('1500');
+  await rep.getByLabel('Jumlah (kg)').fill('1500');
   await rep.locator('button[value="yes"]').click();
   await expect(page.locator('#modal-qr-title')).toContainText('Nota sekam');
   const qr = (await page.locator('#modal-qr-code').innerText()).trim();

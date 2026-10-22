@@ -208,7 +208,7 @@ app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR), name="uploads")
 try:
     from .routers import (
         auth, farmer, collector, driver, factory, admin, auditor, assistant,
-        params as params_router, uploads as uploads_router,
+        params as params_router, uploads as uploads_router, multibiomass,
     )
 
     app.include_router(auth.router,      prefix="/api/v1/auth",      tags=["🔐 Auth"])
@@ -221,6 +221,7 @@ try:
     app.include_router(assistant.router, prefix="/api/v1/assistant", tags=["🤖 Asisten AI"])
     app.include_router(params_router.router, prefix="/api/v1/params", tags=["⚙️ Parameter Asumsi"])
     app.include_router(uploads_router.router, prefix="/api/v1/uploads", tags=["📸 Unggah Bukti"])
+    app.include_router(multibiomass.router, prefix="/api/v1", tags=["🌾 Multi-biomassa & Abu"])
     from .routers import me as me_router
     app.include_router(me_router.router, prefix="/api/v1/me", tags=["🔒 Data Pribadi (PDP)"])
     from .routers import reports as reports_router

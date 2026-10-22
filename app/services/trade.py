@@ -59,8 +59,10 @@ async def create_listing(db: AsyncSession, farmer: User, data: dict) -> StockLis
         if data[f"allow_{scheme}"] and not data.get(f"ask_price_{scheme}"):
             raise ValueError(f"Isi harga harapan untuk skema {scheme}.")
     lat, lon = await listing_location(db, farmer, data.get("mill_id"))
+    from .biomass import get_biomass
     listing = StockListing(
         farmer_id=farmer.id, mill_id=data.get("mill_id"), quantity_kg=data["quantity_kg"],
+        commodity=(await get_biomass(db, data.get("commodity"))).code,
         remaining_kg=data["quantity_kg"], moisture_pct=data.get("moisture_pct"), grade_estimate=data.get("grade_estimate"),
         allow_jemput=data["allow_jemput"], allow_antar=data["allow_antar"],
         ask_price_jemput=data.get("ask_price_jemput") if data["allow_jemput"] else None,
@@ -229,6 +231,7 @@ async def _award_harvest(db: AsyncSession, farmer: User, listing: StockListing, 
     # 3. Kontrak menjadi harvest yang masuk alur custody (timbang → angkut → pabrik)
     h_uuid = str(uuid.uuid4())
     harvest = Harvest(uuid=h_uuid, farmer_id=farmer.id, mill_id=listing.mill_id, quantity_kg=qty_kg,
+                      commodity=listing.commodity or "sekam_padi",              # 018: lot lelang mewarisi komoditas
                       status=HarvestStatus.REPORTED, qr_code=new_qr_code(h_uuid), collector_id=bid.collector_id,
                       listing_id=listing.id, bid_id=bid.id, agreed_price_per_kg=bid.price_per_kg,
                       delivery_scheme=_v(bid.scheme), photo_url=listing.evidence_photo_url, reported_at=now)
@@ -259,6 +262,7 @@ async def cancel_listing(db: AsyncSession, farmer: User, listing_id: int) -> Non
 
 def listing_dict(l: StockListing, origin: tuple[float, float] | None = None) -> dict:
     d = {"id": l.id, "farmer_id": l.farmer_id, "mill_id": l.mill_id, "quantity_kg": l.quantity_kg,
+         "commodity": l.commodity or "sekam_padi",
          "remaining_kg": round(l.remaining_kg, 3), "moisture_pct": l.moisture_pct, "grade_estimate": l.grade_estimate,
          "schemes": {"jemput": l.ask_price_jemput if l.allow_jemput else None,
                      "antar": l.ask_price_antar if l.allow_antar else None},

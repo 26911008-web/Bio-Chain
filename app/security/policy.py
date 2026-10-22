@@ -37,6 +37,11 @@ ROUTE_POLICY: list[tuple[str, frozenset[str]]] = [
     ("/api/v1/uploads",            ANY_USER),        # unggah foto bukti timbangan / serah-terima
     ("/api/v1/uploads/",           ANY_USER),
     ("/api/v1/auth/reset-demo",    _roles(R.ADMIN)),
+    ("/api/v1/biomass",            ANY_USER),        # 018: master komoditas — ubah: Pabrik/Admin (require_role)
+    ("/api/v1/biomass/",           ANY_USER),
+    ("/api/v1/factory/farmer-groups", _roles(R.PABRIK, R.ADMIN, R.AUDITOR)),   # tulis: pabrik/admin
+    ("/api/v1/factory/ash",        _roles(R.PABRIK, R.ADMIN, R.AUDITOR)),     # ledger abu: baca auditor
+    ("/api/v1/factory/ash/",       _roles(R.PABRIK, R.ADMIN)),
     ("/api/v1/farmer/",            _roles(R.PETANI)),
     ("/api/v1/farmer/mills",       _roles(R.PETANI, R.PENGEPUL)),   # pengepul: lapor atas nama petani tanpa HP
     ("/api/v1/collector/",         _roles(R.PENGEPUL)),

@@ -9,6 +9,10 @@ from sqlalchemy import inspect, text
 
 # (tabel, kolom, DDL tipe portabel SQLite & PostgreSQL)
 ADDED_COLUMNS = [
+    # 018 multi-biomassa (FK hanya di PG/DB baru; SQLite lama: divalidasi aplikasi)
+    ("harvests", "commodity", "VARCHAR(24) NOT NULL DEFAULT 'sekam_padi'"),
+    ("stock_listings", "commodity", "VARCHAR(24) NOT NULL DEFAULT 'sekam_padi'"),
+    ("biomass_parameters", "base_price_per_kg", "DOUBLE PRECISION"),
     ("harvests", "verified_kg", "DOUBLE PRECISION"),
     ("harvests", "picked_up_kg", "DOUBLE PRECISION"),
     ("harvests", "received_kg", "DOUBLE PRECISION"),
@@ -108,7 +112,28 @@ def upgrade_schema(sync_conn) -> list[str]:
         sync_conn.execute(text(ddl))
     if sync_conn.dialect.name == "sqlite":
         _sqlite_refresh_checks(sync_conn, added)
+    _seed_biomass(sync_conn, added)
     return added
+
+
+def _seed_biomass(sync_conn, added: list[str]) -> None:
+    """Isi master biomassa yang belum ada (DB baru/SQLite). Baris yang sudah ada — termasuk koreksi lab — tidak disentuh."""
+    from .biomass_seed import BIOMASS_SEED
+    try:
+        with sync_conn.begin_nested():               # PG ber-RLS tanpa identitas operator → lewati, jangan gagalkan start
+            _insert_missing_biomass(sync_conn, added, BIOMASS_SEED)
+    except Exception as e:  # noqa: BLE001
+        print(f"⚠️  seed biomass_parameters dilewati: {e.__class__.__name__}")
+
+
+def _insert_missing_biomass(sync_conn, added, BIOMASS_SEED) -> None:
+    have = {r[0] for r in sync_conn.execute(text("SELECT code FROM biomass_parameters"))}
+    for row in BIOMASS_SEED:
+        if row["code"] not in have:
+            cols = ", ".join(row)
+            sync_conn.execute(text(f"INSERT INTO biomass_parameters ({cols}, is_active, updated_at) "
+                                   f"VALUES ({', '.join(':' + k for k in row)}, TRUE, CURRENT_TIMESTAMP)"), row)
+            added.append(f"biomass_parameters:{row['code']}")
 
 
 # SQLite tidak bisa ALTER CONSTRAINT; DB lama dari sebelum migrasi PG yang mengubah CHECK tetap memakai versi lama.

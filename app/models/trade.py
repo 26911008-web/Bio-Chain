@@ -52,6 +52,8 @@ class StockListing(Base):
     farmer_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     mill_id = Column(Integer, ForeignKey("mills.id"), nullable=True)
     quantity_kg = Column(Double, nullable=False)
+    commodity = Column(String(24), ForeignKey("biomass_parameters.code"), nullable=False, default="sekam_padi",
+                       server_default="sekam_padi")   # 018
     remaining_kg = Column(Double, nullable=False)        # berkurang atomik setiap penerimaan sebagian
     moisture_pct = Column(Double, nullable=True)
     grade_estimate = Column(String(5), nullable=True)

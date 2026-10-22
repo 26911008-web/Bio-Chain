@@ -407,3 +407,67 @@ def test_carbon_claims_rls_only_auditor_decides_in_own_name(ids):
     assert out["auditor_other_name"] == "DENIED"
     assert out["auditor_insert"] == "DENIED"
     assert out["auditor_decide"] == "UPDATE 1"
+
+
+def test_multibiomass_rls_warehouse_isolation_and_ash_visibility(ids):
+    """018: pengepul hanya melihat/menulis gudangnya; ledger stok append-only; ketua Poktan hanya abu kelompoknya."""
+    async def go():
+        c = await asyncpg.connect(DSN)
+        out = {}
+        try:
+            async with c.transaction():
+                await as_identity(c, "system")
+                other = ids["pengepul_sleman"]
+                wid = await c.fetchval("INSERT INTO collector_warehouses (collector_id, name) VALUES ($1, 'RLS-GDG') "
+                                       "RETURNING id", other)
+                await c.execute("INSERT INTO warehouse_stock_movements (warehouse_id, commodity, movement, gross_kg, "
+                                "payable_kg, created_by_id) VALUES ($1, 'sekam_padi', 'masuk', 100, 100, $2)", wid, other)
+                gid = await c.fetchval("INSERT INTO farmer_groups (name, kecamatan, kabupaten, leader_name, leader_user_id) "
+                                       "VALUES ('RLS Poktan', 'K', 'Kab', 'Ketua', $1) RETURNING id", ids["petani_sugeng"])
+                await c.execute("INSERT INTO industrial_ash_ledgers (code, factory_id, created_by_id, ash_type, quantity_kg, "
+                                "pb_ppm, cd_ppm, as_ppm, lab_report_no, heavy_metal_status, status, farmer_group_id) VALUES "
+                                "('ASH-RLS-1', $1, $1, 'fly_ash', 5, 1, 0.1, 1, 'L1', 'lulus', 'dialokasikan', $2)",
+                                ids["pabrik_indmira"], gid)
+                await c.execute("INSERT INTO industrial_ash_ledgers (code, factory_id, created_by_id, ash_type, quantity_kg) "
+                                "VALUES ('ASH-RLS-2', $1, $1, 'fly_ash', 5)", ids["pabrik_indmira"])
+                foreign_pengepul = next((v for k, v in ids.items() if k and k.startswith("pengepul") and v != other), None)
+                if foreign_pengepul:
+                    await as_identity(c, "pengepul", foreign_pengepul)
+                    out["foreign_sees"] = await c.fetchval("SELECT count(*) FROM warehouse_stock_movements WHERE warehouse_id=$1", wid)
+                    try:
+                        async with c.transaction():
+                            await c.execute("INSERT INTO warehouse_stock_movements (warehouse_id, commodity, movement, gross_kg, "
+                                            "payable_kg, created_by_id) VALUES ($1, 'sekam_padi', 'keluar', -50, -50, $2)",
+                                            wid, foreign_pengepul)
+                            out["foreign_write"] = "ALLOWED"
+                    except asyncpg.exceptions.InsufficientPrivilegeError:
+                        out["foreign_write"] = "DENIED"
+                await as_identity(c, "pengepul", other)
+                out["owner_sees"] = await c.fetchval("SELECT count(*) FROM warehouse_stock_movements WHERE warehouse_id=$1", wid)
+                try:
+                    async with c.transaction():
+                        await c.execute("UPDATE warehouse_stock_movements SET gross_kg = 1e6 WHERE warehouse_id=$1", wid)
+                        out["mutate"] = "ALLOWED"
+                except asyncpg.exceptions.RaiseError:
+                    out["mutate"] = "APPEND_ONLY"
+                await as_identity(c, "petani", ids["petani_sugeng"])
+                out["leader_ash"] = await c.fetchval("SELECT count(*) FROM industrial_ash_ledgers WHERE code LIKE 'ASH-RLS-%'")
+                await as_identity(c, "auditor", ids["auditor_esg"])
+                try:
+                    async with c.transaction():
+                        await c.execute("INSERT INTO industrial_ash_ledgers (code, factory_id, created_by_id, ash_type, "
+                                        "quantity_kg) VALUES ('ASH-RLS-3', $1, $1, 'fly_ash', 1)", ids["auditor_esg"])
+                        out["auditor_insert"] = "ALLOWED"
+                except asyncpg.exceptions.InsufficientPrivilegeError:
+                    out["auditor_insert"] = "DENIED"
+                raise asyncpg.exceptions.UniqueViolationError("rollback")
+        except asyncpg.exceptions.UniqueViolationError:
+            return out
+        finally:
+            await c.close()
+    out = run(go())
+    assert out["owner_sees"] == 1 and out["mutate"] == "APPEND_ONLY"
+    if "foreign_sees" in out:
+        assert out["foreign_sees"] == 0 and out["foreign_write"] == "DENIED"
+    assert out["leader_ash"] == 1                       # hanya abu kelompoknya, bukan ASH-RLS-2
+    assert out["auditor_insert"] == "DENIED"

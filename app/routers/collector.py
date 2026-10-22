@@ -18,7 +18,7 @@ from ..engines.quality import FeedstockSample, farmgate_price, score_sample
 from ..models.trade import Bid, BidStatus, StockListing
 from ..models.factory_ops import DeliveryRequest
 from ..models.route import Route, RouteStatus, RouteStop
-from ..services import factory_ops, trade
+from ..services import biomass as _biomass, factory_ops, trade
 from ..services.qr_sign import new_qr_code
 from ..services.custody import find_replay, load_harvest, pct_diff, transition
 
@@ -109,6 +109,7 @@ async def list_available_harvests(
         results_list.append({
             "id": h.id,
             "quantity_kg": h.quantity_kg,
+            "commodity": h.commodity or "sekam_padi",
             "farmer_id": h.farmer_id,
             "farmer_name": farmer.full_name if farmer else f"Petani #{h.farmer_id}",
             # F12 minimisasi: nomor disamarkan di daftar lintas-pengguna; nomor lengkap via /harvests/{id}/contact
@@ -123,6 +124,24 @@ async def list_available_harvests(
             "dp": {"amount_rp": int(dp.amount_rp), "status": dp.status, "receipt_code": dp.receipt_code} if dp else None,
         })
     return results_list
+
+
+def _biomass_grade(bio, moisture: float, contamination: float) -> dict:
+    """Grade komoditas non-sekam dari acuan master: A ≤ MC acuan & kontaminan ≤ toleransi; TOLAK > MC tolak/kontaminan
+    > 20 %. Harga tetap basis kering kontinu (tanpa tebing di batas grade) — grade hanya informasi mutu."""
+    mid = (bio.moisture_ref_pct + bio.moisture_reject_pct) / 2
+    if moisture > bio.moisture_reject_pct or contamination > 20:
+        grade = "TOLAK"
+    elif moisture <= bio.moisture_ref_pct and contamination <= bio.contaminant_tol_pct:
+        grade = "A"
+    elif moisture <= mid and contamination <= bio.contaminant_tol_pct + 3:
+        grade = "B"
+    else:
+        grade = "C"
+    score = max(0.0, round(100 - max(0.0, moisture - bio.moisture_ref_pct) * 3 - max(0.0, contamination - bio.contaminant_tol_pct) * 4, 1))
+    return {"grade": grade, "score": score, "price_multiplier": 1.0, "commodity": bio.code,
+            "basis": f"acuan {bio.name}: MC {bio.moisture_ref_pct:g}% (tolak > {bio.moisture_reject_pct:g}%), "
+                     f"kontaminan ≤ {bio.contaminant_tol_pct:g}%"}
 
 
 @router.post("/verify")
@@ -140,10 +159,14 @@ async def verify_harvest(
     if harvest.collector_id is not None and harvest.collector_id != user.id:
         raise HTTPException(403, "Harvest ini hasil lelang pengepul lain.")
 
-    quality = score_sample(FeedstockSample(
-        moisture=req.moisture, ash=req.ash, volatile_matter=req.volatile_matter, fixed_carbon=req.fixed_carbon,
-        contamination=req.contamination, pyrolysis_temp_c=req.pyrolysis_temp_c,
-    ))
+    bio = await _biomass.get_biomass(db, harvest.commodity)
+    if bio.code == "sekam_padi":
+        quality = score_sample(FeedstockSample(
+            moisture=req.moisture, ash=req.ash, volatile_matter=req.volatile_matter, fixed_carbon=req.fixed_carbon,
+            contamination=req.contamination, pyrolysis_temp_c=req.pyrolysis_temp_c,
+        ))
+    else:   # 018: komoditas lain dinilai dari acuan master (kadar air & kontaminan), bukan kurva mutu sekam
+        quality = _biomass_grade(bio, req.moisture, req.contamination)
     estimate_gap = pct_diff(harvest.quantity_kg, req.weighed_kg)
     note = None
     if abs(estimate_gap) > P("sirkular.estimate_tolerance_pct"):
@@ -162,10 +185,16 @@ async def verify_harvest(
         pricing = farmgate_price(base_price, req.weighed_kg, req.moisture, req.contamination, price_grade, 1.0,
                                  reference_moisture=listing.moisture_pct if listing and listing.moisture_pct else None,
                                  wetter_only=True, method="basis_kering" if off_spec else None)
-    else:
-        base_price = P("harga_mutu.base_price_per_kg")
+    elif bio.code == "sekam_padi":
+        base_price = _biomass.base_price_for(bio)
         pricing = farmgate_price(base_price, req.weighed_kg, req.moisture, req.contamination, price_grade,
                                  quality["price_multiplier"], method="basis_kering" if off_spec else None)
+    else:
+        base_price = _biomass.base_price_for(bio)
+        if base_price is None:
+            raise HTTPException(422, f"Harga dasar {bio.name} belum diisi pabrik (menu Multi-biomassa → harga dasar).")
+        pricing = farmgate_price(base_price, req.weighed_kg, req.moisture, req.contamination, price_grade, 1.0,
+                                 reference_moisture=bio.moisture_ref_pct, wetter_only=True, method="basis_kering")
     if off_spec:
         note = "; ".join(x for x in (note, "Dibeli di bawah spek untuk dikeringkan/disortir pengepul") if x)
     total_price = pricing["total_price"]
@@ -195,7 +224,8 @@ async def verify_harvest(
         "price_basis": "harga lelang" if harvest.agreed_price_per_kg else (
             "basis kering" if pricing["method"] == "basis_kering" else "harga dasar × pengali mutu"),
         "pricing": pricing,
-        "message": f"Sekam {harvest.verified_kg:g} kg dinilai Grade {quality['grade']} (skor {quality['score']})",
+        "commodity": bio.code,
+        "message": f"{bio.name} {harvest.verified_kg:g} kg dinilai Grade {quality['grade']} (skor {quality['score']})",
     }
 
 
@@ -666,6 +696,7 @@ class ProxyHarvestRequest(BaseModel):
     # Field sama dengan laporan petani mandiri (farmer.HarvestReportRequest)
     farmer_id: int
     quantity_kg: float = Field(..., gt=0, le=50000)
+    commodity: str = Field("sekam_padi", max_length=24, description="Kode komoditas (GET /api/v1/biomass)")
     mill_id: int | None = None
     moisture_est: float | None = Field(None, ge=0, le=60)
     grade_est: str | None = Field(None, pattern="^[ABCD]$")
@@ -740,6 +771,7 @@ async def proxy_harvest(req: ProxyHarvestRequest, db: Annotated[AsyncSession, De
     h_uuid = str(_uuid.uuid4())
     # collector_id = pelapor: lot binaan langsung ditangani pengepul ini (juga syarat RLS harvests di PostgreSQL)
     h = Harvest(uuid=h_uuid, farmer_id=farmer.id, mill_id=req.mill_id, quantity_kg=req.quantity_kg, collector_id=uid,
+                commodity=(await _biomass.get_biomass(db, req.commodity)).code,
                 status=HarvestStatus.REPORTED, qr_code=new_qr_code(h_uuid), photo_url=req.photo_url,
                 farmer_moisture_est=req.moisture_est, farmer_grade_est=req.grade_est,
                 reported_at=trusted_device_time(req.client_recorded_at)[0])

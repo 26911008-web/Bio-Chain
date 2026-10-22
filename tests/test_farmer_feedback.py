@@ -237,3 +237,27 @@ def test_carbon_claim_submit_and_reject_through_rls(client):
     assert d.status_code == 200, d.text
     p = client.post("/api/v1/factory/carbon-claims/preview", headers=hf, json=body).json()
     assert p["end_use_kg"] >= 400                                         # serah-terima kembali tersedia
+
+
+def test_multibiomass_warehouse_and_ash_through_rls(client):
+    """018 lewat identitas aplikasi (PG: RLS aktif): stok gudang pengepul & abu lulus uji → Poktan."""
+    hc, hf, hp = demo_headers(client, "pengepul"), demo_headers(client, "pabrik"), demo_headers(client, "petani")
+    w = client.post("/api/v1/collector/warehouses", headers=hc, json={"name": f"Gudang {uuid.uuid4().hex[:6]}"})
+    assert w.status_code == 201, w.text
+    m = client.post(f"/api/v1/collector/warehouses/{w.json()['id']}/movements", headers=hc,
+                    json={"commodity": "tongkol_jagung", "movement": "masuk", "kg": 500, "moisture_pct": 20,
+                          "client_event_id": uuid.uuid4().hex})
+    assert m.status_code == 201, m.text
+    assert m.json()["payable_kg"] < 500
+    pid = client.get("/api/v1/auth/me", headers=hp).json()["user_id"]
+    g = client.post("/api/v1/factory/farmer-groups", headers=hf,
+                    json={"name": f"Poktan {uuid.uuid4().hex[:6]}", "kecamatan": "Sleman", "kabupaten": "Sleman",
+                          "leader_name": "Ketua", "leader_user_id": pid})
+    assert g.status_code == 201, g.text
+    a = client.post("/api/v1/factory/ash", headers=hf, json={"ash_type": "bottom_ash", "quantity_kg": 100}).json()
+    lab = client.post(f"/api/v1/factory/ash/{a['id']}/lab", headers=hf,
+                      json={"pb_ppm": 5, "cd_ppm": 0.2, "as_ppm": 1, "lab_report_no": "T-ASH"})
+    assert lab.json()["heavy_metal_status"] == "lulus", lab.text
+    assert client.post(f"/api/v1/factory/ash/{a['id']}/allocate", headers=hf,
+                       json={"farmer_group_id": g.json()["id"]}).status_code == 200
+    assert any(x["id"] == a["id"] for x in client.get("/api/v1/farmer/ash", headers=hp).json())
