@@ -1,10 +1,9 @@
-"""Router: Driver (🚛) — Endpoints khusus driver logistik."""
-
+import uuid
 from typing import Annotated
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,7 +12,8 @@ from ..dependencies import require_role
 from ..models.user import User, UserRole
 from ..models.route import Route, RouteStop, RouteStatus, StopStatus
 from ..models.harvest import Harvest, HarvestStatus
-from ..models.ledger import CustodyStage
+from ..models.circular import BiocharDistribution, BiocharRequest
+from ..models.ledger import CustodyEvent, CustodyStage
 from ..services import logistics, qr_sign
 from ..services.custody import find_replay, load_harvest, transition, trusted_device_time
 
@@ -45,17 +45,55 @@ class StopFailRequest(BaseModel):
 
 
 class TrackPointIn(BaseModel):
-    client_point_id: str = Field(..., min_length=8, max_length=64)
-    recorded_at: datetime
+    model_config = ConfigDict(extra="ignore")
+
+    client_point_id: str | None = Field(None, max_length=64)
+    recorded_at: datetime | None = None
     lat: float = Field(..., ge=-90, le=90)
     lon: float = Field(..., ge=-180, le=180)
     accuracy_m: float | None = Field(None, ge=0, le=100_000)
     speed_mps: float | None = Field(None, ge=0, le=100)
 
+    @model_validator(mode="before")
+    @classmethod
+    def populate_defaults(cls, data: any):
+        if isinstance(data, dict):
+            if not data.get("client_point_id"):
+                data["client_point_id"] = f"pt_{uuid.uuid4().hex[:12]}"
+            if not data.get("recorded_at"):
+                data["recorded_at"] = datetime.now(timezone.utc)
+        return data
+
 
 class TrackUpload(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
     route_id: int
-    points: list[TrackPointIn] = Field(..., min_length=1, max_length=2000)
+    points: list[TrackPointIn] = Field(default_factory=list, max_length=2000)
+    # Flexible single ping GPS support
+    lat: float | None = Field(None, ge=-90, le=90)
+    lon: float | None = Field(None, ge=-180, le=180)
+    accuracy_m: float | None = None
+    speed_mps: float | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def wrap_single_point(cls, data: any):
+        if isinstance(data, dict):
+            pts = data.get("points")
+            if not pts:
+                if data.get("lat") is not None and data.get("lon") is not None:
+                    data["points"] = [{
+                        "client_point_id": data.get("client_point_id") or f"pt_{uuid.uuid4().hex[:12]}",
+                        "recorded_at": data.get("recorded_at") or datetime.now(timezone.utc),
+                        "lat": data["lat"],
+                        "lon": data["lon"],
+                        "accuracy_m": data.get("accuracy_m"),
+                        "speed_mps": data.get("speed_mps"),
+                    }]
+                else:
+                    data["points"] = []
+        return data
 
 
 @router.get("/active-route")
@@ -68,6 +106,7 @@ async def get_active_route(
         select(Route)
         .where(Route.driver_id == user.id)
         .where(Route.status.in_([RouteStatus.PLANNED, RouteStatus.IN_PROGRESS]))
+        .where(Route.logistics_carrier == "FACTORY_FLEET")
         .order_by(Route.planned_at.desc())
         .limit(1)
     )
@@ -93,9 +132,12 @@ async def get_active_route(
 
     harvest_ids = [s.harvest_id for s in stops if s.harvest_id]
     qr_map = {}
+    com_map = {}
     if harvest_ids:
-        qr_map = dict((await db.execute(select(Harvest.id, Harvest.qr_code)
-                                        .where(Harvest.id.in_(harvest_ids)))).all())
+        h_rows = (await db.execute(select(Harvest.id, Harvest.qr_code, Harvest.commodity)
+                                  .where(Harvest.id.in_(harvest_ids)))).all()
+        qr_map = {r[0]: r[1] for r in h_rows}
+        com_map = {r[0]: r[2] for r in h_rows}
 
     stop_list = []
     for s in stops:
@@ -110,6 +152,7 @@ async def get_active_route(
             "order": s.stop_order,
             "mill_id": s.mill_id,
             "mill": mill_info,
+            "commodity": com_map.get(s.harvest_id, "sekam_padi"),
             "planned_ton": s.planned_ton,
             "actual_ton": s.actual_ton,
             "picked_up": s.qr_scanned,
@@ -150,6 +193,8 @@ async def start_route(
     route = result.scalar_one_or_none()
     if not route:
         raise HTTPException(404, "Rute tidak ditemukan")
+    if getattr(route, "logistics_carrier", "FACTORY_FLEET") != "FACTORY_FLEET":
+        raise HTTPException(403, "Rute ini adalah armada mandiri pengepul (COLLECTOR_SELF) dan tidak dapat dieksekusi oleh driver armada pabrik.")
     if route.status == RouteStatus.IN_PROGRESS:
         return {"message": "Rute sudah berjalan.", "route_id": route.id, "already_started": True}
     if route.status != RouteStatus.PLANNED:
@@ -161,13 +206,56 @@ async def start_route(
     return {"message": "🚛 Rute dimulai! Selamat berkendara.", "route_id": route.id}
 
 
+@router.get("/job-inbox")
+async def get_driver_job_inbox(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(require_role(UserRole.DRIVER))],
+):
+    """Inbox penugasan armada pabrik (Factory Fleet Only).
+    Hanya penugasan berstatus 'FACTORY_FLEET' (Diambil oleh Pabrik) yang tampil di sini.
+    """
+    routes = (await db.execute(
+        select(Route)
+        .where(Route.driver_id == user.id)
+        .where(Route.logistics_carrier == "FACTORY_FLEET")
+        .order_by(Route.id.desc())
+        .limit(20)
+    )).scalars().all()
+
+    items = []
+    for r in routes:
+        stops = (await db.execute(
+            select(RouteStop, Harvest)
+            .outerjoin(Harvest, Harvest.id == RouteStop.harvest_id)
+            .where(RouteStop.route_id == r.id)
+            .order_by(RouteStop.stop_order)
+        )).all()
+        commodities = list({h.commodity for s, h in stops if h and h.commodity})
+        comm_name = commodities[0].replace("_", " ").title() if commodities else "Biomassa"
+
+        items.append({
+            "route_id": r.id,
+            "trip_code": f"TRIP-{r.id:04d}",
+            "vehicle_plate": r.vehicle_plate,
+            "status": r.status.value if hasattr(r.status, "value") else str(r.status),
+            "carrier": r.logistics_carrier,
+            "commodity": comm_name,
+            "commodity_code": commodities[0] if commodities else None,
+            "total_ton": r.total_ton,
+            "total_km": r.total_km,
+            "stops_count": len(stops),
+            "planned_at": r.planned_at.isoformat() if r.planned_at else None,
+        })
+    return items
+
+
 @router.post("/confirm-pickup")
 async def confirm_pickup(
     req: PickupConfirmRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(require_role(UserRole.DRIVER))],
 ):
-    """Konfirmasi pengambilan sekam di satu stop via QR scan.
+    """Konfirmasi pengambilan biomassa di satu stop via QR scan.
 
     Hanya stop milik rute supir ini yang sedang berjalan. Berat dari supir disimpan sebagai catatan
     (picked_up_kg); angka otoritatif tetap timbangan pengepul & pabrik. Aman diulang (offline replay).
@@ -248,7 +336,7 @@ async def report_stop_failed(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(require_role(UserRole.DRIVER))],
 ):
-    """Supir tiba tetapi sekam tidak bisa diambil (stok tidak ada, dibatalkan, basah, jalan putus).
+    """Supir tiba tetapi biomassa tidak bisa diambil (stok tidak ada, dibatalkan, basah, jalan putus).
     Stop ditutup sebagai GAGAL sehingga rute tetap bisa diselesaikan; panen kembali ke antrean pabrik."""
     return await logistics.fail_stop(db, user, req.route_stop_id, req.reason, req.note, req.lat, req.lon,
                                      req.client_recorded_at)
@@ -263,6 +351,8 @@ async def upload_track(
     """Unggah titik GPS yang direkam perangkat (juga saat offline). Idempoten per `client_point_id`:
     batch yang terkirim ulang tidak menggandakan titik. Jejak yang tiba setelah rute selesai memicu
     perhitungan ulang jarak & emisi."""
+    if not req.points:
+        raise HTTPException(422, "Minimal sertakan satu titik GPS (points[] atau lat/lon)")
     return await logistics.ingest_track(db, user, req.route_id, [p.model_dump() for p in req.points])
 
 
@@ -298,3 +388,159 @@ async def complete_route(
     return {"message": "🎉 Rute selesai! Terima kasih.", "route_id": route.id, "already_completed": False,
             "emissions": {k: emissions[k] for k in ("distance_source", "total_km", "empty_km", "fuel_l",
                                                     "co2e_wtw_kg", "co2e_kg_per_ton_husk", "intensity_g_per_tkm")}}
+
+
+# ---------------------------------------------------------------- Omni 022: QR Checkpoint Verification & Reverse Logistics
+class CheckpointScanRequest(BaseModel):
+    qr_token: str = Field(..., min_length=4)
+    checkpoint_type: str = Field("PICKUP", pattern="^(PICKUP|FACTORY_INBOUND|FACTORY_OUTBOUND|FARMER_DROP)$")
+    lat: float | None = None
+    lon: float | None = None
+    notes: str | None = None
+
+
+class BackhaulDropConfirm(BaseModel):
+    distribution_id: int
+    farmer_id: int | None = None
+    delivered_kg: float = Field(..., gt=0)
+    evidence_photo_url: EvidenceUrl | None = None
+    notes: str | None = None
+
+
+@router.post("/checkpoint-scan")
+async def checkpoint_scan(
+    req: CheckpointScanRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(require_role(UserRole.DRIVER, UserRole.PENGEPUL))],
+):
+    """Verifikasi QR Code checkpoint di titik jemput, gerbang pabrik, atau serah terima muatan balik.
+
+    Mendukung validasi dua arah: token biomassa masuk (Harvest) dan token muatan balik biochar (BiocharDistribution).
+    """
+    token = req.qr_token.strip()
+    now = datetime.now(timezone.utc)
+
+    # 1. Coba cocokkan dengan token panen biomassa
+    harvest = (await db.execute(
+        select(Harvest).where((Harvest.qr_verification_token == token) | (Harvest.qr_code == token))
+    )).scalar_one_or_none()
+
+    if harvest:
+        farmer = await db.get(User, harvest.farmer_id) if harvest.farmer_id else None
+        db.add(CustodyEvent(
+            harvest_id=harvest.id,
+            stage=CustodyStage.DRIVER_PICKUP.value if req.checkpoint_type == "PICKUP" else CustodyStage.FACTORY_RECEIVE.value,
+            from_status=harvest.status.value,
+            to_status=harvest.status.value,
+            weight_kg=harvest.actual_weighed_qty or harvest.verified_kg or harvest.quantity_kg,
+            actor_id=user.id,
+            actor_role=user.role.value,
+            lat=req.lat,
+            lon=req.lon,
+            note=f"QR Checkpoint [{req.checkpoint_type}]: Token valid. {req.notes or ''}".strip(),
+        ))
+        await db.flush()
+        return {
+            "success": True,
+            "type": "HARVEST",
+            "harvest_id": harvest.id,
+            "commodity": harvest.commodity or "sekam_padi",
+            "farmer_name": farmer.full_name if farmer else f"Petani #{harvest.farmer_id}",
+            "claimed_qty": harvest.farmer_claimed_qty or harvest.quantity_kg,
+            "actual_weighed_qty": harvest.actual_weighed_qty or harvest.verified_kg,
+            "status": harvest.status.value,
+            "checkpoint": req.checkpoint_type,
+            "message": f"✅ Checkpoint {req.checkpoint_type} biomassa terverifikasi.",
+        }
+
+    # 2. Coba cocokkan dengan token muatan balik biochar
+    distribution = (await db.execute(
+        select(BiocharDistribution).where((BiocharDistribution.qr_dispatch_token == token) | (BiocharDistribution.dispatch_code == token))
+    )).scalar_one_or_none()
+
+    if distribution:
+        if req.checkpoint_type == "FARMER_DROP":
+            distribution.status = "DELIVERED_TO_FARMER"
+            distribution.completed_at = now
+            await db.flush()
+        return {
+            "success": True,
+            "type": "BIOCHAR_BACKHAUL",
+            "distribution_id": distribution.id,
+            "dispatch_code": distribution.dispatch_code,
+            "vehicle_plate": distribution.vehicle_plate,
+            "total_weight_kg": distribution.total_weight_kg,
+            "total_bags": distribution.total_bags,
+            "status": distribution.status,
+            "checkpoint": req.checkpoint_type,
+            "message": f"✅ Checkpoint {req.checkpoint_type} muatan balik biochar terverifikasi.",
+        }
+
+    raise HTTPException(404, "QR token tidak valid atau tidak terdaftar di sistem.")
+
+
+@router.get("/backhaul-tasks")
+async def backhaul_tasks(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(require_role(UserRole.DRIVER, UserRole.PENGEPUL))],
+):
+    """Daftar penugasan muatan balik biochar dari pabrik untuk diantar ke petani/pengepul."""
+    rows = (await db.execute(
+        select(BiocharDistribution)
+        .where((BiocharDistribution.driver_id == user.id) | (BiocharDistribution.driver_id.is_(None)))
+        .order_by(BiocharDistribution.id.desc())
+        .limit(50)
+    )).scalars().all()
+    return [
+        {
+            "id": d.id,
+            "dispatch_code": d.dispatch_code,
+            "vehicle_plate": d.vehicle_plate,
+            "total_bags": d.total_bags,
+            "total_weight_kg": d.total_weight_kg,
+            "volume_m3": d.volume_m3,
+            "loading_instructions": d.loading_instructions,
+            "qr_dispatch_token": d.qr_dispatch_token,
+            "status": d.status,
+            "created_at": d.created_at.isoformat() if d.created_at else None,
+        }
+        for d in rows
+    ]
+
+
+@router.post("/confirm-backhaul-drop")
+async def confirm_backhaul_drop(
+    req: BackhaulDropConfirm,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(require_role(UserRole.DRIVER))],
+):
+    """Konfirmasi penyerahan muatan balik biochar ke sawah/lokasi petani."""
+    dist = (await db.execute(select(BiocharDistribution).where(BiocharDistribution.id == req.distribution_id))).scalar_one_or_none()
+    if not dist:
+        raise HTTPException(404, "Distribusi biochar tidak ditemukan")
+
+    dist.status = "DELIVERED_TO_FARMER"
+    dist.completed_at = datetime.now(timezone.utc)
+    if req.evidence_photo_url:
+        dist.slip_url = req.evidence_photo_url
+
+    # Update status linked BiocharRequests if applicable
+    if req.farmer_id:
+        b_req = (await db.execute(
+            select(BiocharRequest)
+            .where(BiocharRequest.farmer_id == req.farmer_id, BiocharRequest.status.in_(["REQUESTED", "ALLOCATED", "LOADED_BACKHAUL"]))
+            .order_by(BiocharRequest.id.desc())
+            .limit(1)
+        )).scalar_one_or_none()
+        if b_req:
+            b_req.status = "DELIVERED"
+            b_req.delivered_at = datetime.now(timezone.utc)
+
+    await db.flush()
+    return {
+        "success": True,
+        "distribution_id": dist.id,
+        "status": dist.status,
+        "delivered_kg": req.delivered_kg,
+        "message": f"✅ Muatan balik biochar {req.delivered_kg} kg berhasil diserahkan ke petani."
+    }

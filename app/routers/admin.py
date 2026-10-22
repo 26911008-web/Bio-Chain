@@ -163,9 +163,10 @@ async def system_stats(
     db: Annotated[AsyncSession, Depends(get_db)],
     admin: Annotated[User, Depends(_admin_dep)],
 ):
-    """Statistik keseluruhan sistem."""
+    """Statistik keseluruhan sistem termasuk multi-biomassa, lelang, dan logistik sirkular."""
     users_count = await db.execute(select(func.count(User.id)))
     harvests_count = await db.execute(select(func.count(Harvest.id)))
+    total_biomass_query = await db.execute(select(func.sum(Harvest.quantity_kg)))
     routes_count = await db.execute(select(func.count(Route.id)))
     mills_count = await db.execute(select(func.count(Mill.id)))
 
@@ -174,11 +175,35 @@ async def system_stats(
         select(User.role, func.count(User.id)).group_by(User.role)
     )
 
+    # Circular & auction stats (graceful fallback if tables are empty)
+    total_auctions = 0
+    total_bids = 0
+    total_weighbridge = 0
+    total_redemptions = 0
+    try:
+        from ..models.trade import AuctionRoom, Bid
+        from ..models.circular import WeighbridgeTicket, BiocharRedemption
+        auc_res = await db.execute(select(func.count(AuctionRoom.id)))
+        total_auctions = auc_res.scalar() or 0
+        bid_res = await db.execute(select(func.count(Bid.id)))
+        total_bids = bid_res.scalar() or 0
+        wb_res = await db.execute(select(func.count(WeighbridgeTicket.id)))
+        total_weighbridge = wb_res.scalar() or 0
+        red_res = await db.execute(select(func.count(BiocharRedemption.id)))
+        total_redemptions = red_res.scalar() or 0
+    except Exception:
+        pass
+
     return {
         "total_users": users_count.scalar() or 0,
         "total_harvests": harvests_count.scalar() or 0,
+        "total_biomass_kg": float(total_biomass_query.scalar() or 0.0),
         "total_routes": routes_count.scalar() or 0,
         "total_mills": mills_count.scalar() or 0,
+        "total_auctions": total_auctions,
+        "total_bids": total_bids,
+        "total_weighbridge_tickets": total_weighbridge,
+        "total_biochar_redemptions": total_redemptions,
         "users_by_role": {
             r[0].value if hasattr(r[0], 'value') else r[0]: r[1]
             for r in role_counts.all()

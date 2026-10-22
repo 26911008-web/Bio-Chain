@@ -159,6 +159,9 @@ def test_consents_export_and_delete(client):
     ex = client.get("/api/v1/me/data-export", headers=hdr)
     assert ex.status_code == 200 and "attachment" in ex.headers["content-disposition"]
     data = ex.json()
+    ex_docx = client.get("/api/v1/me/data-export?format=docx", headers=hdr)
+    assert ex_docx.status_code == 200 and ".docx" in ex_docx.headers["content-disposition"]
+    assert len(ex_docx.content) > 1000
     assert data["profile"]["phone"] == phone and len(data["harvests"]) == 1 and data["receipt_code"].startswith("PDP-EKS")
     assert client.post("/api/v1/me/delete", headers=hdr, json={"password": "salah"}).status_code == 401
     d = client.post("/api/v1/me/delete", headers=hdr, json={"password": "pdp-uji-123", "reason": "uji"})

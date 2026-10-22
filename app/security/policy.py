@@ -23,6 +23,8 @@ def _roles(*roles: R) -> frozenset[str]:
 
 ROUTE_POLICY: list[tuple[str, frozenset[str]]] = [
     ("/api/v1/system/status",      PUBLIC),
+    ("/api/v1/traceability",       PUBLIC),
+    ("/api/v1/traceability/",      PUBLIC),
     ("/api/v1/auth/login",         PUBLIC),
     ("/api/v1/auth/register",      PUBLIC),
     ("/api/v1/auth/demo-accounts", PUBLIC),          # akun demo sengaja terbuka untuk semua penguji
@@ -30,6 +32,8 @@ ROUTE_POLICY: list[tuple[str, frozenset[str]]] = [
     ("/api/v1/auth/change-password", ANY_USER),
     ("/api/v1/me/",                ANY_USER),        # hak subjek data PDP — hanya data diri sendiri
     ("/api/v1/assistant/",         ANY_USER),
+    ("/api/v1/notifications",      ANY_USER),
+    ("/api/v1/notifications/",     ANY_USER),
     ("/api/v1/reports/",           ANY_USER),        # cakupan data dibatasi per peran di server
     ("/api/reports/",              ANY_USER),        # alias sesuai spesifikasi /api/reports/monthly
     ("/api/v1/params",             ANY_USER),        # baca: semua; ubah: Pabrik/Admin (require_role)
@@ -66,6 +70,14 @@ ROUTE_POLICY: list[tuple[str, frozenset[str]]] = [
     ("/api/v1/factory/charges",    _roles(R.PABRIK, R.ADMIN, R.AUDITOR)),     # potongan logistik: baca auditor
     ("/api/v1/factory/settlements", _roles(R.PABRIK, R.ADMIN, R.AUDITOR)),   # tulis: khusus pabrik (require_role)
     ("/api/v1/factory/settlements/", _roles(R.PABRIK, R.ADMIN, R.AUDITOR)),
+    ("/api/v1/factory/optimization/", _roles(R.PABRIK, R.ADMIN, R.AUDITOR)),
+    ("/api/v1/factory/loading-ramps", _roles(R.PABRIK, R.ADMIN, R.AUDITOR)),
+    ("/api/v1/factory/gate-receptions", _roles(R.PABRIK, R.ADMIN, R.AUDITOR)),
+    ("/api/v1/factory/biochar-dispatches", _roles(R.PABRIK, R.ADMIN, R.AUDITOR)),
+    ("/api/v1/factory/by-products", _roles(R.PABRIK, R.ADMIN, R.AUDITOR)),
+    ("/api/v1/factory/fuel-blend/", _roles(R.PABRIK, R.ADMIN, R.AUDITOR)),
+    ("/api/v1/factory/blends", _roles(R.PABRIK, R.ADMIN, R.AUDITOR)),
+    ("/api/v1/factory/dashboard/", _roles(R.PABRIK, R.ADMIN, R.AUDITOR)),
     ("/api/v1/labs/",              _roles(R.PABRIK, R.ADMIN)),
     ("/api/v1/jobs/",              _roles(R.PABRIK, R.ADMIN)),
     ("/api/v1/auditor/",           _roles(R.AUDITOR, R.ADMIN)),

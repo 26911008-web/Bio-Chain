@@ -240,6 +240,10 @@ try:
     from .routers import reports as reports_router
     app.include_router(reports_router.router, prefix="/api/v1/reports", tags=["📊 Laporan Bulanan"])
     app.include_router(reports_router.router, prefix="/api/reports", include_in_schema=False)
+    from .routers import traceability as trace_router
+    app.include_router(trace_router.router, prefix="/api/v1/traceability", tags=["🔗 Ketelusuran Sirkular QR"])
+    from .routers import notifications as notifications_router
+    app.include_router(notifications_router.router, prefix="/api/v1/notifications", tags=["🔔 Notifikasi Transaksi"])
     print("✅ v2 persona routers loaded")
 except Exception as e:
     print(f"⚠️  v2 routers not loaded ({e}). Legacy API still available.")
@@ -294,14 +298,14 @@ async def system_status():
 # ================================================================
 @app.get("/", include_in_schema=False)
 def index():
-    return FileResponse(STATIC / "index.html")
+    return FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
 
 
 @app.get("/sw.js", include_in_schema=False)
 async def service_worker():
     """Service worker offline-first; dilayani dari root agar cakupannya seluruh aplikasi."""
     return FileResponse(STATIC / "sw.js", media_type="application/javascript",
-                        headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"})
+                        headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Service-Worker-Allowed": "/"})
 
 
 app.include_router(labs.router, prefix="/api/v1/labs", tags=["🧪 Lab 7 Engine (Pabrik/Admin)"])

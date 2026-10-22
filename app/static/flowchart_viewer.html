@@ -1,0 +1,1199 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+  <title>Bio-Chain v2 · Global End-to-End & Closed-Loop Circular Flowchart</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&family=Syne:wght@800&display=swap" rel="stylesheet">
+  
+  <!-- Mermaid.js via CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+
+  <style>
+    :root {
+      --bg-dark: #090d16;
+      --bg-panel: #111827;
+      --bg-card: #1f2937;
+      --border: #374151;
+      --border-focus: #10b981;
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+      --primary: #10b981;
+      --primary-dark: #059669;
+      --accent-blue: #0284c7;
+      --accent-purple: #7c3aed;
+      --accent-amber: #f59e0b;
+      --accent-red: #ef4444;
+      --font-main: 'Plus Jakarta Sans', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-main);
+      background-color: var(--bg-dark);
+      color: var(--text);
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* TOP HEADER / APP BAR */
+    header.app-bar {
+      height: 64px;
+      background: rgba(17, 24, 39, 0.95);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      z-index: 100;
+      flex-shrink: 0;
+      gap: 16px;
+    }
+
+    .brand-wrap {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+    .brand-badge {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.35);
+    }
+    .brand-title h1 {
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: #fff;
+    }
+    .brand-title p {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    /* CONTROLS TOOLBAR */
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      padding: 4px 0;
+    }
+
+    .search-box {
+      position: relative;
+      width: 240px;
+      flex-shrink: 0;
+    }
+    .search-box input {
+      width: 100%;
+      height: 36px;
+      padding: 0 32px 0 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      color: #fff;
+      font-size: 12px;
+      font-family: inherit;
+      outline: none;
+      transition: all 0.2s;
+    }
+    .search-box input:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.25);
+    }
+    .search-box .clear-btn {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      cursor: pointer;
+      color: var(--text-muted);
+      font-size: 14px;
+      display: none;
+    }
+
+    .btn-group {
+      display: flex;
+      background: var(--bg-card);
+      padding: 3px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      gap: 2px;
+      flex-shrink: 0;
+    }
+    .btn-tool {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .btn-tool:hover {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.08);
+    }
+    .btn-tool.active {
+      color: #fff;
+      background: #2563eb;
+    }
+    .btn-tool.active.filter-biomass { background: #475569; }
+    .btn-tool.active.filter-financial { background: #7c3aed; }
+    .btn-tool.active.filter-qc { background: #0284c7; }
+    .btn-tool.active.filter-biochar { background: #059669; }
+
+    .btn-action {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: #fff;
+      padding: 0 12px;
+      height: 36px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+    .btn-action:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: #64748b;
+    }
+    .btn-action.btn-export {
+      background: linear-gradient(135deg, #059669 0%, #047857 100%);
+      border: none;
+    }
+    .btn-action.btn-export:hover {
+      box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
+    }
+
+    /* VIEWPORT CANVAS */
+    #viewport {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      cursor: grab;
+      background: radial-gradient(circle at 50% 50%, #111827 0%, #090d16 100%);
+    }
+    #viewport.grabbing {
+      cursor: grabbing;
+    }
+
+    #canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      transform-origin: 0 0;
+      will-change: transform;
+      user-select: none;
+    }
+
+    /* FLOATING CONTROLS */
+    .floating-hud {
+      position: absolute;
+      bottom: 24px;
+      right: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 50;
+    }
+    .hud-btn {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: rgba(17, 24, 39, 0.9);
+      border: 1px solid var(--border);
+      color: #fff;
+      font-size: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+      transition: all 0.2s;
+    }
+    .hud-btn:hover {
+      background: var(--bg-card);
+      border-color: var(--primary);
+      transform: scale(1.05);
+    }
+
+    /* FLOATING LEGEND */
+    .floating-legend {
+      position: absolute;
+      bottom: 24px;
+      left: 24px;
+      background: rgba(17, 24, 39, 0.92);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 18px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+      z-index: 50;
+      max-width: 320px;
+      font-size: 11px;
+    }
+    .legend-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .legend-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+    .legend-row:last-child { margin-bottom: 0; }
+    .legend-line {
+      width: 28px;
+      height: 4px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+    .line-gray { background: #475569; }
+    .line-purple { background: #7c3aed; height: 5px; }
+    .line-blue { border-top: 2px dashed #0284c7; background: transparent; height: 0; }
+    .line-green { background: #059669; height: 6px; }
+
+    /* HIGHLIGHT & DIMMING STYLES FOR LAYERS */
+    .layer-dimmed {
+      opacity: 0.12 !important;
+      filter: grayscale(85%) !important;
+      transition: opacity 0.3s ease, filter 0.3s ease;
+    }
+    .layer-highlighted {
+      opacity: 1 !important;
+      filter: drop-shadow(0 0 10px rgba(16, 185, 129, 0.7)) !important;
+      transition: opacity 0.3s ease, filter 0.3s ease;
+    }
+    .search-hit {
+      stroke: #facc15 !important;
+      stroke-width: 4px !important;
+      filter: drop-shadow(0 0 14px #facc15) !important;
+      animation: pulse-border 1.5s infinite alternate;
+    }
+    @keyframes pulse-border {
+      from { stroke-width: 3px; }
+      to { stroke-width: 6px; }
+    }
+
+    /* LOADING SPINNER */
+    #loader {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg-dark);
+      z-index: 200;
+      gap: 16px;
+    }
+    .spinner {
+      width: 48px;
+      height: 48px;
+      border: 4px solid var(--border);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* DETAIL MODAL */
+    .node-detail-card {
+      position: absolute;
+      top: 80px;
+      right: 24px;
+      width: 340px;
+      background: rgba(17, 24, 39, 0.95);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px;
+      backdrop-filter: blur(16px);
+      box-shadow: 0 12px 32px rgba(0,0,0,0.6);
+      z-index: 60;
+      display: none;
+    }
+    .node-detail-card h4 {
+      font-size: 14px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 6px;
+    }
+    .node-detail-card .badge {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 4px;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+    }
+    .node-detail-card p {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.5;
+      margin-bottom: 12px;
+    }
+    .detail-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      padding: 6px 0;
+      border-top: 1px solid rgba(255,255,255,0.08);
+    }
+    .detail-row .k { color: var(--text-muted); }
+    .detail-row .v { color: #fff; font-family: var(--font-mono); font-weight: 600; }
+  </style>
+</head>
+<body>
+
+  <!-- TOP APP BAR -->
+  <header class="app-bar">
+    <div class="brand-wrap">
+      <div class="brand-badge">🌿</div>
+      <div class="brand-title">
+        <h1>Bio-Chain v2 · Global Flowchart</h1>
+        <p>End-to-End &amp; Closed-Loop Circular Process Model (BPMN 2.0)</p>
+      </div>
+    </div>
+
+    <!-- FILTER LAYER BUTTONS -->
+    <div class="toolbar">
+      <div class="search-box">
+        <input type="text" id="node-search" placeholder="🔍 Cari node (cth: Weighbridge, Lelang, Biochar, TOP)...">
+        <span class="clear-btn" id="search-clear">✕</span>
+      </div>
+
+      <div class="btn-group" role="group" aria-label="Filter Layer Aliran">
+        <button class="btn-tool active" data-layer="all">🌐 Semua Alur</button>
+        <button class="btn-tool filter-biomass" data-layer="biomass">🪵 Fisik Biomassa</button>
+        <button class="btn-tool filter-financial" data-layer="financial">💰 Uang &amp; TOP</button>
+        <button class="btn-tool filter-qc" data-layer="qc">🔬 Feedback QC</button>
+        <button class="btn-tool filter-biochar" data-layer="biochar">🌿 Balik Biochar</button>
+      </div>
+
+      <div class="btn-group">
+        <button class="btn-tool" id="btn-zoom-in" title="Perbesar">➕</button>
+        <button class="btn-tool" id="btn-zoom-out" title="Perkecil">➖</button>
+        <button class="btn-tool" id="btn-zoom-fit" title="Pas di Layar">🎯 Reset</button>
+      </div>
+
+      <button class="btn-action" id="btn-export-svg" title="Unduh format SVG murni vektor">
+        📐 Unduh SVG
+      </button>
+      <button class="btn-action btn-export" id="btn-export-png" title="Unduh gambar PNG 4K Ultra High-Res">
+        🖼️ Unduh 4K PNG
+      </button>
+    </div>
+  </header>
+
+  <!-- VIEWPORT CANVAS -->
+  <div id="viewport">
+    <div id="loader">
+      <div class="spinner"></div>
+      <p style="font-size:14px; color:var(--text-muted);">Memuat &amp; Merender Diagram Alir Global Bio-Chain 5 Zona…</p>
+    </div>
+    <div id="canvas"></div>
+  </div>
+
+  <!-- FLOATING HUD -->
+  <div class="floating-hud">
+    <button class="hud-btn" id="hud-zoom-in" title="Zoom In">+</button>
+    <button class="hud-btn" id="hud-zoom-out" title="Zoom Out">−</button>
+    <button class="hud-btn" id="hud-fit" title="Fit to Screen">⛶</button>
+  </div>
+
+  <!-- FLOATING LEGEND -->
+  <div class="floating-legend">
+    <div class="legend-title">
+      <span>LEGENDA GARIS ALIRAN</span>
+      <span style="cursor:pointer;" onclick="this.parentElement.parentElement.style.display='none'">✕</span>
+    </div>
+    <div class="legend-row">
+      <div class="legend-line line-gray"></div>
+      <span>Alur Utama Fisik Biomassa &amp; Logistik</span>
+    </div>
+    <div class="legend-row">
+      <div class="legend-line line-purple"></div>
+      <span>Alur Transaksi Keuangan (DP, Cash, TOP)</span>
+    </div>
+    <div class="legend-row">
+      <div class="legend-line line-blue"></div>
+      <span>Alur Feedback QC, Refraksi &amp; Notifikasi</span>
+    </div>
+    <div class="legend-row">
+      <div class="legend-line line-green"></div>
+      <span>Alur Balik Sirkular Biochar ke Lahan Petani</span>
+    </div>
+  </div>
+
+  <!-- NODE DETAIL CARD -->
+  <div class="node-detail-card" id="detail-card">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+      <h4 id="dt-title">Node Title</h4>
+      <span style="cursor:pointer; color:var(--text-muted);" onclick="closeDetailCard()">✕</span>
+    </div>
+    <div id="dt-badge" class="badge" style="background:#2563eb; color:#fff;">Step Operasional</div>
+    <p id="dt-desc">Deskripsi proses operasional.</p>
+    <div class="detail-row"><span class="k">Zona Swimlane</span><span class="v" id="dt-zone">Zona 1</span></div>
+    <div class="detail-row"><span class="k">Tipe Simbol</span><span class="v" id="dt-type">Decision Node</span></div>
+    <div class="detail-row"><span class="k">Path Backend</span><span class="v" id="dt-backend">app/routers/...</span></div>
+    <div class="detail-row"><span class="k">Tabel DB</span><span class="v" id="dt-db">harvests / listings</span></div>
+  </div>
+
+  <!-- SCRIPT ENGINE -->
+  <script>
+    // 1. KODE MERMAID LENGKAP
+    const MERMAID_CODE = `
+%%{init: {'theme': 'base', 'flowchart': {'curve': 'basis', 'nodeSpacing': 45, 'rankSpacing': 55}, 'maxTextSize': 1000000}}%%
+flowchart TB
+
+    classDef startNode fill:#1E88E5,stroke:#1565C0,stroke-width:2px,color:#ffffff,font-weight:bold;
+    classDef stepOperasional fill:#E3F2FD,stroke:#64B5F6,stroke-width:2px,color:#1E293B;
+    classDef inputData fill:#FFF9C4,stroke:#FBC02D,stroke-width:2px,color:#1E293B;
+    classDef stepKhusus fill:#EDE7F6,stroke:#9575CD,stroke-width:2px,color:#1E293B,font-weight:600;
+    classDef decisionNode fill:#ECEFF1,stroke:#90A4AE,stroke-width:2px,color:#1E293B,font-weight:bold;
+    classDef resultHijau fill:#10B981,stroke:#059669,stroke-width:2px,color:#ffffff,font-weight:bold;
+    classDef resultOranye fill:#F59E0B,stroke:#D97706,stroke-width:2px,color:#ffffff,font-weight:bold;
+    classDef resultMerah fill:#EF4444,stroke:#DC2626,stroke-width:2px,color:#ffffff,font-weight:bold;
+
+    subgraph ZONA_1["🌾 ZONA 1: AWAL - MODUL PETANI (PENAWARAN, LELANG & EVALUASI)"]
+        direction TB
+        Z1_START(["Mulai: Petani Memiliki Stok Panen Biomassa"]):::startNode
+        Z1_INPUT_LAPOR[/"Input Lapor Biomassa: Jenis, Qty (kg), Kadar Air, Foto Sampel & Request Biochar"/]:::inputData
+        Z1_DEC_CHANNEL{"Pilih Jalur Penjualan Biomassa?"}:::decisionNode
+
+        Z1_DIR_DEC_DELIVERY{"Pilihan Pengiriman Jalur Langsung?"}:::decisionNode
+        Z1_DIR_JEMPUT["Pilih Pengepul Spesialis & Tetapkan Opsi Dijemput Pengepul"]:::stepOperasional
+        Z1_DIR_ANTAR["Pilih Pengepul Spesialis & Tetapkan Opsi Antar Mandiri Petani"]:::stepOperasional
+
+        Z1_INPUT_AUCTION[/"Input Set Harga Dasar Lelang (Floor Price) & Timer Durasi Lelang"/]:::inputData
+        Z1_AUCTION_ACTIVE["Listing Bursa Lelang Aktif & Terbuka untuk Seluruh Pengepul"]:::stepOperasional
+        Z1_DEC_AUCTION_DEAL{"Petani Setuju Menerima Tawaran Pengepul?"}:::decisionNode
+        Z1_RES_AUCTION_CANCEL(["Lelang Batal / Expired (Stok Petani Dikembalikan)"]):::resultMerah
+        Z1_AUC_DEC_DELIVERY{"Pilihan Pengiriman Hasil Lelang?"}:::decisionNode
+        Z1_AUC_JEMPUT["Kesepakatan Lelang: Skema Dijemput Pengepul"]:::stepOperasional
+        Z1_AUC_ANTAR["Kesepakatan Lelang: Skema Antar Mandiri oleh Petani"]:::stepOperasional
+
+        Z1_INPUT_SCHED_CONF[/"Terima Rencana Jadwal Jemput dari Pengepul"/]:::inputData
+        Z1_DEC_SCHED_CONF{"Petani Menyetujui Jadwal Jemput?"}:::decisionNode
+        Z1_RES_RESCHEDULE(["Minta Penyesuaian Jadwal (Reschedule) ke Pengepul"]):::resultOranye
+        Z1_RES_SCHED_OK(["Jadwal Penjemputan Terkonfirmasi Resmi"]):::resultHijau
+
+        Z1_EVAL_PANEL["Panel Evaluasi Petani: Analisis Historis, Mutu & Kemitraan"]:::stepOperasional
+        Z1_EVAL_QC["Menerima Rekap Feedback QC Lapangan & Deviasi Timbang"]:::stepOperasional
+        Z1_EVAL_PAY["Evaluasi Rekam Jejak Kecepatan Pembayaran Pengepul (DP & Lunas)"]:::stepOperasional
+        Z1_EVAL_BIOCHAR["Evaluasi Dompet Biochar, Serapan Karbon & Kesuburan Lahan"]:::stepOperasional
+
+        Z1_START --> Z1_INPUT_LAPOR
+        Z1_INPUT_LAPOR --> Z1_DEC_CHANNEL
+        Z1_DEC_CHANNEL -->|"Harga Langsung Pengepul"| Z1_DIR_DEC_DELIVERY
+        Z1_DIR_DEC_DELIVERY -->|"Dijemput Pengepul"| Z1_DIR_JEMPUT
+        Z1_DIR_DEC_DELIVERY -->|"Antar Mandiri"| Z1_DIR_ANTAR
+
+        Z1_DEC_CHANNEL -->|"Bursa Lelang (Bidding)"| Z1_INPUT_AUCTION
+        Z1_INPUT_AUCTION --> Z1_AUCTION_ACTIVE
+        Z1_AUCTION_ACTIVE --> Z1_DEC_AUCTION_DEAL
+        Z1_DEC_AUCTION_DEAL -->|"Tidak / Waktu Habis"| Z1_RES_AUCTION_CANCEL
+        Z1_DEC_AUCTION_DEAL -->|"Ya / Setujui Tawaran"| Z1_AUC_DEC_DELIVERY
+        Z1_AUC_DEC_DELIVERY -->|"Dijemput Pengepul"| Z1_AUC_JEMPUT
+        Z1_AUC_DEC_DELIVERY -->|"Antar Mandiri"| Z1_AUC_ANTAR
+
+        Z1_INPUT_SCHED_CONF --> Z1_DEC_SCHED_CONF
+        Z1_DEC_SCHED_CONF -->|"Tolak / Bentrok"| Z1_RES_RESCHEDULE
+        Z1_DEC_SCHED_CONF -->|"Setuju"| Z1_RES_SCHED_OK
+
+        Z1_EVAL_PANEL --> Z1_EVAL_QC
+        Z1_EVAL_PANEL --> Z1_EVAL_PAY
+        Z1_EVAL_PANEL --> Z1_EVAL_BIOCHAR
+    end
+
+    subgraph ZONA_2["📦 ZONA 2: SIRKULASI & JADWAL - MODUL PENGEPUL (GROUPING & KONSOLIDASI)"]
+        direction TB
+        Z2_OFFERS_DASH["Dashboard Pengepul: Menerima Data Penawaran Petani"]:::stepOperasional
+        Z2_GROUPING["Pengelompokan Terurut per Jenis Biomassa (Langsung Diambil vs Lelang)"]:::stepOperasional
+        Z2_BID_ANALYSIS[/"Bursa Lelang: Analisis Netback Margin & Kirim Bidding Harga/kg"/]:::inputData
+        Z2_FINALISASI["Finalisasi Kesepakatan Transaksi & Penerbitan Dokumen Panen"]:::stepOperasional
+        Z2_MULTI_PICKUP["Perencanaan Rute Penjemputan Multi-Stop (VRP Solver)"]:::stepOperasional
+        Z2_DEC_BIOCHAR_REQ{"Ada Request Biochar dari Petani di Rute Tersebut?"}:::decisionNode
+        Z2_ROUTE_BIOCHAR["Siapkan Rute Backhaul: Bawa Biochar + Jemput Biomassa Sekaligus (Hemat Cost)"]:::stepKhusus
+        Z2_ROUTE_NORMAL["Rute Reguler: Penjemputan Biomassa Langsung"]:::stepOperasional
+        Z2_SEND_SCHEDULE[/"Kirim Rencana Jadwal Jemput ke Petani untuk Konfirmasi"/]:::inputData
+
+        Z2_OFFERS_DASH --> Z2_GROUPING
+        Z2_GROUPING --> Z2_BID_ANALYSIS
+        Z2_BID_ANALYSIS --> Z2_FINALISASI
+        Z2_GROUPING --> Z2_FINALISASI
+        Z2_FINALISASI --> Z2_MULTI_PICKUP
+        Z2_MULTI_PICKUP --> Z2_DEC_BIOCHAR_REQ
+        Z2_DEC_BIOCHAR_REQ -->|"Ya (Ada Request)"| Z2_ROUTE_BIOCHAR
+        Z2_DEC_BIOCHAR_REQ -->|"Tidak Ada"| Z2_ROUTE_NORMAL
+        Z2_ROUTE_BIOCHAR --> Z2_SEND_SCHEDULE
+        Z2_ROUTE_NORMAL --> Z2_SEND_SCHEDULE
+    end
+
+    subgraph ZONA_3["⚖️ ZONA 3: EKSEKUSI QC LAPANGAN & PEMBAYARAN PENGEPUL KE PETANI"]
+        direction TB
+        Z3_ARRIVE["Armada Tiba di Lokasi Petani (atau Petani Antar Sendiri ke Hub)"]:::stepOperasional
+        Z3_HANDOVER_BIOCHAR["Serah Terima Biochar ke Petani Sesuai Request (Jika Ada)"]:::stepKhusus
+        Z3_FIELD_QC[/"Timbang Berat Riil (kg), Uji Kadar Air (MC) & Inspeksi Mutu Lapangan"/]:::inputData
+        Z3_DEC_FIELD_QC{"Lolos Pemeriksaan Mutu QC Lapangan?"}:::decisionNode
+        Z3_REJECT_INPUT[/"Input Alasan Penolakan & Upload Foto Bukti Kerusakan"/]:::inputData
+        Z3_RES_REJECT(["Batal Jemput / Lot Panen Diretur ke Petani"]):::resultMerah
+        Z3_CALC_DEVIATION["Hitung Deviasi Berat Aktual vs Estimasi & Rekonsiliasi Mutu"]:::stepOperasional
+
+        Z3_DEC_PAY_SCHEME{"Pilih Skema Pembayaran ke Petani?"}:::decisionNode
+        Z3_PAY_DP[/"Bayar Uang Muka (DP) & Terbitkan Tanda Terima Digital"/]:::inputData
+        Z3_TRACK_DEBT["Kontrol Saldo Hutang & Monitoring Pelunasan Sisa Pembayaran"]:::stepKhusus
+        Z3_PAY_SETTLE[/"Input Pembayaran Pelunasan Akhir ke Petani"/]:::inputData
+        Z3_PAY_CASH[/"Input Pembayaran Tunai / Transfer Lunas Sekaligus"/]:::inputData
+        Z3_RES_PETANI_PAID(["Pembayaran Petani Lunas Terverifikasi"]):::resultHijau
+        Z3_MUTASI_STOCK["Mutasi Stok Masuk Gudang Pengepul (Grouped per Jenis Biomassa)"]:::stepOperasional
+
+        Z3_ARRIVE --> Z3_HANDOVER_BIOCHAR
+        Z3_HANDOVER_BIOCHAR --> Z3_FIELD_QC
+        Z3_FIELD_QC --> Z3_DEC_FIELD_QC
+        Z3_DEC_FIELD_QC -->|"Tidak Lolos (Reject)"| Z3_REJECT_INPUT
+        Z3_REJECT_INPUT --> Z3_RES_REJECT
+        Z3_DEC_FIELD_QC -->|"Lolos (Pass)"| Z3_CALC_DEVIATION
+        Z3_CALC_DEVIATION --> Z3_DEC_PAY_SCHEME
+
+        Z3_DEC_PAY_SCHEME -->|"Opsi Uang Muka (DP)"| Z3_PAY_DP
+        Z3_PAY_DP --> Z3_TRACK_DEBT
+        Z3_TRACK_DEBT --> Z3_PAY_SETTLE
+        Z3_PAY_SETTLE --> Z3_RES_PETANI_PAID
+
+        Z3_DEC_PAY_SCHEME -->|"Opsi Langsung Lunas"| Z3_PAY_CASH
+        Z3_PAY_CASH --> Z3_RES_PETANI_PAID
+
+        Z3_CALC_DEVIATION --> Z3_MUTASI_STOCK
+    end
+
+    subgraph ZONA_4["🏭 ZONA 4: PENGAJUAN MULTI-PABRIK, MODUL DRIVER & QC GERBANG PABRIK"]
+        direction TB
+        Z4_SUB_FACTORY[/"Pengepul Input Pengajuan Stok ke Mitra Pabrik Pilihan (Multi-Pabrik)"/]:::inputData
+        Z4_DEC_FACTORY_AGREE{"Mitra Pabrik Menyetujui Pengajuan Stok?"}:::decisionNode
+        Z4_RES_FACTORY_REJECT(["Pengajuan Stok Ditolak Pabrik / Dibatalkan"]):::resultMerah
+        Z4_DEC_FLEET_MODE{"Pilihan Opsi Armada Pengiriman ke Pabrik?"}:::decisionNode
+
+        Z4_SELF_DELIVERY["Terbitkan Surat Jalan & Jadwal Pengiriman Armada Mandiri Pengepul"]:::stepOperasional
+        Z4_FLEET_DEPART["Armada Pengepul Berangkat Mengantar Stok ke Pabrik"]:::stepOperasional
+
+        Z4_FACTORY_DISPATCH["Otomatis Masuk Antrean Job Modul Driver Truk Pabrik"]:::stepKhusus
+        Z4_DEC_LOAD_BIOCHAR{"Ada Perintah Bawa Biochar Pabrik ke Pengepul?"}:::decisionNode
+        Z4_LOAD_BIOCHAR_TRUCK["Driver Pabrik Muat Biochar di Pabrik Terlebih Dahulu"]:::stepKhusus
+        Z4_TRUCK_DEPART_EMPTY["Driver Pabrik Berangkat Menuju Hub Pengepul"]:::stepOperasional
+        Z4_DRIVER_COLLECT[/"Driver Scan QR Muat di Pengepul, Serah Terima Biochar & Upload Bukti"/]:::inputData
+        Z4_TRUCK_TO_GATE["Armada Truk Tiba di Gerbang Utama Pabrik"]:::stepOperasional
+
+        Z4_WEIGHBRIDGE[/"Scan QR Tiket & Penimbangan Jembatan Timbang (Gross, Tare, Netto)"/]:::inputData
+        Z4_LAB_QC[/"Uji Laboratorium Gerbang: Analisis Kadar Air, Abu, Kalor & Kontaminan"/]:::inputData
+        Z4_DEC_QC_DECISION{"Hasil Keputusan QC Pabrik (3 Cabang Mutlak)?"}:::decisionNode
+
+        Z4_REJECT_100[/"Catat Alasan Penolakan Total & Terbitkan Slip Retur Pabrik"/]:::inputData
+        Z4_RES_RETUR_TOTAL(["Retur Total: 100% Muatan Biomassa Ditolak Pabrik"]):::resultMerah
+        Z4_PARTIAL_CALC["Hitung Refraksi Potongan Bobot/Harga & Pisahkan Tonase Ditolak"]:::stepOperasional
+        Z4_FEEDBACK_PARTIAL["Kirim Rekap Feedback Refraksi & Potongan ke Modul Pengepul"]:::stepOperasional
+        Z4_FEEDBACK_ACCEPT["Kirim Rekap Feedback Mutu Diterima Penuh (Grade A) ke Modul Pengepul"]:::stepOperasional
+        Z4_TONASE_ACCEPTED["Tonase Netto Lolos Diteruskan ke Loading Ramp & Billing Invoice"]:::stepOperasional
+
+        Z4_SUB_FACTORY --> Z4_DEC_FACTORY_AGREE
+        Z4_DEC_FACTORY_AGREE -->|"Ditolak Pabrik"| Z4_RES_FACTORY_REJECT
+        Z4_DEC_FACTORY_AGREE -->|"Disetujui Pabrik"| Z4_DEC_FLEET_MODE
+
+        Z4_DEC_FLEET_MODE -->|"Antar Mandiri (Pengepul)"| Z4_SELF_DELIVERY
+        Z4_SELF_DELIVERY --> Z4_FLEET_DEPART
+        Z4_FLEET_DEPART --> Z4_WEIGHBRIDGE
+
+        Z4_DEC_FLEET_MODE -->|"Dijemput Pabrik (Armada Pabrik)"| Z4_FACTORY_DISPATCH
+        Z4_FACTORY_DISPATCH --> Z4_DEC_LOAD_BIOCHAR
+        Z4_DEC_LOAD_BIOCHAR -->|"Ya (Muat Biochar)"| Z4_LOAD_BIOCHAR_TRUCK
+        Z4_DEC_LOAD_BIOCHAR -->|"Tidak"| Z4_TRUCK_DEPART_EMPTY
+        Z4_LOAD_BIOCHAR_TRUCK --> Z4_DRIVER_COLLECT
+        Z4_TRUCK_DEPART_EMPTY --> Z4_DRIVER_COLLECT
+        Z4_DRIVER_COLLECT --> Z4_TRUCK_TO_GATE
+        Z4_TRUCK_TO_GATE --> Z4_WEIGHBRIDGE
+
+        Z4_WEIGHBRIDGE --> Z4_LAB_QC
+        Z4_LAB_QC --> Z4_DEC_QC_DECISION
+
+        Z4_DEC_QC_DECISION -->|"1. Ditolak Semua (Reject 100%)"| Z4_REJECT_100
+        Z4_REJECT_100 --> Z4_RES_RETUR_TOTAL
+
+        Z4_DEC_QC_DECISION -->|"2. Diterima Sebagian (Partial)"| Z4_PARTIAL_CALC
+        Z4_PARTIAL_CALC --> Z4_FEEDBACK_PARTIAL
+        Z4_PARTIAL_CALC --> Z4_TONASE_ACCEPTED
+
+        Z4_DEC_QC_DECISION -->|"3. Diterima Penuh (Accept 100%)"| Z4_FEEDBACK_ACCEPT
+        Z4_FEEDBACK_ACCEPT --> Z4_TONASE_ACCEPTED
+    end
+
+    subgraph ZONA_5["⚡ ZONA 5: KEUANGAN PABRIK, LOADING RAMP, BLENDING & ALUR BALIK SIRKULAR"]
+        direction TB
+
+        subgraph ZONA_5A["💰 Sub-Alur A: Penyelesaian Pembayaran Pabrik ke Pengepul"]
+            direction TB
+            Z5A_DEC_PAY_SCHEME{"Pilih Skema Pembayaran Pabrik ke Pengepul?"}:::decisionNode
+            Z5A_PAY_CASH[/"Pencairan Dana Langsung via Kasir / Bank Transfer ke Pengepul"/]:::inputData
+            Z5A_RES_LUNAS(["Invoice Pabrik Terbayar Lunas"]):::resultHijau
+
+            Z5A_INPUT_TOP[/"Input Pembayaran DP (Jika Ada) & Tetapkan Tanggal Jatuh Tempo (TOP)"/]:::inputData
+            Z5A_MONITOR_TOP["Monitoring Status Tagihan Belum Dibayar (Grouped per Biomassa)"]:::stepKhusus
+            Z5A_DEC_OVERDUE{"Tagihan Pabrik Melewati Jatuh Tempo (Overdue)?"}:::decisionNode
+            Z5A_RES_BLOCK_FACTORY(["Blokir Transaksi Akun Pabrik & Bekukan Pengajuan Baru"]):::resultOranye
+            Z5A_SETTLE_TOP[/"Proses Pelunasan Tagihan Sebelum Jatuh Tempo"/]:::inputData
+
+            Z5A_DEC_PAY_SCHEME -->|"Cash / Lunas Instan"| Z5A_PAY_CASH
+            Z5A_PAY_CASH --> Z5A_RES_LUNAS
+
+            Z5A_DEC_PAY_SCHEME -->|"DP / TOP (Terms of Payment)"| Z5A_INPUT_TOP
+            Z5A_INPUT_TOP --> Z5A_MONITOR_TOP
+            Z5A_MONITOR_TOP --> Z5A_DEC_OVERDUE
+            Z5A_DEC_OVERDUE -->|"Ya (Overdue)"| Z5A_RES_BLOCK_FACTORY
+            Z5A_DEC_OVERDUE -->|"Tidak (Tepat Waktu)"| Z5A_SETTLE_TOP
+            Z5A_SETTLE_TOP --> Z5A_RES_LUNAS
+        end
+
+        subgraph ZONA_5B["🔄 Sub-Alur B: Loading Ramp, Blending HiGHS & Sirkularitas Hasil Samping"]
+            direction TB
+            Z5B_RAMP_ALLOC["Alokasi Biomassa ke Loading Ramp Sesuai Jenis (Sekam, Jagung, Tebu, Sengon)"]:::stepOperasional
+            Z5B_UPDATE_AGGR["Pembaruan Rekursif Mutu Agregat Loading Ramp (Weighted MC, Kalor, Densitas)"]:::stepOperasional
+            Z5B_INPUT_BLENDING[/"Input Target Spek & Parameter ke Engine Optimasi Blending Antar-Ramp"/]:::inputData
+            Z5B_HIGHS_SOLVER["Solver HiGHS Linear Programming: Optimasi Multi-Produk, Margin & tCO2e"]:::stepOperasional
+            Z5B_DEC_PRODUCT{"Pilih Rencana Produksi Optimal?"}:::decisionNode
+
+            Z5B_PROD_PELLET["Produksi Biopellet Kalor Tinggi (Standar Ekspor / Co-Firing PLN)"]:::stepOperasional
+            Z5B_PROD_CHAR["Produksi Biochar Pirolisis Mutu Unggul untuk Pembenah Tanah"]:::stepOperasional
+            Z5B_PROD_SILIKA["Produksi Bio-Silika Murni dari Abu Pembakaran Terkontrol"]:::stepOperasional
+            Z5B_PROD_BRIKET["Produksi Briket Biomassa Padat Energi untuk Industri"]:::stepOperasional
+
+            Z5B_RECORD_OUTPUT["Pencatatan Produk Utama & Hasil Samping (Abu Dasar, Biochar Kasar, Asap Cair)"]:::stepOperasional
+            Z5B_LAB_SAFETY[/"Uji Keamanan Laboratorium Hasil Samping: Analisis Logam Berat (Pb, Cd, As)"/]:::inputData
+            Z5B_DEC_SAFETY_PASS{"Hasil Uji Keamanan Lolos Ambang Batas Pertanian?"}:::decisionNode
+            Z5B_RES_DISPOSAL(["Disposal Limbah Industri Aman / Penanganan B3 Non-Lahan"]):::resultMerah
+
+            Z5B_REG_BIOCHAR["Registrasi Batch Biochar Bersertifikat ke Modul Sirkularitas Bio-Chain"]:::stepKhusus
+            Z5B_SHIP_COLLECTOR["Distribusi Balik Biochar dari Pabrik ke Pengepul (Backhaul Armada Pabrik)"]:::stepKhusus
+            Z5B_COLLECTOR_FARMER["Distribusi Balik Biochar dari Pengepul ke Petani (Backhaul Armada Pengepul)"]:::stepKhusus
+            Z5B_FARMER_APPLY["Aplikasi Biochar pada Lahan Pertanian Petani & Update Dompet Karbon"]:::stepKhusus
+            Z5B_RES_CIRCULAR_COMPLETE(["Siklus Sirkular Selesai: Zero Waste & Ekosistem Tertutup Tercapai"]):::resultHijau
+
+            Z5B_RAMP_ALLOC --> Z5B_UPDATE_AGGR
+            Z5B_UPDATE_AGGR --> Z5B_INPUT_BLENDING
+            Z5B_INPUT_BLENDING --> Z5B_HIGHS_SOLVER
+            Z5B_HIGHS_SOLVER --> Z5B_DEC_PRODUCT
+
+            Z5B_DEC_PRODUCT -->|"Opsi 1: Biopellet"| Z5B_PROD_PELLET
+            Z5B_DEC_PRODUCT -->|"Opsi 2: Biochar"| Z5B_PROD_CHAR
+            Z5B_DEC_PRODUCT -->|"Opsi 3: Bio-Silika"| Z5B_PROD_SILIKA
+            Z5B_DEC_PRODUCT -->|"Opsi 4: Briket"| Z5B_PROD_BRIKET
+
+            Z5B_PROD_PELLET --> Z5B_RECORD_OUTPUT
+            Z5B_PROD_CHAR --> Z5B_RECORD_OUTPUT
+            Z5B_PROD_SILIKA --> Z5B_RECORD_OUTPUT
+            Z5B_PROD_BRIKET --> Z5B_RECORD_OUTPUT
+
+            Z5B_RECORD_OUTPUT --> Z5B_LAB_SAFETY
+            Z5B_LAB_SAFETY --> Z5B_DEC_SAFETY_PASS
+            Z5B_DEC_SAFETY_PASS -->|"Tidak Lolos (B3)"| Z5B_RES_DISPOSAL
+            Z5B_DEC_SAFETY_PASS -->|"Lolos Uji (Aman)"| Z5B_REG_BIOCHAR
+
+            Z5B_REG_BIOCHAR --> Z5B_SHIP_COLLECTOR
+            Z5B_SHIP_COLLECTOR --> Z5B_COLLECTOR_FARMER
+            Z5B_COLLECTOR_FARMER --> Z5B_FARMER_APPLY
+            Z5B_FARMER_APPLY --> Z5B_RES_CIRCULAR_COMPLETE
+        end
+    end
+
+    %% INTERKONEKSI LINTAS ZONA
+    Z1_DIR_JEMPUT -->|"Order Masuk Langsung"| Z2_OFFERS_DASH
+    Z1_DIR_ANTAR -->|"Order Masuk Mandiri"| Z2_OFFERS_DASH
+    Z1_AUC_JEMPUT -->|"Kontrak Lelang Jemput"| Z2_OFFERS_DASH
+    Z1_AUC_ANTAR -->|"Kontrak Lelang Antar"| Z2_OFFERS_DASH
+    Z1_AUCTION_ACTIVE -->|"Publish Listing Bursa"| Z2_BID_ANALYSIS
+
+    Z2_SEND_SCHEDULE -->|"Notifikasi Jadwal Jemput"| Z1_INPUT_SCHED_CONF
+    Z1_RES_RESCHEDULE -.->|"Minta Atur Ulang Rute"| Z2_MULTI_PICKUP
+    Z1_RES_SCHED_OK -->|"Eksekusi Penjemputan"| Z3_ARRIVE
+    Z1_DIR_ANTAR -->|"Petani Tiba Antar Mandiri"| Z3_ARRIVE
+    Z1_AUC_ANTAR -->|"Petani Tiba Antar Mandiri"| Z3_ARRIVE
+
+    Z3_MUTASI_STOCK -->|"Pengajuan Stok Gudang"| Z4_SUB_FACTORY
+    Z4_TONASE_ACCEPTED -->|"Terbitkan Invoice Tagihan"| Z5A_DEC_PAY_SCHEME
+    Z4_TONASE_ACCEPTED -->|"Bongkar Muat Fisik Biomassa"| Z5B_RAMP_ALLOC
+
+    Z3_PAY_DP ==>|"Pencairan Uang Muka Petani"| Z3_TRACK_DEBT
+    Z3_PAY_SETTLE ==>|"Pelunasan Akhir Petani"| Z3_RES_PETANI_PAID
+    Z3_PAY_CASH ==>|"Pelunasan Cash/Transfer Petani"| Z3_RES_PETANI_PAID
+    Z5A_PAY_CASH ==>|"Pencairan Cash/Bank Pabrik"| Z5A_RES_LUNAS
+    Z5A_INPUT_TOP ==>|"Pencatatan DP & Jatuh Tempo TOP"| Z5A_MONITOR_TOP
+    Z5A_SETTLE_TOP ==>|"Pelunasan Invoice TOP"| Z5A_RES_LUNAS
+
+    Z3_CALC_DEVIATION -.->|"Feedback Selisih Timbang & Mutu Lapangan"| Z1_EVAL_QC
+    Z3_RES_REJECT -.->|"Feedback Alasan Reject Lapangan"| Z1_EVAL_QC
+    Z3_RES_PETANI_PAID -.->|"Data Kecepatan Pembayaran Pengepul"| Z1_EVAL_PAY
+
+    Z4_RES_RETUR_TOTAL -.->|"Feedback Mutu: 100% Ditolak Pabrik"| Z2_OFFERS_DASH
+    Z4_FEEDBACK_PARTIAL -.->|"Feedback Mutu: Potongan Refraksi Pabrik"| Z2_OFFERS_DASH
+    Z4_FEEDBACK_ACCEPT -.->|"Feedback Mutu: Grade A Diterima Penuh"| Z2_OFFERS_DASH
+
+    Z5B_SHIP_COLLECTOR ==>|"Backhaul Armada Pabrik Bawa Biochar"| Z4_LOAD_BIOCHAR_TRUCK
+    Z4_DRIVER_COLLECT ==>|"Drop Biochar ke Gudang Pengepul"| Z2_ROUTE_BIOCHAR
+    Z2_ROUTE_BIOCHAR ==>|"Armada Pengepul Bawa Biochar ke Rute Petani"| Z3_HANDOVER_BIOCHAR
+    Z3_HANDOVER_BIOCHAR ==>|"Serah Terima Biochar ke Petani"| Z5B_FARMER_APPLY
+    Z5B_FARMER_APPLY ==>|"Kredit Karbon & Rekam Kesuburan Tanah"| Z1_EVAL_BIOCHAR
+`;
+
+    // 2. INISIALISASI MERMAID
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: 'base',
+      themeVariables: {
+        darkMode: true,
+        background: '#090d16',
+        primaryColor: '#1e88e5',
+        primaryTextColor: '#ffffff',
+        primaryBorderColor: '#1565c0',
+        lineColor: '#64748b',
+        secondaryColor: '#f1f5f9',
+        tertiaryColor: '#1e293b'
+      },
+      flowchart: {
+        useMaxWidth: false,
+        htmlLabels: true,
+        curve: 'basis'
+      }
+    });
+
+    // 3. STATE INTERAKTIF PAN & ZOOM
+    let panX = 40, panY = 40, scale = 0.65;
+    let isDragging = false, startX = 0, startY = 0;
+    const viewport = document.getElementById('viewport');
+    const canvas = document.getElementById('canvas');
+    let svgElement = null;
+
+    function applyTransform() {
+      canvas.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+    }
+
+    // Pan Event Listeners
+    viewport.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.node-detail-card')) return;
+      isDragging = true;
+      startX = e.clientX - panX;
+      startY = e.clientY - panY;
+      viewport.classList.add('grabbing');
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      panX = e.clientX - startX;
+      panY = e.clientY - startY;
+      applyTransform();
+    });
+
+    window.addEventListener('mouseup', () => {
+      isDragging = false;
+      viewport.classList.remove('grabbing');
+    });
+
+    // Zoom Event Listener (Wheel with focal point)
+    viewport.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const zoomFactor = e.deltaY < 0 ? 1.15 : 0.87;
+      const mouseX = e.clientX - viewport.getBoundingClientRect().left;
+      const mouseY = e.clientY - viewport.getBoundingClientRect().top;
+      
+      const newScale = Math.min(Math.max(scale * zoomFactor, 0.1), 3.5);
+      panX = mouseX - (mouseX - panX) * (newScale / scale);
+      panY = mouseY - (mouseY - panY) * (newScale / scale);
+      scale = newScale;
+      applyTransform();
+    }, { passive: false });
+
+    // Touch Pinch & Pan Support
+    let lastTouchDist = 0;
+    viewport.addEventListener('touchmove', (e) => {
+      if (e.touches.length === 1 && isDragging) {
+        panX = e.touches[0].clientX - startX;
+        panY = e.touches[0].clientY - startY;
+        applyTransform();
+      } else if (e.touches.length === 2) {
+        const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+        if (lastTouchDist > 0) {
+          scale = Math.min(Math.max(scale * (dist / lastTouchDist), 0.1), 3.5);
+          applyTransform();
+        }
+        lastTouchDist = dist;
+      }
+    }, { passive: false });
+
+    viewport.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 1) {
+        isDragging = true;
+        startX = e.touches[0].clientX - panX;
+        startY = e.touches[0].clientY - panY;
+      } else if (e.touches.length === 2) {
+        lastTouchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      }
+    });
+
+    viewport.addEventListener('touchend', () => {
+      isDragging = false;
+      lastTouchDist = 0;
+    });
+
+    // Zoom Buttons
+    function zoomIn() {
+      scale = Math.min(scale * 1.25, 3.5);
+      applyTransform();
+    }
+    function zoomOut() {
+      scale = Math.max(scale * 0.8, 0.1);
+      applyTransform();
+    }
+    function zoomFit() {
+      if (!svgElement) return;
+      const bBox = svgElement.getBBox();
+      const vW = viewport.clientWidth - 80;
+      const vH = viewport.clientHeight - 80;
+      scale = Math.min(vW / bBox.width, vH / bBox.height, 1.2);
+      panX = (viewport.clientWidth - bBox.width * scale) / 2;
+      panY = (viewport.clientHeight - bBox.height * scale) / 2;
+      applyTransform();
+    }
+
+    document.getElementById('btn-zoom-in').onclick = zoomIn;
+    document.getElementById('hud-zoom-in').onclick = zoomIn;
+    document.getElementById('btn-zoom-out').onclick = zoomOut;
+    document.getElementById('hud-zoom-out').onclick = zoomOut;
+    document.getElementById('btn-zoom-fit').onclick = zoomFit;
+    document.getElementById('hud-fit').onclick = zoomFit;
+
+    // 4. RENDER MERMAID TO SVG
+    async function renderChart() {
+      try {
+        const { svg } = await mermaid.render('biochain-svg', MERMAID_CODE);
+        canvas.innerHTML = svg;
+        svgElement = canvas.querySelector('svg');
+        
+        // Post-processing SVG styling
+        svgElement.style.maxWidth = 'none';
+        svgElement.style.height = 'auto';
+
+        // Classify edges according to 4 standard layers
+        tagSvgEdges();
+
+        // Bind interactive node click
+        bindNodeClicks();
+
+        // Initial Zoom Fit
+        setTimeout(() => {
+          document.getElementById('loader').style.display = 'none';
+          zoomFit();
+        }, 150);
+      } catch (err) {
+        console.error('Mermaid render error:', err);
+        document.getElementById('loader').innerHTML = `
+          <div style="color:#ef4444; font-weight:700;">Gagal merender diagram Mermaid:</div>
+          <pre style="color:#f87171; font-size:12px; margin-top:8px;">${err.message || err}</pre>
+        `;
+      }
+    }
+
+    // Tag and classify edges for layer filtering
+    function tagSvgEdges() {
+      if (!svgElement) return;
+      const edges = svgElement.querySelectorAll('.edgePaths path, .edgePath path');
+      edges.forEach(edge => {
+        const stroke = edge.getAttribute('stroke') || edge.style.stroke || '';
+        const dash = edge.getAttribute('stroke-dasharray') || edge.style.strokeDasharray || '';
+        const width = parseFloat(edge.getAttribute('stroke-width') || edge.style.strokeWidth || '2');
+
+        if (dash || stroke.includes('#0284C7') || stroke.includes('#0284c7')) {
+          edge.classList.add('edge-layer-qc');
+          edge.style.stroke = '#0284c7';
+          edge.style.strokeDasharray = '5,5';
+        } else if (stroke.includes('#7C3AED') || stroke.includes('#7c3aed') || width >= 3) {
+          edge.classList.add('edge-layer-financial');
+          edge.style.stroke = '#7c3aed';
+          edge.style.strokeWidth = '3.5px';
+        } else if (stroke.includes('#059669') || stroke.includes('#059669')) {
+          edge.classList.add('edge-layer-biochar');
+          edge.style.stroke = '#059669';
+          edge.style.strokeWidth = '4px';
+        } else {
+          edge.classList.add('edge-layer-biomass');
+          edge.style.stroke = '#64748b';
+          edge.style.strokeWidth = '2.5px';
+        }
+      });
+    }
+
+    // 5. LAYER FILTERING LOGIC
+    document.querySelectorAll('.btn-tool[data-layer]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.btn-tool[data-layer]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const layer = btn.getAttribute('data-layer');
+        applyLayerFilter(layer);
+      });
+    });
+
+    function applyLayerFilter(layer) {
+      if (!svgElement) return;
+      const allNodes = svgElement.querySelectorAll('.node, .cluster');
+      const allEdges = svgElement.querySelectorAll('.edgePaths path, .edgePath path, .edgeLabel');
+
+      if (layer === 'all') {
+        allNodes.forEach(n => n.classList.remove('layer-dimmed', 'layer-highlighted'));
+        allEdges.forEach(e => e.classList.remove('layer-dimmed', 'layer-highlighted'));
+        return;
+      }
+
+      // Dim all by default
+      allNodes.forEach(n => { n.classList.add('layer-dimmed'); n.classList.remove('layer-highlighted'); });
+      allEdges.forEach(e => { e.classList.add('layer-dimmed'); e.classList.remove('layer-highlighted'); });
+
+      // Highlight target layer elements
+      if (layer === 'biomass') {
+        svgElement.querySelectorAll('.edge-layer-biomass').forEach(e => {
+          e.classList.remove('layer-dimmed');
+          e.classList.add('layer-highlighted');
+        });
+        svgElement.querySelectorAll('[id*="Z1_"], [id*="Z2_"], [id*="Z3_"], [id*="Z4_"]').forEach(n => {
+          n.classList.remove('layer-dimmed');
+        });
+      } else if (layer === 'financial') {
+        svgElement.querySelectorAll('.edge-layer-financial').forEach(e => {
+          e.classList.remove('layer-dimmed');
+          e.classList.add('layer-highlighted');
+        });
+        svgElement.querySelectorAll('[id*="PAY"], [id*="DEBT"], [id*="TOP"], [id*="LUNAS"], [id*="PAID"], [id*="BLOCK_FACTORY"]').forEach(n => {
+          n.classList.remove('layer-dimmed');
+          n.classList.add('layer-highlighted');
+        });
+      } else if (layer === 'qc') {
+        svgElement.querySelectorAll('.edge-layer-qc').forEach(e => {
+          e.classList.remove('layer-dimmed');
+          e.classList.add('layer-highlighted');
+        });
+        svgElement.querySelectorAll('[id*="QC"], [id*="REJECT"], [id*="DEVIATION"], [id*="WEIGHBRIDGE"], [id*="PARTIAL"], [id*="ACCEPT"]').forEach(n => {
+          n.classList.remove('layer-dimmed');
+          n.classList.add('layer-highlighted');
+        });
+      } else if (layer === 'biochar') {
+        svgElement.querySelectorAll('.edge-layer-biochar').forEach(e => {
+          e.classList.remove('layer-dimmed');
+          e.classList.add('layer-highlighted');
+        });
+        svgElement.querySelectorAll('[id*="BIOCHAR"], [id*="CHAR"], [id*="APPLY"], [id*="CIRCULAR"]').forEach(n => {
+          n.classList.remove('layer-dimmed');
+          n.classList.add('layer-highlighted');
+        });
+      }
+    }
+
+    // 6. SEARCH LOGIC
+    const searchInput = document.getElementById('node-search');
+    const searchClear = document.getElementById('search-clear');
+    let currentSearchHits = [];
+    let currentHitIdx = 0;
+
+    searchInput.addEventListener('input', () => {
+      const q = searchInput.value.trim().toLowerCase();
+      searchClear.style.display = q ? 'block' : 'none';
+      if (!svgElement) return;
+
+      // Reset old search highlights
+      svgElement.querySelectorAll('.search-hit').forEach(el => el.classList.remove('search-hit'));
+      currentSearchHits = [];
+
+      if (!q) return;
+
+      const nodes = svgElement.querySelectorAll('.node');
+      nodes.forEach(node => {
+        const text = node.textContent.toLowerCase();
+        if (text.includes(q)) {
+          const shape = node.querySelector('rect, circle, polygon, path');
+          if (shape) {
+            shape.classList.add('search-hit');
+            currentSearchHits.push(node);
+          }
+        }
+      });
+
+      if (currentSearchHits.length > 0) {
+        focusOnNode(currentSearchHits[0]);
+      }
+    });
+
+    searchClear.addEventListener('click', () => {
+      searchInput.value = '';
+      searchClear.style.display = 'none';
+      if (svgElement) svgElement.querySelectorAll('.search-hit').forEach(el => el.classList.remove('search-hit'));
+    });
+
+    function focusOnNode(node) {
+      if (!node || !svgElement) return;
+      const rect = node.getBoundingClientRect();
+      const vRect = viewport.getBoundingClientRect();
+
+      // Center node in viewport
+      const targetScale = Math.max(scale, 1.1);
+      const nodeX = (rect.left + rect.width / 2 - panX) / scale;
+      const nodeY = (rect.top + rect.height / 2 - panY) / scale;
+
+      scale = targetScale;
+      panX = vRect.width / 2 - nodeX * scale;
+      panY = vRect.height / 2 - nodeY * scale;
+      applyTransform();
+    }
+
+    // 7. NODE CLICK DETAILS
+    const detailCard = document.getElementById('detail-card');
+    function bindNodeClicks() {
+      if (!svgElement) return;
+      svgElement.querySelectorAll('.node').forEach(node => {
+        node.style.cursor = 'pointer';
+        node.addEventListener('click', (e) => {
+          e.stopPropagation();
+          showNodeDetails(node);
+        });
+      });
+      viewport.addEventListener('click', () => closeDetailCard());
+    }
+
+    function showNodeDetails(node) {
+      const id = node.id || '';
+      const text = node.textContent.trim().replace(/\s+/g, ' ');
+
+      document.getElementById('dt-title').innerText = text.length > 40 ? text.substring(0, 40) + '…' : text;
+      document.getElementById('dt-desc').innerText = text;
+
+      // Extract metadata
+      let zone = 'Zona 1: Petani';
+      if (id.includes('Z2_')) zone = 'Zona 2: Pengepul Grouping';
+      else if (id.includes('Z3_')) zone = 'Zona 3: QC & Bayar Petani';
+      else if (id.includes('Z4_')) zone = 'Zona 4: Driver & Gerbang Pabrik';
+      else if (id.includes('Z5_')) zone = 'Zona 5: Keuangan & Sirkular Pabrik';
+
+      let type = 'Step Operasional';
+      let backend = 'app/routers/...';
+      let db = 'database tables';
+
+      if (id.includes('START')) { type = 'Start Node'; backend = 'Frontend Initial State'; db = '-'; }
+      else if (id.includes('INPUT')) { type = 'Input / Data Entry Form'; backend = 'FastAPI POST / PUT'; db = 'Form Payload'; }
+      else if (id.includes('DEC_')) { type = 'Decision / Percabangan'; backend = 'Business Rules & Logic'; db = 'Enum State'; }
+      else if (id.includes('RES_')) { type = 'Terminal / Result Node'; backend = 'Final State Machine'; db = 'Closed Record'; }
+      else if (id.includes('PAY') || id.includes('TOP')) { type = 'Keuangan & Sirkular'; backend = 'app/routers/collector.py & factory.py'; db = 'down_payments / invoices'; }
+
+      document.getElementById('dt-zone').innerText = zone;
+      document.getElementById('dt-type').innerText = type;
+      document.getElementById('dt-backend').innerText = backend;
+      document.getElementById('dt-db').innerText = db;
+
+      detailCard.style.display = 'block';
+    }
+
+    function closeDetailCard() {
+      detailCard.style.display = 'none';
+    }
+
+    // 8. EXPORT SVG & 4K PNG
+    document.getElementById('btn-export-svg').onclick = () => {
+      if (!svgElement) return;
+      const serializer = new XMLSerializer();
+      let source = serializer.serializeToString(svgElement);
+      if (!source.match(/^<svg[^>]+xmlns="http\:\/\/www\.w3\.org\/2000\/svg"/)) {
+        source = source.replace(/^<svg/, '<svg xmlns="http://www.w3.org/2000/svg"');
+      }
+      const blob = new Blob([source], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'BioChain_Global_Flowchart.svg';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    };
+
+    document.getElementById('btn-export-png').onclick = () => {
+      if (!svgElement) return;
+      const bBox = svgElement.getBBox();
+      const serializer = new XMLSerializer();
+      const svgString = serializer.serializeToString(svgElement);
+      const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+      const URLObj = window.URL || window.webkitURL || window;
+      const blobURL = URLObj.createObjectURL(svgBlob);
+      
+      const image = new Image();
+      image.onload = () => {
+        // Ultra High Definition 4K target width: 3840px
+        const targetWidth = 3840;
+        const targetHeight = Math.round((bBox.height / bBox.width) * targetWidth);
+        
+        const offCanvas = document.createElement('canvas');
+        offCanvas.width = targetWidth;
+        offCanvas.height = targetHeight;
+        const ctx = offCanvas.getContext('2d');
+
+        // Dark background
+        ctx.fillStyle = '#090d16';
+        ctx.fillRect(0, 0, targetWidth, targetHeight);
+
+        // Draw image scaled
+        ctx.drawImage(image, 0, 0, targetWidth, targetHeight);
+        
+        const pngUrl = offCanvas.toDataURL('image/png');
+        const a = document.createElement('a');
+        a.href = pngUrl;
+        a.download = 'BioChain_Global_Flowchart_4K.png';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URLObj.revokeObjectURL(blobURL);
+      };
+      image.src = blobURL;
+    };
+
+    // START RENDERING
+    renderChart();
+  </script>
+</body>
+</html>

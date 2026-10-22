@@ -9,18 +9,19 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Syne:wght@800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" integrity="sha384-c6Rcwz4e4CITMbu/NBmnNS8yN2sC3cUElMEMfP3vqqKFp7GOYaaBBCqmaWBjmkjb" crossorigin="anonymous">
-<script defer src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js" integrity="sha384-NElt3Op+9NBMCYaef5HxeJmU4Xeard/Lku8ek6hoPTvYkQPh3zLIrJP7KiRocsxO" crossorigin="anonymous"></script>
+<link rel="stylesheet" href="/static/vendor/leaflet.min.css">
+<script src="/static/vendor/leaflet.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" integrity="sha384-bs/nf9FbdNouRbMiFcrcZfLXYPKiPaGVGplVbv7dLGECccEXDW+S3zjqSKR5ZEaD" crossorigin="anonymous"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" integrity="sha512-CNgIRecGo7nphbeZ04Sc13ka07paqdeTu0WR1IM4kNcpmBAUSHSQX0FslNhTDadL4O5SAGapGt4FodqL8My0mA==" crossorigin="anonymous"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js" integrity="sha512-r6rDA7W6ZeQhvl8S7yRVQUKVHdexq+GAlNkNNqVC7YyIV+NwqCTJe2hDWCiffTyRNOeGEzRRJ9ifvRm/HCzGYg==" crossorigin="anonymous"></script>
-<link rel="stylesheet" href="/static/tokens.css">
-<link rel="stylesheet" href="/static/components.css">
+<link rel="stylesheet" href="/static/tokens.css?v=v17">
+<link rel="stylesheet" href="/static/components.css?v=v17">
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.min.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
-<script defer src="/static/app.js"></script>
-<script defer src="/static/ui-enhance.js"></script>
-<script defer src="/static/field-ops.js"></script>
-<script defer src="/static/factory-ops.js"></script>
+<script defer src="/static/app.js?v=v17"></script>
+<script defer src="/static/ui-enhance.js?v=v17"></script>
+<script defer src="/static/field-ops.js?v=v17"></script>
+<script defer src="/static/factory-ops.js?v=v17"></script>
+<script defer src="/static/excel-filter.js?v=v17"></script>
 </head>
 <body>
 <a class="skip-link" href="#main-content">Lewati ke konten utama</a>
@@ -245,11 +246,20 @@
           </div>
         </div>
 
+        <button class="btn btn-secondary btn-sm notif-bell-btn" id="btn-header-notifications" data-onclick="openNotificationCenterModal()" title="Pusat Notifikasi &amp; Perubahan Transaksi Biomassa" aria-label="Notifikasi">
+          <span>🔔</span>
+          <span class="notif-bell-text">Notifikasi</span>
+          <span class="notif-badge" id="header-notif-badge" style="display:none;">0</span>
+        </button>
+
         <button class="btn btn-primary btn-sm" id="btn-header-scanner" data-onclick="openGlobalScanner()" title="Buka Pemindai QR Kamera Langsung">
           📷 Scan QR
         </button>
         <button class="btn btn-outline-green btn-sm" id="btn-header-generator" data-onclick="openQrGeneratorModal()" title="Buka Generator Pembuat Kode QR">
           ⚡ Buat QR
+        </button>
+        <button class="btn btn-primary btn-sm" id="btn-header-trace" data-onclick="openCircularTraceModal()" style="background:linear-gradient(135deg, #059669, #0284c7); border:none; font-weight:700;" title="Buka Ketelusuran Sirkular QR Code End-to-End">
+          🔄 Lacak QR Sirkular
         </button>
 
         <button class="btn btn-secondary btn-sm" id="btn-reset-demo" title="Reset & isi ulang seluruh data demo ke kondisi awal">
@@ -272,7 +282,7 @@
   <nav class="main-nav" aria-label="Modul utama">
     <div class="nav-inner" id="nav-tabs">
       <button class="nav-btn active" data-tab="tab-persona" id="nav-persona-btn">🌾 Portal Persona</button>
-      <button class="nav-btn" data-tab="tab-engines">🧪 Lab 7 Engine</button>
+      <button class="nav-btn" data-tab="tab-engines">🧪 Lab Engine Workbench</button>
       <button class="nav-btn" data-tab="tab-reports">📊 Laporan Bulanan</button>
       <button class="nav-btn" data-tab="tab-params">🎛️ Parameter Asumsi</button>
       <button class="nav-btn" data-tab="tab-admin">⚙️ Panel Admin</button>
@@ -358,6 +368,7 @@
             <button class="btn btn-outline-green btn-sm" data-onclick="switchEngineSub('eng-feedstock')">⑧ Perbandingan Feedstock</button>
             <button class="btn btn-outline-green btn-sm" data-onclick="switchEngineSub('eng-waste')">⑨ Limbah → Energi</button>
             <button class="btn btn-outline-green btn-sm" data-onclick="switchEngineSub('eng-energy')">⑩ Energi &amp; IKE</button>
+            <button class="btn btn-outline-green btn-sm" data-onclick="switchEngineSub('eng-opt')">⑫ Optimasi Multi-Produk</button>
           </div>
         </div>
 
@@ -452,9 +463,9 @@
           </div>
           <div class="kpi-row" id="en-kpis"></div>
           <canvas id="en-chart" height="110" role="img" aria-label="Grafik histori energi"></canvas>
-          <div class="grid-2" style="margin-top:16px;">
-            <div><h4 style="margin:0 0 8px;">Anomali / pemborosan</h4><div id="en-anom"></div></div>
-            <div><h4 style="margin:0 0 8px;">Rekomendasi efisiensi</h4><div id="en-recs"></div></div>
+          <div style="display:flex; flex-direction:column; gap:16px; margin-top:16px;">
+            <div class="card" style="padding:16px;"><h4 style="margin:0 0 8px;">Anomali / pemborosan</h4><div id="en-anom"></div></div>
+            <div class="card" style="padding:16px;"><h4 style="margin:0 0 8px;">Rekomendasi efisiensi</h4><div id="en-recs"></div></div>
           </div>
         </div>
 
@@ -475,6 +486,60 @@
               <div class="kpi-row" id="r-kpis"></div>
               <div id="map" role="region" aria-label="Peta rute optimal"></div>
             </div>
+          </div>
+        </div>
+
+        <!-- Engine Sub: ⑫ Optimasi Multi-Produk -->
+        <div id="eng-opt" class="eng-sub" style="display:none;">
+          <div class="card-header" style="padding:0 0 12px 0; border-bottom:1px solid var(--border); margin-bottom:12px;">
+            <div>
+              <h3 class="card-title" style="margin:0 0 4px;">🎯 Engine ⑫ — Optimasi Konversi Multi-Biomassa ke Produk Akhir</h3>
+              <p class="card-sub" style="margin:0;">Evaluasi komprehensif 4 produk hilir (Bio-Pellet ISO 17225, Briket SNI 01-6235, Biochar EBC/IBI, Bio-Silika Amorf SNI 15-0086) &amp; Solver Alokasi Stok Linear Programming (HiGHS).</p>
+            </div>
+            <div style="display:flex; gap:6px;">
+              <button type="button" class="btn btn-primary btn-sm" id="lab-opt-tab-eval">🔍 Evaluasi Lot Komparatif</button>
+              <button type="button" class="btn btn-secondary btn-sm" id="lab-opt-tab-alloc">⚙️ Solver Alokasi HiGHS</button>
+            </div>
+          </div>
+
+          <!-- Mode 1: Evaluasi Lot -->
+          <div id="lab-opt-view-eval">
+            <div class="grid-sidebar">
+              <div>
+                <label style="font-weight:600; font-size:var(--fs-sm);">Parameter Lot Biomassa:</label>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px;">
+                  <div style="grid-column:span 2;"><label class="kpi-lbl">Komoditas biomassa</label><select id="lab-opt-com" class="btn btn-secondary" style="width:100%;"></select></div>
+                  <div><label class="kpi-lbl">Jumlah umpan (kg)</label><input id="lab-opt-kg" type="number" class="btn btn-secondary" style="width:100%;" min="100" step="500" value="10000"></div>
+                  <div><label class="kpi-lbl">Kadar air MC (%)</label><input id="lab-opt-mc" type="number" class="btn btn-secondary" style="width:100%;" min="0" max="90" step="0.5" placeholder="tipikal"></div>
+                  <div style="grid-column:span 2;"><label class="kpi-lbl">Harga beli (Rp/kg)</label><input id="lab-opt-price" type="number" class="btn btn-secondary" style="width:100%;" min="0" step="10" placeholder="dasar komoditas"></div>
+                </div>
+                <button class="btn btn-primary" style="width:100%; margin-top:14px;" id="lab-opt-eval-go">⚡ Evaluasi 4 Produk Akhir ➔</button>
+              </div>
+              <div>
+                <div id="lab-opt-eval-out"><p class="muted">Memuat data komoditas biomassa...</p></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Mode 2: Solver Alokasi Stok Pabrik -->
+          <div id="lab-opt-view-alloc" style="display:none;">
+            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; margin-bottom:12px;">
+              <div class="form-group"><label for="lab-opt-obj" class="kpi-lbl">Tujuan Optimasi (LP Objective)</label>
+                <select id="lab-opt-obj" class="btn btn-secondary" style="width:100%;">
+                  <option value="max_profit">💰 Maksimal Keuntungan / Margin (Rp)</option>
+                  <option value="max_energy">⚡ Maksimal Output Energi Bersih (GJ)</option>
+                  <option value="max_carbon">🌱 Maksimal Net Carbon Sink (tCO₂e)</option>
+                  <option value="balanced">⚖️ Portofolio Seimbang (Multi-Kriteria)</option>
+                </select>
+              </div>
+              <div class="form-group" style="grid-column:span 2;"><label class="kpi-lbl">Batas Kapasitas Lini Mesin Pabrik (kg produk/bulan)</label>
+                <div style="display:flex; gap:8px; flex-wrap:wrap; font-size:12px; margin-top:4px;" id="lab-opt-caps-inputs"></div>
+              </div>
+            </div>
+            <h4 style="margin:12px 0 6px;">Inventori Stok Biomassa Pabrik yang Tersedia</h4>
+            <div id="lab-opt-alloc-stocks" class="table-scroll"><p class="muted">Memuat stok...</p></div>
+            <button type="button" class="btn btn-primary" style="margin-top:10px;" id="lab-opt-alloc-go">🎯 Jalankan Solver Alokasi HiGHS ➔</button>
+            <div id="lab-opt-alloc-out" style="margin-top:14px;"></div>
           </div>
         </div>
       </div>
@@ -542,6 +607,15 @@
         BIO-2026
       </div>
       <div class="qr-sub" id="modal-qr-sub">Verifikasi Digital Bio-Chain</div>
+    </div>
+
+    <!-- Informasi Dokumen, QR Asal & Rantai Ketelusuran -->
+    <div id="modal-qr-traceability" style="margin: 10px 0;"></div>
+
+    <div style="margin-bottom:12px;">
+      <button type="button" class="btn btn-primary btn-sm" style="width:100%; background:linear-gradient(135deg, #059669, #0284c7); border:none; font-weight:700; padding:8px 12px; font-size:12px; box-shadow:0 2px 8px rgba(5,150,105,0.3);" data-onclick="viewFullCircularTraceFromModal()">
+        🔄 Telusuri Silsilah Sirkular Penuh (Sawah ➔ Pabrik ➔ Abu/Biochar ➔ Sawah) ➔
+      </button>
     </div>
 
     <!-- Actions: Copy, Download PNG, Print -->
@@ -643,6 +717,55 @@
   </div>
 </div>
 
+<!-- 4. MODAL KETELUSURAN SIRKULAR QR CODE (END-TO-END PROVENANCE) -->
+<div class="modal-overlay" id="circular-trace-modal">
+  <div class="modal-box" style="max-width:960px; max-height:92vh; display:flex; flex-direction:column; text-align:left; padding:20px; overflow:hidden;">
+    <div class="modal-head" style="margin-bottom:8px; border-bottom:1px solid var(--border); padding-bottom:12px;">
+      <div>
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <h3 style="margin:0; font-size:1.25rem;">🔄 Ketelusuran Sirkular QR Code End-to-End</h3>
+          <span class="badge badge-green" id="circ-badge-status" style="font-weight:700;">🟢 100% Sirkular Terpenuhi</span>
+        </div>
+        <p style="margin:4px 0 0; font-size:var(--fs-xs); color:var(--ink-muted);">
+          Silsilah Kriptografis Tertutup: Sawah Petani ➔ Pengepul ➔ Driver Truk ➔ Pabrik (Pirolisis / Abu Sisa) ➔ Muatan Balik ➔ Sawah Petani
+        </p>
+      </div>
+      <button type="button" class="btn btn-secondary btn-sm btn-icon" data-onclick="closeCircularTraceModal()" aria-label="Tutup">✕</button>
+    </div>
+
+    <!-- Search & Quick Picker Bar -->
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:12px; background:var(--surface-2); padding:10px 14px; border-radius:10px; border:1px solid var(--border);">
+      <div style="flex:1; min-width:240px; display:flex; gap:6px;">
+        <input type="text" id="circ-search-input" class="btn btn-secondary btn-sm" style="flex:1; text-align:left; font-family:monospace;" placeholder="Cari Kode QR / No. Lot / Tiket (cth: BIO-18E7FD76, 6, TRX-...)">
+        <button type="button" class="btn btn-primary btn-sm" data-onclick="handleCircSearchSubmit()">🔍 Lacak</button>
+      </div>
+      <div style="display:flex; gap:6px; align-items:center; font-size:11.5px; flex-wrap:wrap;">
+        <span class="muted">Contoh Lot Demo:</span>
+        <button type="button" class="btn btn-secondary btn-sm" style="padding:2px 8px; font-size:11px;" data-onclick="loadCircularTraceById('6')">🌾 Lot #6 (Converted)</button>
+        <button type="button" class="btn btn-secondary btn-sm" style="padding:2px 8px; font-size:11px;" data-onclick="loadCircularTraceById('25')">🌾 Lot #25</button>
+        <button type="button" class="btn btn-secondary btn-sm" style="padding:2px 8px; font-size:11px;" data-onclick="loadCircularTraceById('DSP-BACKHAUL-01')">🚚 Muatan Balik #1</button>
+      </div>
+    </div>
+
+    <!-- Scrollable Body with Circular Timeline & Metrics -->
+    <div style="flex:1; overflow-y:auto; padding-right:4px;" id="circ-modal-content">
+      <div style="text-align:center; padding:40px 20px;" class="muted">Memuat data ketelusuran sirkular...</div>
+    </div>
+
+    <!-- Modal Footer Actions -->
+    <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+      <div style="font-size:11px; color:var(--ink-muted); display:flex; align-items:center; gap:6px;">
+        <span>🛡️ SHA256 Chained Provenance Integrity:</span>
+        <code id="circ-hash-preview" style="font-family:monospace; font-weight:700; color:var(--primary); font-size:10px;">–</code>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button type="button" class="btn btn-secondary btn-sm" data-onclick="printPage()">🖨️ Cetak Paspor Sirkular</button>
+        <button type="button" class="btn btn-secondary btn-sm" data-onclick="closeCircularTraceModal()">Tutup</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL TAMBAH USER ADMIN -->
 <div class="modal-overlay" id="admin-create-modal">
   <div class="modal-box" style="max-width:480px; text-align:left;">
@@ -698,11 +821,333 @@
   </div>
 </div>
 
+<!-- 4. MODAL DETAIL PENAWARAN & WR CODE BIOMASSA -->
+<div class="modal-overlay" id="detail-modal">
+  <div class="modal-box" style="max-width:560px; text-align:left;">
+    <div class="modal-head">
+      <h3 id="detail-modal-title">📄 Rincian Penawaran Biomassa Petani</h3>
+      <button type="button" class="btn btn-secondary btn-sm btn-icon" data-onclick="closeDetailModal()" aria-label="Tutup">✕</button>
+    </div>
+    <div id="detail-modal-body" style="margin-top:12px; max-height:75vh; overflow-y:auto; padding-right:4px;">
+      <!-- Konten detail dinamis -->
+    </div>
+    <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px; border-top:1px solid var(--border); padding-top:12px;">
+      <button type="button" class="btn btn-secondary" data-onclick="closeDetailModal()">Tutup</button>
+    </div>
+  </div>
+</div>
+
+<!-- 6. MODAL OPTIMASI & ANALISIS TEKNIS RUTE PENJEMPUTAN BIOMASSA TERVERIFIKASI -->
+<div class="modal-overlay" id="route-optimization-modal">
+  <div class="modal-box" style="max-width:1040px; max-height:94vh; display:flex; flex-direction:column; text-align:left; padding:20px; overflow:hidden;">
+    <div class="modal-head" style="margin-bottom:8px; border-bottom:1px solid var(--border); padding-bottom:12px;">
+      <div>
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <h3 style="margin:0; font-size:1.25rem;">🗺️ Optimasi &amp; Analisis Teknis Rute Penjemputan</h3>
+          <span class="badge badge-green" style="font-weight:700;">🔵 Khusus Lot Panen Terverifikasi</span>
+          <span class="badge badge-blue">Bak Truk: 30 m³ / 5.000 kg</span>
+        </div>
+        <p style="margin:4px 0 0; font-size:var(--fs-xs); color:var(--ink-muted);">
+          Konsolidasi multi-stop penjemputan biomassa petani terverifikasi dan integrasi muatan balik (backhaul) biochar ke sawah.
+        </p>
+      </div>
+      <button type="button" class="btn btn-secondary btn-sm btn-icon" data-onclick="closeRouteOptimizationModal()" aria-label="Tutup">✕</button>
+    </div>
+
+    <!-- Scrollable Modal Content -->
+    <div style="flex:1; overflow-y:auto; padding-right:6px;" id="ro-modal-scrollable">
+      
+      <!-- Panel 1: Parameter Armada, Driver, Hari Penjadwalan & Checklist Lot Terverifikasi -->
+      <div style="background:var(--surface-2); border:1px solid var(--border); border-radius:10px; padding:14px; margin-bottom:16px;">
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:12px; margin-bottom:12px;">
+          <!-- Pilihan Alternatif Armada Mobil & Driver -->
+          <div class="form-group" style="margin-bottom:0;">
+            <label class="kpi-lbl" for="ro-vehicle-select" style="font-weight:700;">🚚 Alternatif Mobil &amp; Driver Armada</label>
+            <select id="ro-vehicle-select" class="btn btn-secondary btn-sm" style="width:100%; text-align:left; font-weight:600;" data-onchange="handleRoVehicleSelectChange(this)">
+              <option value="auto">🤖 Multi-Armada Otomatis (Bagi Trip &amp; Driver)</option>
+              <option value="cdd_budi" selected>🚛 Truk CDD Box (5.000 kg / 30 m³) · AB 8421 CS · Budi Santoso</option>
+              <option value="engkel_joko">🚚 Truk Engkel (3.500 kg / 20 m³) · AB 8122 UY · Joko Pratama</option>
+              <option value="fuso_hendra">🚛 Truk Fuso Heavy (8.500 kg / 50 m³) · AB 9033 KP · Hendra Wijaya</option>
+              <option value="l300_slamet">🛻 Pick-up L300 (1.500 kg / 10 m³) · AB 7540 DA · Slamet Riyadi</option>
+            </select>
+          </div>
+
+          <!-- Pilihan Alternatif Hari Penjadwalan Driver -->
+          <div class="form-group" style="margin-bottom:0;">
+            <label class="kpi-lbl" for="ro-schedule-select" style="font-weight:700;">📅 Alternatif Hari Penjadwalan Supir</label>
+            <select id="ro-schedule-select" class="btn btn-secondary btn-sm" style="width:100%; text-align:left; font-weight:600;">
+              <option value="auto">📅 Rotasi Multi-Hari (Senin - Jumat Otomatis Sesuai Wilayah)</option>
+              <option value="Senin">📍 Senin (Gelombang 1 - Sleman Barat: Godean, Moyudan)</option>
+              <option value="Selasa">📍 Selasa (Gelombang 2 - Sleman Tengah: Seyegan, Mlati)</option>
+              <option value="Rabu">📍 Rabu (Gelombang 3 - Sleman Timur: Ngemplak, Kalasan)</option>
+              <option value="Kamis">📍 Kamis (Gelombang 4 - Sleman Utara: Tempel, Pakem)</option>
+              <option value="Jumat">📍 Jumat (Gelombang 5 - Muatan Balik Biochar Poktan)</option>
+              <option value="Sabtu">📍 Sabtu (Gelombang 6 - Konsolidasi Akhir Pekan)</option>
+            </select>
+          </div>
+
+          <!-- Tanggal Tugas & Plat Armada -->
+          <div class="form-group" style="margin-bottom:0;">
+            <label class="kpi-lbl" for="ro-pickup-date">Tanggal Rencana Penjemputan</label>
+            <input type="date" id="ro-pickup-date" class="btn btn-secondary btn-sm" style="width:100%; text-align:left;">
+          </div>
+        </div>
+
+        <!-- Detail Batas Kapasitas Terpilih -->
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:10px; margin-bottom:12px; padding:8px 12px; background:var(--surface-1); border-radius:8px; border:1px solid var(--border);">
+          <div>
+            <span class="muted" style="font-size:11px;">Plat Truk:</span>
+            <input type="text" id="ro-truck-plate" style="border:none; background:transparent; font-family:monospace; font-weight:800; font-size:12px; width:100%; padding:0; color:var(--ink);" value="AB 8421 CS">
+          </div>
+          <div>
+            <span class="muted" style="font-size:11px;">Batas Berat:</span>
+            <div style="display:flex; align-items:center; gap:4px;">
+              <input type="number" id="ro-truck-max-kg" style="border:none; background:transparent; font-weight:700; font-size:12px; width:60px; padding:0; color:var(--ink);" value="5000" min="500" max="25000" step="100">
+              <span style="font-size:11px; color:var(--ink-muted);">kg</span>
+            </div>
+          </div>
+          <div>
+            <span class="muted" style="font-size:11px;">Batas Volume:</span>
+            <div style="display:flex; align-items:center; gap:4px;">
+              <input type="number" id="ro-truck-max-m3" style="border:none; background:transparent; font-weight:700; font-size:12px; width:50px; padding:0; color:var(--ink);" value="30" min="5" max="100" step="1">
+              <span style="font-size:11px; color:var(--ink-muted);">m³</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Checklist Lot Panen Terverifikasi -->
+        <div>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
+            <label class="kpi-lbl" style="font-weight:700; color:var(--ink);">
+              Pilih Lot Panen Petani Terverifikasi (Checklist Penjemputan):
+            </label>
+            <div style="display:flex; gap:8px; font-size:11.5px;">
+              <a data-onclick="toggleAllRoHarvests(true)" style="cursor:pointer; font-weight:700; color:var(--primary);">[✓ Pilih Semua]</a>
+              <span class="muted">|</span>
+              <a data-onclick="toggleAllRoHarvests(false)" style="cursor:pointer; font-weight:600; color:var(--ink-muted);">[✗ Kosongkan]</a>
+            </div>
+          </div>
+          <div id="ro-harvests-checklist-container" style="max-height:190px; overflow-y:auto; border:1px solid var(--border); border-radius:8px; padding:10px; background:var(--surface-1);">
+            <div class="muted" style="text-align:center; padding:12px; font-size:12px;">Memuat lot panen terverifikasi...</div>
+          </div>
+        </div>
+
+        <button type="button" class="btn btn-primary" id="btn-run-ro-sim" data-onclick="runRouteOptimizationSimulation()" style="width:100%; margin-top:14px; min-height:44px; font-weight:700; font-size:13.5px; background:linear-gradient(135deg, #b45309, #d97706); border:none; box-shadow:0 2px 8px rgba(180,83,9,0.3);">
+          ⚡ Jalankan Simulasi &amp; Analisis Teknis Routing ➔
+        </button>
+      </div>
+
+      <!-- Panel 2: Hasil Analisis Teknis Routing (Langsung di dalam Pop-up) -->
+      <div id="ro-technical-results" style="display:none;">
+        <!-- Status Kelayakan Muatan & Volume -->
+        <div id="ro-feasibility-banner" style="margin-bottom:12px;"></div>
+
+        <!-- Tabs Navigasi Alternatif Trip / Armada / Hari -->
+        <div id="ro-trip-tabs-container" style="margin-bottom:12px; display:none;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <b style="font-size:12.5px; color:var(--ink);">📑 Alternatif Penugasan Armada, Driver &amp; Jadwal Hari:</b>
+            <span class="muted" style="font-size:11px;" id="ro-trips-count-badge">Terbagi ke multi-trip</span>
+          </div>
+          <div id="ro-trip-tabs" style="display:flex; gap:6px; overflow-x:auto; padding-bottom:6px;"></div>
+        </div>
+
+        <!-- Card Armada & Driver Terpilih untuk Trip Ini -->
+        <div id="ro-active-trip-card" style="margin-bottom:12px;"></div>
+
+        <!-- KPI Teknis Logistik -->
+        <div class="kpi-row" id="ro-kpi-row" style="margin-bottom:14px;"></div>
+
+        <!-- Peta Teknis Rute Leaflet & Vektor Spasial -->
+        <div style="margin-bottom:14px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:6px;">
+            <div>
+              <b style="font-size:13px; color:var(--ink);">🗺️ Peta Visualisasi Spasial Rute Penjemputan &amp; Muatan Balik:</b>
+              <span class="muted" style="font-size:11px; margin-left:6px;">Jaringan Jalan Sleman · Titik Transit Teroptimasi</span>
+            </div>
+            <div style="display:flex; gap:6px; align-items:center;">
+              <span style="font-size:11px; color:var(--ink-muted);">Tampilan:</span>
+              <button type="button" class="btn btn-secondary btn-sm" id="btn-toggle-svg-map" data-onclick="toggleRoMapMode('svg')" style="font-size:11px; padding:3px 8px;">📐 Vektor Topologi (SVG)</button>
+              <button type="button" class="btn btn-primary btn-sm" id="btn-toggle-osm-map" data-onclick="toggleRoMapMode('leaflet')" style="font-size:11px; padding:3px 8px;">🌍 Peta Satelit (OSM)</button>
+            </div>
+          </div>
+          <div id="ro-map-wrapper" style="height:320px; width:100%; border-radius:10px; border:1px solid var(--border); background:var(--surface-2); position:relative; overflow:hidden;">
+            <div id="ro-leaflet-map" style="height:100%; width:100%; position:absolute; top:0; left:0;"></div>
+            <div id="ro-vector-svg-container" style="height:100%; width:100%; position:absolute; top:0; left:0; display:none; background:linear-gradient(180deg, #0f172a, #020617); overflow:hidden;"></div>
+          </div>
+        </div>
+
+        <!-- Stop-by-Stop Technical Itinerary & Load Timeline -->
+        <div>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <b style="font-size:13px; color:var(--ink);">📋 Urutan Teknis Perjalanan &amp; Timeline Beban Bak (Stop-by-Stop):</b>
+            <span class="muted" style="font-size:11px;">Validasi Dinamis Akumulasi Beban &amp; Kubikasi Tiap Stop</span>
+          </div>
+          <div id="ro-timeline-container"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Footer Actions -->
+    <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+      <div style="font-size:11px; color:var(--ink-muted); display:flex; align-items:center; gap:6px;">
+        <span>🛡️ Algoritma: Clarke-Wright Savings + Iterated Local Search (ILS) &amp; Dual-Constraint Heuristics.</span>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button type="button" class="btn btn-primary btn-sm" id="btn-ro-dispatch" data-onclick="dispatchModalRouteToDriver()" style="display:none; font-weight:700;">
+          🚛 Tetapkan &amp; Kirim Surat Tugas ke Supir
+        </button>
+        <button type="button" class="btn btn-secondary btn-sm" id="btn-ro-export-pdf" data-onclick="openRoExportModal()" style="font-weight:700; color:var(--primary); border-color:var(--primary); display:inline-flex; align-items:center; gap:6px;">
+          <span>📄</span> Export PDF / Cetak (1-2 Hal)
+        </button>
+        <button type="button" class="btn btn-secondary btn-sm" data-onclick="closeRouteOptimizationModal()">Tutup</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 6B. MODAL OPSI EXPORT PDF / CETAK RUTE OPTIMASI -->
+<div class="modal-overlay" id="ro-export-modal">
+  <div class="modal-box" style="max-width:620px; text-align:left; padding:22px; border-radius:12px;">
+    <div class="modal-head" style="margin-bottom:12px; border-bottom:1px solid var(--border); padding-bottom:10px;">
+      <div>
+        <h3 style="margin:0; font-size:1.2rem; display:flex; align-items:center; gap:8px;">
+          <span>📄</span> Opsi Export PDF &amp; Cetak Rute
+        </h3>
+        <p style="margin:4px 0 0; font-size:var(--fs-xs); color:var(--ink-muted);">
+          Pilih format dokumen ringkas (1–2 halaman A4) tanpa elemen berlebih dari website.
+        </p>
+      </div>
+      <button type="button" class="btn btn-secondary btn-sm btn-icon" data-onclick="closeRoExportModal()" aria-label="Tutup">✕</button>
+    </div>
+
+    <!-- Pilihan Trip jika multi-trip -->
+    <div id="ro-export-trip-selector-wrap" style="margin-bottom:14px; display:none; background:var(--surface-2); padding:10px; border-radius:8px; border:1px solid var(--border);">
+      <label class="kpi-lbl" style="font-weight:700; margin-bottom:4px; display:block;">Pilih Trip Armada:</label>
+      <select id="ro-export-trip-select" class="btn btn-secondary btn-sm" style="width:100%; text-align:left; font-weight:600;" data-onchange="handleRoExportTripChange(this)"></select>
+    </div>
+
+    <!-- Opsi 1: Surat Jalan / Manifest Supir (Ringkas 1 Halaman) -->
+    <div style="border:1.5px solid var(--border); border-radius:10px; padding:14px; margin-bottom:12px; background:var(--surface-1);">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; margin-bottom:6px;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span style="font-size:26px;">📋</span>
+          <div>
+            <div style="font-weight:700; font-size:13.5px; color:var(--ink);">Surat Jalan &amp; Manifest Supir (Ringkas)</div>
+            <div style="font-size:11.5px; color:var(--ink-muted); margin-top:2px;">
+              Khusus pengemudi armada: identitas supir &amp; truk, jadwal, urutan rute jemput/drop, dan kolom paraf tanda tangan petani.
+            </div>
+          </div>
+        </div>
+        <span class="badge badge-green" style="font-size:10.5px; font-weight:700; white-space:nowrap;">⭐ 1 Halaman A4</span>
+      </div>
+      <div style="display:flex; gap:8px; margin-top:12px;">
+        <button type="button" class="btn btn-primary btn-sm" data-onclick="executeRoPrint('manifest')" style="flex:1; font-weight:700; background:linear-gradient(135deg, #059669, #10b981); border:none;">
+          🖨️ Cetak / Simpan PDF (1 Halaman)
+        </button>
+        <button type="button" class="btn btn-secondary btn-sm" data-onclick="openRoPrintWindow('manifest')" title="Buka pratinjau dokumen di tab baru">
+          ↗️ Tab Baru
+        </button>
+      </div>
+    </div>
+
+    <!-- Opsi 2: Laporan Teknis Lengkap + Peta Spasial (1–2 Halaman) -->
+    <div style="border:1.5px solid var(--border); border-radius:10px; padding:14px; margin-bottom:14px; background:var(--surface-1);">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; margin-bottom:6px;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span style="font-size:26px;">🗺️</span>
+          <div>
+            <div style="font-weight:700; font-size:13.5px; color:var(--ink);">Laporan Teknis Lengkap &amp; Peta Rute</div>
+            <div style="font-size:11.5px; color:var(--ink-muted); margin-top:2px;">
+              Untuk manajemen, auditor &amp; pabrik: indikator KPI, peta topologi spasial Sleman, analisis beban tonase &amp; kubikasi bak, serta timeline bertahap.
+            </div>
+          </div>
+        </div>
+        <span class="badge badge-blue" style="font-size:10.5px; font-weight:700; white-space:nowrap;">📑 1–2 Halaman A4</span>
+      </div>
+      <div style="display:flex; gap:8px; margin-top:12px;">
+        <button type="button" class="btn btn-primary btn-sm" data-onclick="executeRoPrint('technical')" style="flex:1; font-weight:700; background:linear-gradient(135deg, #2563eb, #3b82f6); border:none;">
+          🖨️ Cetak / Simpan PDF (1–2 Halaman)
+        </button>
+        <button type="button" class="btn btn-secondary btn-sm" data-onclick="openRoPrintWindow('technical')" title="Buka pratinjau dokumen di tab baru">
+          ↗️ Tab Baru
+        </button>
+      </div>
+    </div>
+
+    <!-- Catatan Penjelasan Anti 124 Halaman -->
+    <div style="background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.3); border-radius:6px; padding:8px 12px; margin-bottom:14px; font-size:11px; color:var(--ink);">
+      💡 <b>Tips Cetak Rapi:</b> Opsi di atas mengisolasi rute secara bersih sehingga preview cetak hanya <b>1 s/d 2 halaman</b> tanpa memuat riwayat tabel panjang website.
+    </div>
+
+    <div style="display:flex; justify-content:flex-end;">
+      <button type="button" class="btn btn-secondary btn-sm" data-onclick="closeRoExportModal()">Tutup</button>
+    </div>
+  </div>
+</div>
+
+<!-- 5. MODAL PUSAT NOTIFIKASI TRANSAKSI BIOMASSA LINTAS PERSONA -->
+<div class="modal-overlay" id="notification-center-modal">
+  <div class="modal-box" style="max-width:920px; max-height:92vh; display:flex; flex-direction:column; text-align:left; padding:20px; overflow:hidden;">
+    <div class="modal-head" style="margin-bottom:8px; border-bottom:1px solid var(--border); padding-bottom:12px;">
+      <div>
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <h3 style="margin:0; font-size:1.25rem;">🔔 Notifikasi Perubahan Transaksi Biomassa</h3>
+          <span class="badge badge-green" id="notif-modal-persona-badge">🌾 Petani</span>
+          <span class="badge badge-amber" id="notif-modal-unread-badge">0 Belum Dibaca</span>
+        </div>
+        <p style="margin:4px 0 0; font-size:var(--fs-xs); color:var(--ink-muted);">
+          Pemantauan real-time status verifikasi, logistik armada, timbangan pabrik, pembayaran, dan refraksi mutu lintas persona.
+        </p>
+      </div>
+      <button type="button" class="btn btn-secondary btn-sm btn-icon" data-onclick="closeNotificationCenterModal()" aria-label="Tutup">✕</button>
+    </div>
+
+    <!-- Status Group Filter Tab Bar -->
+    <div class="notif-tabs-bar" id="notif-tabs-filter" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:12px;">
+      <button type="button" class="notif-filter-btn active" data-group="" data-onclick="filterNotificationGroup('')">
+        Semua (<span id="notif-cnt-all">0</span>)
+      </button>
+      <button type="button" class="notif-filter-btn" data-group="PENDING_ACTION" data-onclick="filterNotificationGroup('PENDING_ACTION')">
+        🟡 Menunggu Tindakan (<span id="notif-cnt-pending">0</span>)
+      </button>
+      <button type="button" class="notif-filter-btn" data-group="IN_PROGRESS" data-onclick="filterNotificationGroup('IN_PROGRESS')">
+        🔵 Dalam Proses &amp; Logistik (<span id="notif-cnt-progress">0</span>)
+      </button>
+      <button type="button" class="notif-filter-btn" data-group="COMPLETED" data-onclick="filterNotificationGroup('COMPLETED')">
+        🟢 Selesai &amp; Lunas (<span id="notif-cnt-completed">0</span>)
+      </button>
+      <button type="button" class="notif-filter-btn" data-group="ALERT_DISCREPANCY" data-onclick="filterNotificationGroup('ALERT_DISCREPANCY')">
+        🔴 Perhatian &amp; Refraksi (<span id="notif-cnt-alert">0</span>)
+      </button>
+    </div>
+
+    <!-- Scrollable Notification List Container -->
+    <div style="flex:1; overflow-y:auto; padding-right:4px;" id="notif-modal-content">
+      <div style="text-align:center; padding:40px 20px;" class="muted">Memuat notifikasi...</div>
+    </div>
+
+    <!-- Modal Footer Actions -->
+    <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+      <div style="font-size:11px; color:var(--ink-muted); display:flex; align-items:center; gap:6px;">
+        <span>ℹ️ Notifikasi sinkron otomatis setiap transaksi baru / perubahan status timbangan.</span>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button type="button" class="btn btn-secondary btn-sm" data-onclick="refreshNotifications()">🔄 Segarkan</button>
+        <button type="button" class="btn btn-secondary btn-sm" data-onclick="markAllNotificationsAsRead()">✓ Tandai Semua Dibaca</button>
+        <button type="button" class="btn btn-primary btn-sm" data-onclick="closeNotificationCenterModal()">Tutup</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- TOAST -->
 <div id="toast" role="status" aria-live="polite" aria-atomic="true">
   <span id="toast-icon" aria-hidden="true">✅</span>
   <span id="toast-msg">Pesan notifikasi</span>
 </div>
+
+<!-- KONTENER CETAK DOKUMEN BERSIH RUTE & SURAT JALAN (1-2 HALAMAN, ANTI 124 HALAMAN) -->
+<div id="ro-print-sheet" aria-hidden="true"></div>
 
 <!-- Logika aplikasi: /static/app.js (dimuat di <head>, defer — CSP tanpa 'unsafe-inline') -->
 </body>

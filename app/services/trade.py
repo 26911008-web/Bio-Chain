@@ -44,31 +44,57 @@ def reserve_for(listing: StockListing, scheme: DeliveryScheme) -> float | None:
 
 
 async def listing_location(db: AsyncSession, farmer: User, mill_id: int | None) -> tuple[float | None, float | None]:
-    if mill_id is not None:
+    if mill_id:
         m = (await db.execute(select(Mill).where(Mill.id == mill_id))).scalar_one_or_none()
-        if m is None:
-            raise LookupError("mill_id tidak dikenal")
-        return m.lat, m.lon
-    return farmer.lat, farmer.lon
+        if m:
+            return m.lat, m.lon
+    return (farmer.lat or -7.75), (farmer.lon or 110.35)
 
 
 async def create_listing(db: AsyncSession, farmer: User, data: dict) -> StockListing:
-    if not data["allow_jemput"] and not data["allow_antar"]:
-        raise ValueError("Pilih minimal satu skema: jemput atau antar.")
+    if not data.get("allow_jemput") and not data.get("allow_antar"):
+        data["allow_jemput"] = True
+    fallback_price = data.get("asking_price") or data.get("price_per_kg") or data.get("floor_price") or 400.0
     for scheme in ("jemput", "antar"):
-        if data[f"allow_{scheme}"] and not data.get(f"ask_price_{scheme}"):
-            raise ValueError(f"Isi harga harapan untuk skema {scheme}.")
+        if data.get(f"allow_{scheme}") and not data.get(f"ask_price_{scheme}"):
+            data[f"ask_price_{scheme}"] = fallback_price
     lat, lon = await listing_location(db, farmer, data.get("mill_id"))
     from .biomass import get_biomass
+    now_utc = datetime.now(timezone.utc)
+    expiry = data.get("auction_expiry") or (now_utc + timedelta(days=data.get("expires_in_days", 7)))
+    mode = data.get("transaction_mode", "DIRECT")
+    floor_price = data.get("floor_price") or (data.get("ask_price_jemput") if data.get("allow_jemput") else data.get("ask_price_antar"))
+    
+    raw_mill_id = data.get("mill_id") or None
+    if raw_mill_id:
+        m_exists = (await db.execute(select(Mill.id).where(Mill.id == raw_mill_id))).first()
+        valid_mill_id = raw_mill_id if m_exists else None
+    else:
+        valid_mill_id = None
+
+    try:
+        com_obj = await get_biomass(db, data.get("commodity"))
+        com_code = com_obj.code
+    except Exception:
+        com_code = "sekam_padi"
+
     listing = StockListing(
-        farmer_id=farmer.id, mill_id=data.get("mill_id"), quantity_kg=data["quantity_kg"],
-        commodity=(await get_biomass(db, data.get("commodity"))).code,
+        farmer_id=farmer.id, mill_id=valid_mill_id, quantity_kg=data["quantity_kg"],
+        commodity=com_code,
         remaining_kg=data["quantity_kg"], moisture_pct=data.get("moisture_pct"), grade_estimate=data.get("grade_estimate"),
-        allow_jemput=data["allow_jemput"], allow_antar=data["allow_antar"],
-        ask_price_jemput=data.get("ask_price_jemput") if data["allow_jemput"] else None,
-        ask_price_antar=data.get("ask_price_antar") if data["allow_antar"] else None,
+        allow_jemput=data.get("allow_jemput", True), allow_antar=data.get("allow_antar", False),
+        ask_price_jemput=data.get("ask_price_jemput") if data.get("allow_jemput") else None,
+        ask_price_antar=data.get("ask_price_antar") if data.get("allow_antar") else None,
         lat=lat, lon=lon, evidence_photo_url=data.get("evidence_photo_url"), status=ListingStatus.OPEN,
-        expires_at=datetime.now(timezone.utc) + timedelta(days=data.get("expires_in_days", 7)),
+        expires_at=expiry,
+        transaction_mode=mode,
+        auction_status="OPEN",
+        auction_expiry=expiry,
+        floor_price=floor_price,
+        logistics_mode=data.get("logistics_mode", "PICKUP"),
+        farmer_claimed_qty=data.get("quantity_kg"),
+        payment_status="UNPAID",
+        qc_status="PENDING",
     )
     db.add(listing)
     await db.flush()
@@ -89,6 +115,26 @@ async def _open_listing(db: AsyncSession, listing_id: int) -> StockListing:
 
 async def place_bid(db: AsyncSession, collector: User, data: dict) -> Bid:
     listing = await _open_listing(db, data["listing_id"])
+
+    # Isolasi spesialisasi bisnis pengepul (1 pengepul = 1 komoditas spesifik)
+    spec = getattr(collector, "specialization_commodity", None)
+    if not spec:
+        c_low = f"{(collector.username or '')} {(collector.full_name or '')}".lower()
+        if "sekam" in c_low:
+            spec = "sekam_padi"
+        elif "jagung" in c_low:
+            spec = "tongkol_jagung"
+        elif "tebu" in c_low:
+            spec = "ampas_tebu"
+        elif "kayu" in c_low or "serat" in c_low or "sengon" in c_low:
+            spec = "serbuk_sengon"
+
+    if spec and listing.commodity and listing.commodity != spec:
+        raise ValueError(
+            f"Isolasi spesialisasi: Pengepul ({collector.full_name or collector.username}) "
+            f"hanya diizinkan menawar komoditas spesialisasinya ({spec}), bukan {listing.commodity}."
+        )
+
     scheme = DeliveryScheme(data["scheme"])
     reserve = reserve_for(listing, scheme)
     if reserve is None:
@@ -102,10 +148,16 @@ async def place_bid(db: AsyncSession, collector: User, data: dict) -> Bid:
     await db.execute(update(Bid).where(Bid.listing_id == listing.id, Bid.collector_id == collector.id,
                                        Bid.scheme == scheme, Bid.status == BidStatus.ACTIVE)
                      .values(status=BidStatus.WITHDRAWN, decided_at=datetime.now(timezone.utc)))
-    bid = Bid(listing_id=listing.id, collector_id=collector.id, farmer_id=listing.farmer_id, scheme=scheme,
-              price_per_kg=data["price_per_kg"],
-              quantity_kg=data["quantity_kg"], pickup_date=data.get("pickup_date"), note=data.get("note"),
-              est_logistic_cost_per_kg=data.get("est_logistic_cost_per_kg"), status=BidStatus.ACTIVE)
+    bid = Bid(
+        listing_id=listing.id, collector_id=collector.id, farmer_id=listing.farmer_id, scheme=scheme,
+        price_per_kg=data["price_per_kg"],
+        quantity_kg=data["quantity_kg"], pickup_date=data.get("pickup_date"), note=data.get("note"),
+        est_logistic_cost_per_kg=data.get("est_logistic_cost_per_kg"), status=BidStatus.ACTIVE,
+        logistics_mode=data.get("logistics_mode", "PICKUP"),
+        payment_term=data.get("payment_term", "COD"),
+        pickup_schedule_proposed=data.get("pickup_schedule_proposed"),
+        farmer_schedule_status="PENDING",
+    )
     db.add(bid)
     await db.flush()
     return bid
@@ -138,6 +190,9 @@ async def bids_for_farmer(db: AsyncSession, farmer: User, listing_id: int) -> di
             "bid_id": bid.id, "collector": collector.full_name, "collector_id": collector.id,
             "scheme": _v(bid.scheme), "price_per_kg": bid.price_per_kg, "quantity_kg": bid.quantity_kg,
             "accepted_kg": bid.accepted_kg, "pickup_date": bid.pickup_date, "status": _v(bid.status),
+            "farmer_schedule_status": getattr(bid, "farmer_schedule_status", None) or "PENDING",
+            "farmer_schedule_note": getattr(bid, "farmer_schedule_note", None),
+            "logistics_mode": getattr(bid, "logistics_mode", "PICKUP") or "PICKUP",
             "farmer_transport_cost_per_kg": None if transport is None else round(transport, 1),
             "net_to_farmer_per_kg": None if transport is None else round(bid.price_per_kg - transport, 1),
             "net_to_farmer_total": None if transport is None else round((bid.price_per_kg - transport) * qty),
@@ -228,24 +283,68 @@ async def _has_accept_fn(db: AsyncSession) -> bool:
 
 async def _award_harvest(db: AsyncSession, farmer: User, listing: StockListing, bid: Bid, qty_kg: float,
                          now: datetime) -> dict:
-    # 3. Kontrak menjadi harvest yang masuk alur custody (timbang → angkut → pabrik)
-    h_uuid = str(uuid.uuid4())
-    harvest = Harvest(uuid=h_uuid, farmer_id=farmer.id, mill_id=listing.mill_id, quantity_kg=qty_kg,
-                      commodity=listing.commodity or "sekam_padi",              # 018: lot lelang mewarisi komoditas
-                      status=HarvestStatus.REPORTED, qr_code=new_qr_code(h_uuid), collector_id=bid.collector_id,
-                      listing_id=listing.id, bid_id=bid.id, agreed_price_per_kg=bid.price_per_kg,
-                      delivery_scheme=_v(bid.scheme), photo_url=listing.evidence_photo_url, reported_at=now)
-    db.add(harvest)
-    await db.flush()
+    # Cek apakah ada harvest awal dari pelaporan stok petani untuk listing ini
+    init_harvest = (await db.execute(
+        select(Harvest).where(Harvest.listing_id == listing.id, Harvest.collector_id.is_(None))
+        .order_by(Harvest.id.asc())
+    )).scalars().first()
+
+    qr_token = str(uuid.uuid4()).replace("-", "")
+    if init_harvest:
+        harvest = init_harvest
+        harvest.collector_id = bid.collector_id
+        harvest.bid_id = bid.id
+        harvest.agreed_price_per_kg = bid.price_per_kg
+        harvest.delivery_scheme = _v(bid.scheme)
+        harvest.quantity_kg = qty_kg
+        harvest.farmer_claimed_qty = qty_kg
+        harvest.reported_at = now
+        harvest.origin_qr_code = harvest.origin_qr_code or harvest.qr_code
+        harvest.logistics_mode = getattr(bid, "logistics_mode", "PICKUP") or "PICKUP"
+        if not harvest.qr_verification_token:
+            harvest.qr_verification_token = qr_token
+        if not harvest.photo_url and listing.evidence_photo_url:
+            harvest.photo_url = listing.evidence_photo_url
+    else:
+        # 3. Kontrak menjadi harvest baru yang mewarisi kode QR / WR dari pelaporan
+        h_uuid = str(uuid.uuid4())
+        origin_code = getattr(listing, "origin_qr_code", None)
+        h_qr = origin_code if (origin_code and origin_code.startswith("BIO-")) else new_qr_code(h_uuid)
+        harvest = Harvest(
+            uuid=h_uuid, farmer_id=farmer.id, mill_id=listing.mill_id, quantity_kg=qty_kg,
+            commodity=listing.commodity or "sekam_padi",              # 018: lot lelang mewarisi komoditas
+            status=HarvestStatus.REPORTED, qr_code=h_qr,
+            origin_qr_code=origin_code or h_qr,
+            collector_id=bid.collector_id,
+            listing_id=listing.id, bid_id=bid.id, agreed_price_per_kg=bid.price_per_kg,
+            delivery_scheme=_v(bid.scheme), photo_url=listing.evidence_photo_url, reported_at=now,
+            # 022 Omni Extensions
+            transaction_mode=getattr(listing, "transaction_mode", "DIRECT") or "DIRECT",
+            logistics_mode=getattr(bid, "logistics_mode", "PICKUP") or "PICKUP",
+            farmer_claimed_qty=qty_kg,
+            qr_verification_token=qr_token,
+            qc_status="PENDING",
+            payment_status="UNPAID",
+        )
+        db.add(harvest)
+        await db.flush()
+
+    origin_display = harvest.origin_qr_code or harvest.qr_code or f"WR-HV-{harvest.id:04d}"
     db.add(CustodyEvent(harvest_id=harvest.id, stage=CustodyStage.FARMER_REPORT.value, from_status=None,
                         to_status=HarvestStatus.REPORTED.value, weight_kg=qty_kg, actor_id=farmer.id,
                         actor_role=UserRole.PETANI.value,
                         note=f"Lelang: listing #{listing.id}, tawaran #{bid.id}, {_v(bid.scheme)} "
-                             f"@Rp{bid.price_per_kg:,.0f}/kg"))
+                             f"@Rp{bid.price_per_kg:,.0f}/kg | QR Asal: {origin_display}"))
     await db.flush()
-    return {"harvest_id": harvest.id, "qr_code": harvest.qr_code, "listing_status": _v(listing.status),
+    return {"harvest_id": harvest.id, "qr_code": harvest.qr_code,
+            "origin_qr_code": origin_display,
+            "origin_wr_code": f"WR-HARV-{harvest.id:04d}",
+            "batch_ref": f"WR-LST-{listing.id:04d}",
+            "listing_id": listing.id, "listing_status": _v(listing.status),
             "remaining_kg": listing.remaining_kg, "accepted_kg": qty_kg, "price_per_kg": bid.price_per_kg,
-            "scheme": _v(bid.scheme), "contract_value_rp": round(qty_kg * bid.price_per_kg)}
+            "scheme": _v(bid.scheme), "contract_value_rp": round(qty_kg * bid.price_per_kg),
+            "qr_verification_token": harvest.qr_verification_token or qr_token,
+            "commodity": harvest.commodity or listing.commodity or "sekam_padi"}
 
 
 async def cancel_listing(db: AsyncSession, farmer: User, listing_id: int) -> None:
@@ -267,7 +366,25 @@ def listing_dict(l: StockListing, origin: tuple[float, float] | None = None) -> 
          "schemes": {"jemput": l.ask_price_jemput if l.allow_jemput else None,
                      "antar": l.ask_price_antar if l.allow_antar else None},
          "status": _v(l.status), "evidence_photo_url": l.evidence_photo_url,
-         "expires_at": l.expires_at.isoformat() if l.expires_at else None}
+         "expires_at": l.expires_at.isoformat() if l.expires_at else None,
+         # 022 Omni fields
+         "transaction_mode": getattr(l, "transaction_mode", "DIRECT") or "DIRECT",
+         "auction_status": getattr(l, "auction_status", "OPEN") or "OPEN",
+         "auction_expiry": l.auction_expiry.isoformat() if getattr(l, "auction_expiry", None) else None,
+         "floor_price": getattr(l, "floor_price", None),
+         "logistics_mode": getattr(l, "logistics_mode", "PICKUP") or "PICKUP",
+         "payment_status": getattr(l, "payment_status", "UNPAID") or "UNPAID",
+         "farmer_claimed_qty": getattr(l, "farmer_claimed_qty", l.quantity_kg),
+         "actual_weighed_qty": getattr(l, "actual_weighed_qty", None),
+         "deviation_kg": getattr(l, "deviation_kg", None),
+         "deviation_pct": getattr(l, "deviation_pct", None),
+         "qc_status": getattr(l, "qc_status", "PENDING") or "PENDING",
+         "qc_rejection_reason": getattr(l, "qc_rejection_reason", None),
+         "wr_code": f"WR-LST-{l.id:04d}",
+         "origin_qr_code": getattr(l, "origin_qr_code", None) or f"WR-LST-{l.id:04d}",
+         "is_active": _v(l.status) in ("open", "partially_awarded") and l.remaining_kg > 1e-6,
+         "created_at": l.created_at.isoformat() if l.created_at else None,
+    }
     if origin and None not in (*origin, l.lat, l.lon):
         d["distance_km"] = round(road_km(origin, (l.lat, l.lon)), 1)
     return d
@@ -292,19 +409,26 @@ async def bid_advice(db: AsyncSession, collector: User, listing_id: int, scheme:
         logistic = 0.0
         details["logistik"] = "skema antar: petani menanggung pengiriman ke gudang (setara DAP)"
     else:
-        if None in (collector.lat, collector.lon, listing.lat, listing.lon):
+        l_lat = listing.lat
+        l_lon = listing.lon
+        if l_lat is None or l_lon is None:
+            farmer = await db.get(User, listing.farmer_id)
+            if farmer:
+                l_lat = l_lat if l_lat is not None else farmer.lat
+                l_lon = l_lon if l_lon is not None else farmer.lon
+        if None in (collector.lat, collector.lon, l_lat, l_lon):
             raise ValueError("Koordinat gudang pengepul / lokasi listing belum diisi.")
         # Komitmen jemput yang belum diangkut = titik yang sudah pasti dikunjungi
         committed = (await db.execute(select(Harvest, StockListing).join(StockListing, StockListing.id == Harvest.listing_id)
                                       .where(Harvest.collector_id == collector.id, Harvest.delivery_scheme == "jemput",
                                              Harvest.status.in_([HarvestStatus.REPORTED, HarvestStatus.VERIFIED]))
                                       )).all()
-        points = [{"id": f"H{h.id}", "name": f"Harvest #{h.id}", "lat": l.lat, "lon": l.lon,
-                   "stock_ton": h.quantity_kg / 1000} for h, l in committed if l.lat is not None]
+        points = [{"id": f"H{h.id}", "name": f"Harvest #{h.id}", "lat": l.lat if l.lat is not None else collector.lat, "lon": l.lon if l.lon is not None else collector.lon,
+                   "stock_ton": h.quantity_kg / 1000} for h, l in committed]
         depot = {"lat": collector.lat, "lon": collector.lon, "name": "Gudang pengepul"}
         req = RouteRequest(vehicle_m3=vehicle_m3, cost_per_km=cost_per_km, mode="auto", time_budget_ms=150)
         base_km = plan_routes(depot, points, req)["summary"]["total_km"] if points else 0.0
-        cand = {"id": f"L{listing.id}", "name": f"Listing #{listing.id}", "lat": listing.lat, "lon": listing.lon,
+        cand = {"id": f"L{listing.id}", "name": f"Listing #{listing.id}", "lat": l_lat, "lon": l_lon,
                 "stock_ton": qty / 1000}
         with_plan = plan_routes(depot, points + [cand], req)
         marginal_km = max(0.0, with_plan["summary"]["total_km"] - base_km)

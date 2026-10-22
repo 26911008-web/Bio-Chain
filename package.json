@@ -1,0 +1,20 @@
+{
+  "name": "bio-chain-prototype",
+  "version": "1.0.0",
+  "description": "Smart rice-husk supply chain untuk feedstock pirolisis biochar.\r **ANGEL Innovation Hackathon 2026** · Track Sustainable Energy · Topik #4 Smart Bioenergy Feedstock Optimization.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@playwright/test": "^1.64.0"
+  }
+}

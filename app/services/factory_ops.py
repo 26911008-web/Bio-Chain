@@ -42,6 +42,10 @@ def request_dict(r: DeliveryRequest) -> dict:
             "rounds": r.rounds, "current_offer": {"price_per_kg": r.proposed_price_per_kg, "date": r.proposed_date},
             "recommended_price_per_kg": r.recommended_price_per_kg,
             "agreed": {"price_per_kg": r.agreed_price_per_kg, "date": r.agreed_date} if r.agreed_price_per_kg else None,
+            "logistics_carrier": getattr(r, "logistics_carrier", "FACTORY_FLEET") or "FACTORY_FLEET",
+            "mill_id": getattr(r, "mill_id", None),
+            "biomass_type": getattr(r, "biomass_type", "sekam_padi") or "sekam_padi",
+            "pricing_mode": getattr(r, "pricing_mode", "AUCTION") or "AUCTION",
             "note": r.note, "created_at": r.created_at.isoformat() if r.created_at else None}
 
 
@@ -66,11 +70,23 @@ async def _event(db, req_id, actor: User, action, price=None, date=None, note=No
 
 async def submit_request(db: AsyncSession, collector: User, data: dict) -> DeliveryRequest:
     rec = factory_price_preview(data["moisture_est"], data.get("ash_est"))
-    r = DeliveryRequest(collector_id=collector.id, quantity_kg=data["quantity_kg"], moisture_est=data["moisture_est"],
-                        ash_est=data.get("ash_est"), grade_est=data.get("grade_est"), proposed_date=data["proposed_date"],
-                        proposed_price_per_kg=data["proposed_price_per_kg"],
-                        recommended_price_per_kg=rec["recommended_price_per_kg"], pending_party="pabrik",
-                        status=RequestStatus.SUBMITTED, note=data.get("note"))
+    r = DeliveryRequest(
+        collector_id=collector.id,
+        quantity_kg=data["quantity_kg"],
+        moisture_est=data["moisture_est"],
+        ash_est=data.get("ash_est"),
+        grade_est=data.get("grade_est"),
+        proposed_date=data["proposed_date"],
+        proposed_price_per_kg=data["proposed_price_per_kg"],
+        recommended_price_per_kg=rec["recommended_price_per_kg"],
+        pending_party="pabrik",
+        status=RequestStatus.SUBMITTED,
+        logistics_carrier=data.get("logistics_carrier") or "FACTORY_FLEET",
+        mill_id=data.get("mill_id"),
+        biomass_type=data.get("biomass_type") or "sekam_padi",
+        pricing_mode=data.get("pricing_mode") or "AUCTION",
+        note=data.get("note")
+    )
     db.add(r)
     await db.flush()
     ids = sorted(set(data.get("harvest_ids") or []))
@@ -201,7 +217,9 @@ async def inbound_qc(db: AsyncSession, inspector: User, data: dict) -> InboundQC
     await db.flush()
     from .logistics import reason_from_quality as _rq
     await _receive_linked_harvests(db, inspector, r.id, net, rejected, qc.verification_code,
-                                   _rq(data["moisture"], data.get("contamination", 0)) if rejected else None)
+                                   _rq(data["moisture"], data.get("contamination", 0)) if rejected else None,
+                                   gross_kg=data.get("gross_kg"), tare_kg=data.get("tare_kg"),
+                                   slip_url=data.get("evidence_photo_url"))
     await settle_qc(db, qc, r.collector_id, inspector)
     from .logistics import open_return, reason_from_quality
     if rejected:
@@ -218,7 +236,8 @@ async def inbound_qc(db: AsyncSession, inspector: User, data: dict) -> InboundQC
 
 
 async def _receive_linked_harvests(db, inspector: User, request_id: int, net_kg: float, rejected: bool, lot_code: str,
-                                   reject_category: str | None = None):
+                                   reject_category: str | None = None, gross_kg: float | None = None,
+                                   tare_kg: float | None = None, slip_url: str | None = None):
     """Teruskan hasil QC lot ke harvest petani yang terlampir: berat diterima dibagi proporsional timbangan
     pengepul (susut merata; kelebihan berat = stok milik pengepul sendiri, tidak dibagikan)."""
     linked = (await db.execute(select(Harvest).where(Harvest.delivery_request_id == request_id)
@@ -234,12 +253,17 @@ async def _receive_linked_harvests(db, inspector: User, request_id: int, net_kg:
             await transition(db, h.id, HarvestStatus.VERIFIED, HarvestStatus.REJECTED, inspector,
                              CustodyStage.FACTORY_REJECT, note=f"QC lot ditolak ({lot_code})",
                              rejected_reason="QC pabrik: lot ditolak", rejected_at=now,
-                             reject_category=reject_category or "lainnya")
+                             reject_category=reject_category or "lainnya",
+                             gross_weight=gross_kg, tare_weight=tare_kg, net_weight=net_kg,
+                             weighbridge_slip_url=slip_url)
             continue
         received = round(ref * factor, 3)
         await transition(db, h.id, HarvestStatus.VERIFIED, HarvestStatus.DELIVERED, inspector,
                          CustodyStage.FACTORY_RECEIVE, weight_kg=received, note=f"QC lot {lot_code}",
-                         received_by_id=inspector.id, delivered_at=now, **shrinkage_fields(ref, received))
+                         received_by_id=inspector.id, delivered_at=now,
+                         gross_weight=gross_kg, tare_weight=tare_kg, net_weight=net_kg,
+                         weighbridge_slip_url=slip_url,
+                         **shrinkage_fields(ref, received))
 
 
 def qc_dict(q: InboundQC) -> dict:

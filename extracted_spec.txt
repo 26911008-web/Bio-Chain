@@ -1,0 +1,125 @@
+Spesifikasi Sistem Sirkular Biomassa & Biochar (End-to-End 4 Persona: Petani, Pengepul, Driver, & Pabrik)
+Sistem ini merupakan ekosistem rantai pasok sirkular (Circular Supply Chain) yang mengintegrasikan Petani (produsen biomassa), Pengepul Spesialis (agregator tunggal per komoditas), Driver Armada Pabrik (eksekutor logistik single-commodity trip), dan Pabrik / Offtaker (unit pengolahan multi-produk: Biopellet, Biochar, Biosilika, & Briket). Seluruh monitoring transaksi, inventori, logistik, dan finansial dikelompokkan (grouped) secara ketat berdasarkan Jenis Biomassa.
+1. Arsitektur Persona & Aturan Bisnis Utama (Business Rules)
+Persona Petani (Multi-Komoditas):
+Menghasilkan berbagai jenis biomassa pertanian/kehutanan: Sekam Padi, Bonggol/Tongkol Jagung, Ampas Tebu (Bagasse), Serbuk Kayu (Sawdust), Pelepah Sawit, Cangkang Kemiri, dll.
+Bertindak sebagai Seller biomassa mentah sekaligus Receiver/Buyer produk sampingan berupa Biochar untuk pembenah tanah.
+Persona Pengepul (Spesialis Komoditas Tunggal):
+Setiap akun Pengepul hanya fokus pada 1 jenis biomassa spesifik (misal: Pengepul A khusus Sekam Padi, Pengepul B khusus Bonggol Jagung, Pengepul C khusus Serbuk Kayu).
+Pengepul mengumpulkan stok dari berbagai petani untuk komoditas spesialisasinya, melakukan QC tahap 1, dan memasok ke berbagai Pabrik.
+Persona Driver (Single-Commodity Trip & Factory Fleet Filter):
+Driver mengangkut biomassa dari titik Pengepul menuju Pabrik.
+Aturan Anti-Kontaminasi (Single-Commodity per Trip): Dalam 1 kali perjalanan (1 trip), truk/driver hanya boleh mengangkut 1 jenis biomassa yang sama (tidak boleh dicampur dengan jenis biomassa lain dalam 1 bak truk). Jenis biomassa berbeda wajib dijadwalkan pada trip berikutnya.
+Filter Penugasan (Job Assignment Rule): Meskipun jadwal pengantaran diinisiasi oleh Pabrik (baik menggunakan opsi Armada Pabrik maupun Armada Pengepul), Job Order yang masuk ke Modul Driver HANYA pengiriman yang menggunakan Armada Pabrik (Diambil oleh Pabrik). Pengiriman dengan armada mandiri pengepul dikelola langsung di modul pengepul.
+Persona Pabrik (Multi-Account Offtaker & Bio-Refinery):
+Terdapat beberapa akun Pabrik yang dapat memantau stok biomassa lintas Pengepul Spesialis (ketersediaan kuantitas, grade kualitas, dan harga).
+Mengolah biomassa di Loading Ramp (tunggal maupun co-firing/blending antar ramp) menjadi 4 alternatif produk utama: Biopellet, Biochar, Biosilika, dan Briket, lengkap dengan pencatatan produk sampingan (by-products), kalkulasi optimasi profit, dan jejak karbon (carbon footprint).
+2. Spesifikasi Detail Per Modul
+Modul 1: Modul Petani (Seller Biomassa & Receiver Biochar)
+A. Penjualan Biomassa: Input jenis biomassa, estimasi kuantitas (kg/ton), laporan kualitas mandiri (kadar air, kontaminasi, foto), dan koordinat lokasi.
+B. Skema Transaksi & Kirim:
+Skema Harga Langsung Pengepul: Ikut harga acuan pengepul spesialis terkait (Opsi: Dijemput Pengepul atau Antar Mandiri).
+Skema Lelang (Open Bidding): Petani pasang harga bebas per kg -> Menunggu deal dengan pengepul spesialis -> Pilih opsi Dijemput atau Antar Mandiri.
+C. Feedback QC dari Pengepul: Menerima hasil timbang riil, grade aktual, dan penyesuaian harga dari pengepul (baik jalur langsung maupun lelang).
+D. Request & Evaluasi Biochar: Memesan biochar untuk lahan dan mengisi evaluasi kualitas biochar yang diterima.
+E. Evaluasi Performa Pengepul: Memberikan rating ketepatan waktu dan performa pembayaran pengepul.
+Modul 2: Modul Pengepul Spesialis (Single-Biomass Aggregator)
+A. Filter Spesialisasi: Dashboard pengepul otomatis terfilter hanya menampilkan penawaran petani yang sesuai dengan spesialisasi biomassanya.
+Request Biochar: Petani dapat mengajukan pesanan biochar untuk pembenah tanah pertanian.
+Evaluasi Mutu Biochar: Formulir ulasan/rating kualitas biochar yang diterima dari pengepul (misal: ukuran butir/mesh, tingkat kematangan pirolisis/karbonisasi, kelembapan, dan dampak pada tanah).
+E. Evaluasi & Rating Pengepul
+B. Dashboard Status Penawaran (Grouped & Sorted):
+Terbagi menjadi Tab "Langsung Diambil" dan Tab "Lelang".
+Format Kolom: Nama Petani | Jenis Biomassa | Qty (kg) | Kualitas | Pilihan Kirim | Harga/kg | Keterangan | Aksi Finalisasi.
+C. Jadwal Plan Ambil & Backhaul Biochar:
+Konsolidasi rute penjemputan untuk Mitra Lama, dipadukan dengan pengantaran pesanan Biochar ke petani searah (zero empty miles).
+D. Katalog Stok ke Pabrik & Rekap Feedback Pabrik:
+Menampilkan stok siap jual ke beberapa akun Pabrik.
+Menerima Rekap Hasil Pengecekan QC & Timbangan dari Pabrik (sebagai feedback evaluasi performa pasokan pengepul) serta memonitor status pembayaran dari Pabrik (Cash / DP / TOP).
+Modul 3: Modul Driver (Eksekutor Logistik Armada Pabrik)
+A. Job Inbox Terfilter (Factory Fleet Only):
+Hanya menerima Job Order penjemputan dari jadwal pengantaran yang berstatus "Diambil oleh Armada Pabrik".
+B. Validasi Muatan Tunggal (Single-Biomass Constraint):
+Sistem mengunci 1 Trip ID hanya untuk 1 jenis biomassa (misal: Trip #01 khusus Sekam Padi). Jika ada penugasan Bonggol Jagung, sistem otomatis membuat Trip ID berikutnya (Trip #02) agar komoditas tidak tercampur di kendaraan.
+C. Status Perjalanan & Backhaul Tracking:
+Update status berjenjang: Menuju Pengepul -> Muat Biomassa -> Dalam Perjalanan ke Pabrik -> Tiba di Weighbridge/Loading Ramp Pabrik (serta tracking distribusi balik Biochar bila ada muatan backhaul).
+Modul 4: Modul Pabrik (Procurement, QC, Loading Ramp Blending, & Bio-Refinery)
+A. Marketplace Stok Pengepul & Penjadwalan Logistik:
+Melihat daftar ketersediaan stok, kualitas, dan harga dari seluruh Pengepul Spesialis (dikelompokkan per jenis biomassa).
+Memilih biomassa dan menerbitkan Plan Jadwal Pengantaran dengan 2 opsi armada:
+Diambil Armada Pabrik -> Otomatis menerbitkan tugas ke Modul Driver.
+Diantar Armada Pengepul -> Dikelola langsung oleh Pengepul tanpa masuk ke Modul Driver pabrik.
+B. Gate QC, Timbangan Pabrik & Trigger Pembayaran Wajib:
+Saat biomassa tiba, pabrik menginput hasil timbang aktual dan uji QC laboratorium (Kadar Air, Kadar Abu, Kalori/CV, Kontaminasi) dengan 3 status keputusan:
+Diterima Penuh (Accepted All)
+Diterima Sebagian / Ditolak Sebagian (Partial Accept/Reject) -> Hanya membayar tonase yang lolos QC.
+Ditolak Semua (Rejected All) -> Diretur ke pengepul.
+Kewajiban Pembayaran Instan (Payment Gate): Jika status Diterima Penuh atau Diterima Sebagian, sistem mewajibkan Pabrik segera mengeksekusi komitmen pembayaran sebelum stok bisa masuk ke Loading Ramp, dengan 3 opsi: Cash Lunas, Down Payment (DP), atau Term of Payment (TOP/Tempo) terverifikasi.
+Feedback Otomatis ke Pengepul: Hasil rekap QC & timbangan pabrik otomatis terkirim ke dashboard Pengepul terkait sebagai performance record.
+C. Manajemen Loading Ramp & Kalkulator Optimasi Blending (Multi-Produk):
+Biomassa yang lolos QC dan terbayar masuk ke inventori Loading Ramp (dikelompokkan per jenis biomassa: Ramp Sekam Padi, Ramp Bonggol Jagung, Ramp Ampas Tebu, Ramp Serbuk Kayu).
+Engine Simulasi & Analisa Optimasi Olahan (Single vs Blending):
+Pabrik dapat menganalisa apakah suatu batch biomassa di Loading Ramp lebih optimal diolah secara murni (single feedstock) atau dicampur (blending) dengan biomassa di Loading Ramp lain untuk memproduksi 4 alternatif produk:
+Biopellet (butuh kalori tinggi & lignin pengikat alami seperti serbuk kayu + ampas tebu/bonggol jagung).
+Biochar (pirolisis karbon aktif untuk pertanian/industri).
+Biosilika (ekstraksi silika murni, sangat optimal dari abu sekam padi).
+Briket Bio-Arang (kompresi karbon padat).
+Analisa Potensi Keuntungan (Profitability Analysis): Menhitung HPP bahan baku + biaya proses vs harga jual pasar masing-masing produk untuk merekomendasikan alokasi produk paling menguntungkan.
+Analisa Jejak Karbon (Carbon Footprint & Emission Saving): Menghitung emisi proses (CO₂e), carbon sequestration (khususnya pada Biochar), dan pengurangan emisi dibanding batu bara.
+D. Pencatatan Hasil Produksi Utama & Hasil Samping (By-Products):
+Mencatat yield produk utama (tonase Biopellet/Biochar/Biosilika/Briket) beserta Hasil Samping (By-Products) yang dihasilkan (misal: Wood Vinegar / Asap Cair, Tar Bio-oil, Abu Sekam / Fly Ash, Syngas).
+E. End-to-End Monitoring (Grouped by Biomass Type):
+Seluruh tabel monitoring di sistem wajib dikelompokkan (grouped) berdasarkan Jenis Biomassa:
+Monitoring Stok & Loading Ramp per Biomassa.
+Monitoring Distribusi & Tracking Biochar (dari produksi pabrik -> alokasi ke pengepul -> kembali ke lahan petani).
+Monitoring Status Pembayaran (Payment Ledger) antara Pabrik ke Pengepul (Cash/DP/TOP) dan Pengepul ke Petani.
+3. Hasil Audit & Peningkatan Arsitektur Sistem (System Audit & Enhancements)
+Berdasarkan alur yang Anda rancang, berikut adalah temuan celah logika (edge cases) dan peningkatan yang telah disuntikkan ke dalam spesifikasi:
+Pencegahan Double-Booking & Ghost Inventory:
+Masalah: Beberapa akun pabrik bisa mengklaim stok pengepul yang sama secara bersamaan.
+Solusi: Penambahan status Stock Locking (Reserved) saat Pabrik menerbitkan jadwal pengiriman, dan baru terpotong permanen saat lolos QC Gate Pabrik.
+Rekonsiliasi Selisih Tonase (Partial Reject Accounting):
+Masalah: Saat pabrik memilih "Ditolak Sebagian" (misal kirim 10 ton, diterima 8 ton, ditolak 2 ton), nilai tagihan dan stok harus sinkron otomatis.
+Solusi: Kalkulasi invoice otomatis hanya menagihkan 8 ton yang diterima (untuk opsi Cash/DP/TOP), sementara 2 ton tercatat di Return Manifest pada laporan feedback pengepul.
+Rule Engine Formulasi Blending & Hasil Samping:
+Masalah: Tidak semua biomassa menghasilkan produk yang sama (contoh: Biosilika secara kimiawi membutuhkan bahan baku tinggi silika seperti Sekam Padi, sedangkan Serbuk Kayu rendah silika namun tinggi lignin untuk Biopellet).
+Solusi: Penambahan matriks kecocokan bahan baku (Feedstock Compatibility Matrix) di modul analisa pabrik agar rekomendasi AI/kalkulator akurat secara teknis dan ekonomis.
+Traceability Biochar Sirkular (Closed-Loop Tracking):
+Masalah: Biochar diproduksi di pabrik, tapi diminta oleh petani melalui pengepul.
+Solusi: Penambahan Biochar Batch ID yang melacak aliran biochar dari Kiln Pabrik -> Gudang Pengepul -> Backhaul Truk -> Lahan Petani, sekaligus mengaitkannya dengan klaim kredit karbon (Carbon Credit Verification).
+4. Master Prompt untuk Menguji Semua Fitur & Flow di Repo Website
+Salin dan gunakan prompt di bawah ini pada AI Coding Agent Anda (seperti Claude Code, Cursor, atau GitHub Copilot Workspace) di dalam repositori proyek website Anda untuk mengaudit, melengkapi fitur, dan menjalankan pengujian menyeluruh (End-to-End Testing):
+# ROLE & OBJECTIVE
+Kamu adalah Senior Full-Stack Architect & QA Automation Engineer. Tugasmu adalah melakukan audit kode secara menyeluruh, melengkapi fitur yang belum sesuai spesifikasi, dan membuat serta menjalankan skenario pengujian End-to-End (E2E) untuk seluruh alur proses bisnis pada repositori aplikasi ekosistem sirkular biomassa ini.
+# BUSINESS LOGIC & SYSTEM REQUIREMENTS YANG WAJIB DIVERIFIKASI & DIIMPLEMENTASIKAN
+Pastikan database schema, API endpoints, state management, dan UI/UX di repositori ini memenuhi seluruh aturan bisnis berikut tanpa terkecuali:
+### 1. Empat (4) Persona & Isolasi Hak Akses (RBAC)
+- **Petani (Multi-Biomassa):** Bisa menjual berbagai jenis biomassa (Sekam Padi, Bonggol Jagung, Ampas Tebu, Serbuk Kayu, dll) dengan input Qty & Kualitas. Memiliki 2 jalur jual: (a) Ikut Harga Langsung Pengepul, atau (b) Lelang (isi harga bebas -> tunggu deal). Setelah deal, muncul opsi kirim: Dijemput Pengepul atau Antar Mandiri. Petani menerima feedback QC dari pengepul, bisa request & evaluasi mutu Biochar, serta memberi rating performa pembayaran pengepul.
+- **Pengepul (Spesialis 1 Jenis Biomassa):** Setiap akun pengepul HANYA terikat pada 1 jenis biomassa spesifik (misal: Pengepul Sekam Padi tidak bisa mengambil Bonggol Jagung). Dashboard pengepul memiliki 2 tab status: "Langsung Diambil" dan "Lelang" dengan urutan kolom: [Nama Petani | Jenis Biomassa | Kg | Kualitas | Pilihan Kirim | Harga | Keterangan | Finalisasi], terkelompok (grouped) per biomassa dan berurutan. Setelah finalisasi, masuk ke Modul Jadwal Plan Ambil (prioritas Mitra Lama) yang terintegrasi dengan daftar Request Biochar petani untuk efisiensi logistik balik (backhaul). Pengepul juga menerima Rekap Hasil QC dari Pabrik dan memonitor status pembayaran dari Pabrik.
+- **Driver (Single-Biomass per Trip & Factory Fleet Only):**
+  - RULE 1 (Filter Armada): Dari jadwal pengiriman yang dibuat Pabrik (baik menggunakan Armada Pabrik maupun Armada Pengepul), yang masuk sebagai Job Order ke Modul Driver HANYA yang menggunakan ARMADA PABRIK (Diambil oleh Pabrik).
+  - RULE 2 (Anti-Kontaminasi): Driver bisa mengangkut biomassa apapun, TETAPI dalam 1 kali trip hanya boleh mengangkut 1 JENIS BIOMASSA. Jenis biomassa lain wajib masuk ke jadwal trip berikutnya agar tidak tercampur.
+- **Pabrik (Multi-Account Offtaker, QC Gate, Loading Ramp & Bio-Refinery):**
+  - Melihat stok, kualitas, dan harga biomassa lintas pengepul spesialis.
+  - Membuat jadwal pengantaran (pilih Armada Pabrik atau Armada Pengepul).
+  - Menginput hasil timbang & uji QC saat barang tiba dengan 3 opsi keputusan: [Diterima Semua | Ditolak Sebagian (Partial Accept) | Ditolak Semua].
+  - PAYMENT GATE: Jika Diterima Semua atau Diterima Sebagian, Pabrik WAJIB segera menginput eksekusi pembayaran dengan pilihan: [Cash Lunas | DP (Down Payment) | TOP (Term of Payment)] sebelum barang bisa masuk ke Loading Ramp.
+  - FEEDBACK LOOP: Hasil QC & timbangan pabrik otomatis masuk ke modul Rekap Pengecekan Biomassa sebagai feedback ke Modul Pengepul.
+  - LOADING RAMP & ANALISA OPTIMASI BLENDING: Biomassa yang lolos masuk ke Loading Ramp (per jenis biomassa). Pabrik memiliki fitur Analisa & Simulasi untuk menentukan apakah biomassa di ramp tersebut lebih optimal diolah murni atau dicampur (blending) dengan biomassa di Loading Ramp lain untuk menjadi 4 alternatif produk: [Biopellet | Biochar | Biosilika | Briket].
+  - ANALISA FINANSIAL & LINGKUNGAN: Kalkulasi otomatis Potensi Keuntungan (HPP + Biaya Olah vs Harga Jual) dan Analisa Jejak Karbon (Carbon Footprint / Emission Saving).
+  - OUTPUT & BY-PRODUCTS: Mencatat hasil olahan utama (Biopellet/Biochar/Biosilika/Briket) DAN hasil samping (By-Products seperti Asap Cair/Wood Vinegar, Abu, Bio-oil, Syngas) ke dalam database & UI repo.
+  - TRACKING & GROUPED MONITORING: Seluruh dashboard monitoring (Stok, Produksi, Tracking Distribusi Biochar dari Pabrik -> Pengepul -> Petani, serta Monitoring Status Pembayaran Cash/DP/TOP) WAJIB dikelompokkan (grouped) berdasarkan Jenis Biomassa.
+# TUGAS EKSEKUSI (STEP-BY-STEP)
+1. **Codebase Audit & Gap Analysis:**
+   - Periksa struktur folder, skema database (Supabase/PostgreSQL/Prisma/dsb.), rute API, dan halaman frontend untuk keempat persona.
+   - Cetak tabel Gap Analysis yang menunjukkan fitur mana dari spesifikasi di atas yang sudah ada, mana yang masih parsial, dan mana yang belum ada.
+2. **Implementasi & Perbaikan Fitur:**
+   - Lengkapi skema data, validasi backend, dan komponen UI yang belum memenuhi spesifikasi (terutama filter job Driver khusus armada pabrik, validasi 1 biomassa per trip, Payment Gate Cash/DP/TOP setelah QC Pabrik, kalkulator blending Loading Ramp + analisa profit & karbon + hasil samping, serta grouping per biomassa di seluruh tabel monitoring).
+3. **Pembuatan & Eksekusi Automated E2E Test Suite:**
+   - Buat skrip pengujian otomatis (atau seed data & integration test script) yang mensimulasikan alur penuh dari hulu ke hilir:
+     - Skenario 1: 4 Petani berbeda menginput Sekam Padi, Bonggol Jagung, Ampas Tebu, dan Serbuk Kayu (jalur Harga Langsung & Lelang) + Request Biochar.
+     - Skenario 2: 4 Pengepul Spesialis memfinalisasi transaksi, menjadwalkan penjemputan + backhaul Biochar, dan mengekspos stok ke Pabrik.
+     - Skenario 3: 2 Akun Pabrik memesan stok dengan opsi "Armada Pabrik" dan "Armada Pengepul". Verifikasi bahwa HANYA job "Armada Pabrik" yang muncul di Modul Driver, dan pastikan sistem menolak pencampuran 2 jenis biomassa dalam 1 trip yang sama.
+     - Skenario 4: Pabrik melakukan QC (uji skenario Diterima Semua, Ditolak Sebagian, dan Ditolak Semua), memproses pembayaran (Cash, DP, TOP), serta mengirim feedback otomatis ke Pengepul.
+     - Skenario 5: Pabrik memindahkan biomassa ke Loading Ramp, menjalankan simulasi pencampuran (blending) antar Loading Ramp untuk menghasilkan Biopellet, Biochar, Biosilika, dan Briket beserta hasil sampingnya, kalkulasi profit & jejak karbon, serta memverifikasi tracking Biochar dan status pembayaran yang sudah ter-grouping berdasarkan jenis biomassa.
+

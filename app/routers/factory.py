@@ -1,11 +1,12 @@
 """Router: Pabrik (🏭) — Endpoints analytics-heavy untuk pabrik/end-user."""
 
+import uuid
 from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import aliased
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,11 +15,12 @@ from ..database import get_db
 from ..dependencies import require_role
 from ..models.user import User, UserRole
 from ..models.harvest import Harvest, HarvestStatus
+from ..models.circular import BiocharDistribution, BiocharRequest
 from ..models.conversion import Conversion, CarbonCredit
 from ..engines.carbon import CarbonInput, calculate_carbon_reduction
 from ..engines.forecaster import ForecastInput, forecast_supply
 from ..engines.quality import FeedstockSample, biochar_yield_db, score_sample, yield_curve
-from ..engines.blending import BlendRequest, optimize_blend
+from ..engines.blending import BlendRequest, default_feedstocks, optimize_blend
 from ..engines.factory_econ import LOSS_KINDS
 from ..params import P
 from ..models.ledger import CustodyStage
@@ -31,7 +33,10 @@ from ..data import DEPOT
 from ..engines.energy import EnergyAnalysisRequest, analyze as analyze_energy
 from ..models.energy import EnergyMeterReading
 from ..engines.factory_econ import PricingRequest, recommend_price
-from ..models.factory_ops import CollectorSettlement, DeliveryRequest, InboundQC, ManufacturingBatch
+from ..models.factory_ops import (
+    CollectorSettlement, DeliveryRequest, InboundQC, ManufacturingBatch,
+    QCDecision, RequestStatus, ReturnCase, ReturnReason, ReturnDisposition
+)
 from ..services import factory_ops
 from ..services.custody import convert_and_allocate, load_harvest, mass_balance, shrinkage_fields, transition
 from ..security.url import EvidenceUrl
@@ -65,6 +70,7 @@ class DispatchRequest(BaseModel):
     vehicle_m3: float = Field(default_factory=lambda: P("logistik.vehicle_m3"), gt=0, le=200)
     vehicle_payload_kg: float | None = Field(None, gt=0, le=40_000,
                                              description="Muatan maksimum truk ini; kosong = parameter logistik")
+    logistics_carrier: str = Field("FACTORY_FLEET", pattern="^(FACTORY_FLEET|COLLECTOR_SELF)$")
 
 
 class FleetVehicle(BaseModel):
@@ -160,11 +166,21 @@ async def dispatch_route(
     bad_dr = [h.id for h in harvests if h.delivery_request_id is not None]
     if bad_dr:
         raise HTTPException(409, f"Harvest {bad_dr} sudah terlampir Delivery Request — kirim lewat QC, bukan rute.")
+
+    # Anti-Cross Contamination: Dilarang menggabungkan komoditas berbeda dalam satu trip
+    commodities = {h.commodity for h in harvests if h.commodity}
+    if len(commodities) > 1:
+        raise HTTPException(
+            422,
+            f"Anti-Cross Contamination: Dilarang menggabungkan komoditas berbeda dalam 1 armada ({', '.join(sorted(commodities))}). "
+            "Gunakan trip terpisah per jenis komoditas untuk menjaga kemurnian mutu pirolisis."
+        )
+
     await _ensure_not_scheduled(db, req.harvest_ids)
     order = {hid: i for i, hid in enumerate(req.harvest_ids)}
     harvests = sorted(harvests, key=lambda h: order[h.id])
     route = await _create_route(db, driver, harvests, req.vehicle_plate, req.vehicle_m3, optimizer="manual",
-                                payload_kg=req.vehicle_payload_kg)
+                                payload_kg=req.vehicle_payload_kg, logistics_carrier=req.logistics_carrier)
     stops = (await db.execute(
         select(RouteStop).where(RouteStop.route_id == route.id).order_by(RouteStop.stop_order)
     )).scalars().all()
@@ -183,7 +199,7 @@ async def _ensure_not_scheduled(db: AsyncSession, harvest_ids: list[int]) -> Non
 
 
 def check_capacity(total_kg: float, vehicle_m3: float, payload_kg: float | None = None) -> None:
-    """Sekam ringan tapi memakan ruang: muatan dibatasi VOLUME bak (kg ÷ densitas curah) DAN berat (muatan truk).
+    """Biomassa ringan tapi memakan ruang: muatan dibatasi VOLUME bak (kg ÷ densitas curah) DAN berat (muatan truk).
     Melebihi salah satunya → 422 dengan saran (pecah rute / truk lebih besar)."""
     rho = P("logistik.bulk_density_kg_m3")
     cap_kg = payload_kg or P("logistik.vehicle_payload_kg")
@@ -199,7 +215,8 @@ def check_capacity(total_kg: float, vehicle_m3: float, payload_kg: float | None 
 
 
 async def _create_route(db: AsyncSession, driver: User, harvests: list[Harvest], plate: str | None,
-                        vehicle_m3: float, optimizer: str, payload_kg: float | None = None) -> Route:
+                        vehicle_m3: float, optimizer: str, payload_kg: float | None = None,
+                        logistics_carrier: str = "FACTORY_FLEET") -> Route:
     """Buat rute + stop terurut; km & CO2e rencana dihitung dari koordinat penggilingan (estimasi jalan)."""
     from ..engines.emission import emissions_from_plan
     from ..engines.routing import road_km
@@ -208,7 +225,8 @@ async def _create_route(db: AsyncSession, driver: User, harvests: list[Harvest],
     check_capacity(total_kg, vehicle_m3, payload_kg)
     route = Route(driver_id=driver.id, vehicle_plate=plate, status=RouteStatus.PLANNED, vehicle_m3=vehicle_m3,
                   bulk_density=rho, total_ton=round(total_kg / 1000, 3), total_m3=round(total_kg / rho, 2),
-                  utilization_pct=round(100 * total_kg / rho / vehicle_m3, 1), optimizer=optimizer)
+                  utilization_pct=round(100 * total_kg / rho / vehicle_m3, 1), optimizer=optimizer,
+                  logistics_carrier=logistics_carrier)
     db.add(route)
     await db.flush()
     mills = {m.id: m for m in (await db.execute(
@@ -345,7 +363,7 @@ async def receive_harvest(
     # Jalur rute: catat kewajiban bayar ke pengepul (sebelumnya tidak tercatat → margin pengepul tidak lengkap)
     current_harvest = await load_harvest(db, req.harvest_id)
     settlement = await factory_ops.settle_route(db, current_harvest, user, req.price_per_kg)
-    warning = ("Penerimaan sekam tanpa pengepul: tidak ada tagihan pembayaran terbuat otomatis."
+    warning = ("Penerimaan biomassa tanpa pengepul: tidak ada tagihan pembayaran terbuat otomatis."
                if settlement is None and current_harvest.collector_id is None else None)
     return {
         "settlement": factory_ops.settlement_dict(settlement) if settlement else None,
@@ -422,7 +440,7 @@ async def supply_forecast(
     inp: ForecastInput,
     user: Annotated[User, Depends(_pabrik_dep)],
 ):
-    """Prediksi pasokan sekam bulanan."""
+    """Prediksi pasokan biomassa bulanan."""
     return forecast_supply(inp)
 
 
@@ -486,7 +504,7 @@ async def blend_recommend(
 ):
     """Optimasi campuran feedstock (Engine ③)."""
     if not req.feedstocks:
-        raise HTTPException(422, "Minimal satu feedstock.")
+        req.feedstocks = default_feedstocks()
     return optimize_blend(req)
 
 
@@ -929,7 +947,7 @@ async def pricing_recommend(
     req: PricingRequest,
     user: Annotated[User, Depends(_pabrik_dep)],
 ):
-    """Rekomendasi harga beli sekam: lantai / target / plafon + rincian netback & sensitivitas kadar air."""
+    """Rekomendasi harga beli biomassa: lantai / target / plafon + rincian netback & sensitivitas kadar air."""
     return recommend_price(req)
 
 
@@ -1077,7 +1095,7 @@ async def route_arrivals(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(_pabrik_only)],
 ):
-    """Sekam jalur rute yang sudah dijemput supir dan menunggu timbang terima pabrik."""
+    """Biomassa jalur rute yang sudah dijemput supir dan menunggu timbang terima pabrik."""
     FarmerUser = aliased(User, name="farmer_u")
     CollectorUser = aliased(User, name="collector_u")
     q = (select(Harvest, FarmerUser.full_name.label("farmer_name"), CollectorUser.full_name.label("collector_name"))
@@ -1186,4 +1204,1835 @@ async def green_scorecard(
             raise HTTPException(422, "since harus YYYY-MM-DD") from e
     return await green_scorecard_for(db, start)
 
+
+# ---------------------------------------------------------------- Optimasi Multi-Biomassa ke Produk Akhir (Engine ⑫)
+class OptimizeEvaluateRequest(BaseModel):
+    code: str | None = Field(None, max_length=24, description="Kode komoditas master")
+    commodity_code: str | None = Field(None, max_length=24, description="Alias untuk code dari frontend")
+    name: str | None = Field(None, max_length=80)
+    tonnage: float | None = Field(None, gt=0, le=100_000_000)
+    quantity_kg: float | None = Field(None, gt=0, le=100_000_000_000)
+    moisture_pct: float | None = Field(None, ge=0, lt=95)
+    ash_pct_db: float | None = Field(None, ge=0, lt=60)
+    volatile_pct_db: float | None = Field(None, ge=0, le=100)
+    fixed_carbon_pct_db: float | None = Field(None, ge=0, le=100)
+    hhv_db_mj_kg: float | None = Field(None, gt=5, lt=35)
+    lhv_db_mj_kg: float | None = Field(None, gt=5, lt=35)
+    sio2_pct_ash: float | None = Field(None, ge=0, le=100)
+    base_price_per_kg: float | None = Field(None, ge=0, le=100_000)
+    purchase_price_per_kg: float | None = Field(None, ge=0, le=100_000)
+    price_overrides: dict[str, float] | None = None
+
+
+class FeedstockAllocationInput(BaseModel):
+    code: str = Field(..., min_length=2, max_length=24)
+    name: str | None = None
+    tonnage: float | None = Field(None, gt=0, le=100_000_000)
+    stock_kg: float | None = Field(None, gt=0)
+    moisture_pct: float | None = Field(None, ge=0, lt=95)
+    ash_pct_db: float | None = Field(None, ge=0, lt=60)
+    base_price_per_kg: float | None = Field(None, ge=0, le=100_000)
+    purchase_price_per_kg: float | None = Field(None, ge=0, le=100_000)
+
+
+class OptimizeAllocateRequest(BaseModel):
+    feedstocks: list[FeedstockAllocationInput] | None = None
+    stocks: list[FeedstockAllocationInput] | None = None
+    max_pellet_ton: float | None = Field(None, ge=0)
+    max_briket_ton: float | None = Field(None, ge=0)
+    max_biochar_ton: float | None = Field(None, ge=0)
+    max_silica_kg: float | None = Field(None, ge=0)
+    capacities: dict[str, float] | None = None
+    objective: str = Field("max_profit", pattern="^(max_profit|max_energy|max_carbon|balanced)$")
+    price_overrides: dict[str, float] | None = None
+
+
+@router.get("/optimization/config")
+async def optimization_config(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_audit_read)],
+):
+    """Konfigurasi produk, komoditas aktif, harga default, dan kapasitas lini pabrik."""
+    from ..services.biomass import list_biomass
+    from ..engines.product_optimization import PRODUCT_META, PRODUCTS
+    biomasses = await list_biomass(db, active_only=True)
+    return {
+        "products": PRODUCT_META,
+        "product_list": PRODUCTS,
+        "product_meta": PRODUCT_META,
+        "biomasses": biomasses,
+        "capacities": {
+            "bio_pellet": 250000.0,
+            "briket": 150000.0,
+            "biochar": 100000.0,
+            "bio_silika": 15000.0,
+        },
+        "default_capacities": {
+            "max_pellet_ton": 250.0,
+            "max_briket_ton": 150.0,
+            "max_biochar_ton": 100.0,
+            "max_silica_kg": 15000.0,
+        },
+    }
+
+
+@router.post("/optimization/evaluate")
+async def optimization_evaluate(
+    req: OptimizeEvaluateRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_audit_read)],
+):
+    """Evaluasi multi-kriteria 1 jenis biomassa ke 4 produk akhir (biopellet, briket, biochar, biosilika)."""
+    from ..services.biomass import get_biomass
+    from ..engines.product_optimization import FeedstockItem, evaluate_feedstock, PRODUCT_META
+
+    code = req.commodity_code or req.code or "sekam_padi"
+    bm = await get_biomass(db, code, allow_inactive=True)
+
+    tonnage = req.tonnage
+    if tonnage is None:
+        if req.quantity_kg is not None:
+            tonnage = req.quantity_kg / 1000.0
+        else:
+            tonnage = 100.0
+
+    price = req.purchase_price_per_kg if req.purchase_price_per_kg is not None else req.base_price_per_kg
+
+    item = FeedstockItem(
+        code=bm.code,
+        name=req.name or bm.name,
+        tonnage=tonnage,
+        moisture_pct=req.moisture_pct if req.moisture_pct is not None else bm.moisture_typ_pct,
+        ash_pct_db=req.ash_pct_db if req.ash_pct_db is not None else bm.ash_pct_db,
+        volatile_pct_db=req.volatile_pct_db if req.volatile_pct_db is not None else bm.volatile_pct_db,
+        fixed_carbon_pct_db=req.fixed_carbon_pct_db if req.fixed_carbon_pct_db is not None else bm.fixed_carbon_pct_db,
+        hhv_db_mj_kg=req.hhv_db_mj_kg if req.hhv_db_mj_kg is not None else bm.hhv_db_mj_kg,
+        lhv_db_mj_kg=req.lhv_db_mj_kg if req.lhv_db_mj_kg is not None else bm.lhv_db_mj_kg,
+        sio2_pct_ash=req.sio2_pct_ash if req.sio2_pct_ash is not None else bm.sio2_pct_ash,
+        k2o_pct_ash=bm.k2o_pct_ash,
+        na2o_pct_ash=bm.na2o_pct_ash,
+        chlorine_pct_db=bm.chlorine_pct_db,
+        sulfur_pct_db=bm.sulfur_pct_db,
+        base_price_per_kg=price if price is not None else (bm.base_price_per_kg or 0.0),
+    )
+
+    ev = await run_cpu(evaluate_feedstock, item, req.price_overrides)
+
+    # Format and enrich response for frontend compatibility
+    grade_map = lambda sc: "S" if sc >= 85 else "A" if sc >= 70 else "B" if sc >= 55 else "C" if sc >= 40 else "D"
+    products_enriched = {}
+    for k, p in ev.get("products", {}).items():
+        meta = PRODUCT_META.get(k, {})
+        sc = p["suitability"]["score"]
+        grade = grade_map(sc)
+        p_enrich = dict(p)
+        p_enrich["name"] = meta.get("name", p.get("label", k))
+        p_enrich["standard"] = meta.get("standard", p["product_quality"].get("standard_compliance", "-"))
+        p_enrich["yield"] = {
+            "product_output_kg": round(p["yield_kg_per_ton"] * item.tonnage, 1),
+            "yield_pct": p.get("yield_pct", 0),
+        }
+        econ = p.get("economics", {})
+        p_enrich["economics"] = {
+            **econ,
+            "gross_margin_rp": round(econ.get("gross_profit_per_ton_feed", 0) * item.tonnage, 0),
+            "selling_price_rp_per_kg": econ.get("product_price_per_kg", 0),
+            "margin_per_ton_feed_rp": econ.get("gross_profit_per_ton_feed", 0),
+        }
+        en_m = p.get("energy_metrics", {})
+        p_enrich["energy"] = {
+            "electricity_sec_kwh_per_ton": en_m.get("sec_kwh_per_ton_product", 0),
+            "product_lhv_ar_mj_kg": p["product_quality"].get("product_lhv_ar_mj_kg") or en_m.get("net_energy_output_gj", 0),
+            "total_energy_gj": round(en_m.get("net_energy_output_gj", 0) * item.tonnage, 2),
+        }
+        cl_m = p.get("climate_metrics", {})
+        p_enrich["carbon"] = {
+            "net_carbon_balance_tco2e": round(cl_m.get("net_climate_benefit_tco2e_per_ton", 0) * item.tonnage, 3),
+        }
+        suit = p.get("suitability", {})
+        p_enrich["suitability"] = {
+            **suit,
+            "grade": grade,
+            "verdict": suit.get("status_label", ""),
+            "warnings": suit.get("disadvantages", []),
+            "compliance": [
+                {"standard": p["product_quality"].get("standard_compliance", "Standar Mutu"), "ok": sc >= 60}
+            ],
+        }
+        products_enriched[k] = p_enrich
+
+    rankings = ev.get("rankings", {})
+    ev["products"] = products_enriched
+    ev["recommendation"] = {
+        "synthesis_rationale": ev.get("summary_recommendation", ""),
+        "best_economic_product": rankings.get("best_by_profit", {}).get("label", "-"),
+        "best_energy_product": rankings.get("best_by_energy", {}).get("label", "-"),
+        "best_carbon_product": rankings.get("best_by_carbon", {}).get("label", "-"),
+        "overall_recommended_product": rankings.get("best_by_suitability", {}).get("label", "-"),
+    }
+    ev["feedstock"]["quantity_kg"] = round(item.tonnage * 1000.0, 1)
+    return ev
+
+
+@router.post("/optimization/allocate")
+async def optimization_allocate(
+    req: OptimizeAllocateRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_pabrik_dep)],
+):
+    """Optimasi alokasi pasokan multi-biomassa ke portofolio produk menggunakan solver Linear Programming (HiGHS)."""
+    from ..services.biomass import get_biomass
+    from ..engines.product_optimization import AllocationCapacity, AllocationRequest, FeedstockItem, optimize_allocation, PRODUCT_META
+
+    feedstock_inputs = req.feedstocks or req.stocks or []
+    if not feedstock_inputs:
+        raise HTTPException(422, "Minimal 1 stok biomassa harus disertakan.")
+
+    items = []
+    for f in feedstock_inputs:
+        bm = await get_biomass(db, f.code, allow_inactive=True)
+        t = f.tonnage
+        if t is None:
+            t = (f.stock_kg / 1000.0) if f.stock_kg is not None else 10.0
+        price = f.purchase_price_per_kg if f.purchase_price_per_kg is not None else f.base_price_per_kg
+
+        items.append(FeedstockItem(
+            code=bm.code,
+            name=f.name or bm.name,
+            tonnage=t,
+            moisture_pct=f.moisture_pct if f.moisture_pct is not None else bm.moisture_typ_pct,
+            ash_pct_db=f.ash_pct_db if f.ash_pct_db is not None else bm.ash_pct_db,
+            volatile_pct_db=bm.volatile_pct_db,
+            fixed_carbon_pct_db=bm.fixed_carbon_pct_db,
+            hhv_db_mj_kg=bm.hhv_db_mj_kg,
+            lhv_db_mj_kg=bm.lhv_db_mj_kg,
+            sio2_pct_ash=bm.sio2_pct_ash,
+            k2o_pct_ash=bm.k2o_pct_ash,
+            na2o_pct_ash=bm.na2o_pct_ash,
+            chlorine_pct_db=bm.chlorine_pct_db,
+            sulfur_pct_db=bm.sulfur_pct_db,
+            base_price_per_kg=price if price is not None else (bm.base_price_per_kg or 0.0),
+        ))
+
+    caps = req.capacities or {}
+    max_pellet = req.max_pellet_ton
+    if max_pellet is None and "bio_pellet" in caps:
+        max_pellet = caps["bio_pellet"] / 1000.0
+    max_briket = req.max_briket_ton
+    if max_briket is None and "briket" in caps:
+        max_briket = caps["briket"] / 1000.0
+    max_char = req.max_biochar_ton
+    if max_char is None and "biochar" in caps:
+        max_char = caps["biochar"] / 1000.0
+    max_silica = req.max_silica_kg
+    if max_silica is None and "bio_silika" in caps:
+        max_silica = caps["bio_silika"]
+
+    alloc_req = AllocationRequest(
+        feedstocks=items,
+        capacities=AllocationCapacity(
+            max_pellet_ton=max_pellet,
+            max_briket_ton=max_briket,
+            max_biochar_ton=max_char,
+            max_silica_kg=max_silica,
+        ),
+        objective=req.objective,
+        price_overrides=req.price_overrides,
+    )
+
+    try:
+        raw_res = await run_cpu(optimize_allocation, alloc_req)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+
+    res = dict(raw_res)
+
+    # Enrich summary for frontend
+    fin = res.get("financial_summary", {})
+    clim = res.get("climate_summary", {})
+    nrg = res.get("energy_summary", {})
+    tot_feed_kg = round(res.get("total_feedstock_input_ton", 0) * 1000.0, 0)
+
+    tot_prod_kg = 0.0
+    for a in res.get("allocations", []):
+        p_kg = a.get("produced_qty", 0) * (1000.0 if a.get("produced_unit") == "ton" else 1.0)
+        tot_prod_kg += p_kg
+
+    res["summary"] = {
+        "total_feedstock_used_kg": tot_feed_kg,
+        "total_product_output_kg": round(tot_prod_kg, 1),
+        "total_gross_margin_rp": fin.get("total_gross_profit_rp", 0),
+        "total_revenue_rp": fin.get("total_revenue_rp", 0),
+        "total_energy_output_gj": nrg.get("total_product_energy_gj", 0),
+        "total_net_carbon_balance_tco2e": clim.get("total_co2e_benefit_ton", 0),
+    }
+
+    # Enrich allocations
+    enriched_allocs = []
+    for a in res.get("allocations", []):
+        a_copy = dict(a)
+        a_copy["product_key"] = a.get("product")
+        a_copy["product_name"] = a.get("product_label") or PRODUCT_META.get(a.get("product"), {}).get("name", a.get("product"))
+        a_copy["allocated_kg"] = round(a.get("allocated_feedstock_ton", 0) * 1000.0, 0)
+        p_qty = a.get("produced_qty", 0)
+        a_copy["product_output_kg"] = round(p_qty * (1000.0 if a.get("produced_unit") == "ton" else 1.0), 1)
+        a_copy["gross_margin_rp"] = a.get("gross_profit_rp", 0)
+        a_copy["energy_gj"] = a.get("net_energy_gj", 0)
+        a_copy["net_carbon_tco2e"] = a.get("co2e_benefit_t", 0)
+        sc = a.get("suitability_score", 0)
+        a_copy["suitability_verdict"] = "Sangat Layak" if sc >= 80 else "Layak" if sc >= 60 else "Cukup"
+        enriched_allocs.append(a_copy)
+    res["allocations"] = enriched_allocs
+
+    # Capacity utilization in kg
+    cap_util_enriched = {}
+    for p, cu in res.get("capacity_utilization", {}).items():
+        is_kg = (p == "bio_silika")
+        cap_util_enriched[p] = {
+            "capacity_kg": cu.get("capacity", 0) if is_kg else cu.get("capacity", 0) * 1000.0,
+            "allocated_product_kg": cu.get("produced", 0) if is_kg else cu.get("produced", 0) * 1000.0,
+            "utilization_pct": cu.get("utilization_pct", 0),
+        }
+    res["capacity_utilization"] = cap_util_enriched
+    res["managerial_insights"] = res.get("insights", [])
+
+    return res
+
+
+# ---------------------------------------------------------------- Omni 022: Factory Biochar Backhaul Dispatch
+class DispatchBiocharRequest(BaseModel):
+    collector_id: int
+    driver_id: int | None = None
+    route_id: int | None = None
+    total_weight_kg: float = Field(..., gt=0, le=100_000)
+    vehicle_plate: str | None = "B 9123 BIO"
+    total_bags: int = Field(0, ge=0)
+    loading_instructions: str | None = "Simpan di partisi belakang bak truk, pastikan terpal tertutup rapat bebas kontaminasi."
+
+
+@router.post("/dispatch-biochar", status_code=201)
+async def dispatch_biochar(
+    req: DispatchBiocharRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_pabrik_only)],
+):
+    """Pabrik menerbitkan surat jalan dan muatan balik biochar untuk diangkut armada driver/pengepul."""
+    dispatch_code = f"DSP-{uuid.uuid4().hex[:8].upper()}"
+    qr_token = f"QR-DSP-{uuid.uuid4().hex}"
+    # Density biochar ~300 kg/m3
+    vol_m3 = round(req.total_weight_kg / 300.0, 2)
+
+    dist = BiocharDistribution(
+        dispatch_code=dispatch_code,
+        factory_id=user.id,
+        collector_id=req.collector_id,
+        driver_id=req.driver_id,
+        route_id=req.route_id,
+        vehicle_plate=req.vehicle_plate,
+        total_bags=req.total_bags or int(req.total_weight_kg / 25),  # asumsi karung 25 kg
+        total_weight_kg=req.total_weight_kg,
+        volume_m3=vol_m3,
+        loading_instructions=req.loading_instructions,
+        qr_dispatch_token=qr_token,
+        status="DISPATCHED",
+    )
+    db.add(dist)
+    await db.flush()
+    return {
+        "id": dist.id,
+        "dispatch_code": dist.dispatch_code,
+        "qr_dispatch_token": dist.qr_dispatch_token,
+        "total_weight_kg": dist.total_weight_kg,
+        "total_bags": dist.total_bags,
+        "volume_m3": dist.volume_m3,
+        "status": dist.status,
+        "message": f"✅ Surat jalan {dist.dispatch_code} berhasil diterbitkan ({dist.total_weight_kg} kg biochar)."
+    }
+
+
+@router.get("/biochar-dispatches")
+async def list_biochar_dispatches(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_audit_read)],
+):
+    """Daftar riwayat surat jalan muatan balik biochar yang telah diterbitkan pabrik."""
+    rows = (await db.execute(
+        select(BiocharDistribution, User)
+        .outerjoin(User, User.id == BiocharDistribution.collector_id)
+        .order_by(BiocharDistribution.id.desc())
+        .limit(100)
+    )).all()
+    return [
+        {
+            "id": d.id,
+            "dispatch_code": d.dispatch_code,
+            "collector_name": c.full_name if c else f"Pengepul #{d.collector_id}",
+            "vehicle_plate": d.vehicle_plate,
+            "total_weight_kg": d.total_weight_kg,
+            "total_bags": d.total_bags,
+            "volume_m3": d.volume_m3,
+            "qr_dispatch_token": d.qr_dispatch_token,
+            "status": d.status,
+            "created_at": d.created_at.isoformat() if d.created_at else None,
+            "completed_at": d.completed_at.isoformat() if d.completed_at else None,
+        }
+        for d, c in rows
+    ]
+
+
+
+
+
+# -----------------------------------------------------------------------------
+# FASE 2: Gate Reception, Weighbridge QC, Dynamic Ramps & Factory Invoices
+# -----------------------------------------------------------------------------
+class GateReceptionCreate(BaseModel):
+    collector_id: int
+    delivery_request_id: int | None = None
+    vehicle_plate: str = Field(..., max_length=20)
+    driver_name: str = Field(..., max_length=100)
+    logistics_carrier: str = Field("FACTORY_FLEET", pattern="^(FACTORY_FLEET|COLLECTOR_SELF)$")
+    biomass_type: str = Field("sekam_padi", max_length=50)
+    gross_weight: float = Field(..., gt=0)
+    tare_weight: float = Field(..., ge=0)
+    tested_mc_pct: float = Field(..., ge=0, le=100)
+    tested_ash_pct: float = Field(..., ge=0, le=100)
+    tested_lhv_kcal: float = Field(3500.0, ge=0)
+    contamination_pct: float = Field(0.0, ge=0, le=100)
+    qc_decision: str = Field("ACCEPTED", pattern="^(ACCEPTED|PARTIALLY_ACCEPTED|REJECTED)$")
+    accepted_qty_kg: float | None = None
+    rejected_qty_kg: float | None = None
+    rejection_reason: str | None = None
+    qc_photo_url: str | None = None
+    allocated_ramp_id: int | None = None
+    payment_scheme: str = Field("CASH", pattern="^(CASH|DP|TOP)$")
+    unit_price_rp: float = Field(450.0, gt=0)
+    dp_paid_amount: float = Field(0.0, ge=0)
+    due_days: int = Field(14, ge=1, le=90)
+
+
+@router.get("/loading-ramps")
+async def list_loading_ramps(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_audit_read)],
+):
+    """Daftar loading ramp fisik dan agregat mutu stok terkini."""
+    from ..models.industrial import LoadingRamp
+    ramps = (await db.execute(
+        select(LoadingRamp).order_by(LoadingRamp.ramp_code.asc())
+    )).scalars().all()
+    
+    if not ramps:
+        defaults = [
+            LoadingRamp(ramp_code="RAMP-01", name="Ramp Biomassa 01 (Granular/Sekam)", biomass_type="sekam_padi", max_capacity_kg=60000.0, current_stock_kg=15000.0, aggregate_mc=13.5, aggregate_ash=17.0, aggregate_lhv_kcal=3450.0),
+            LoadingRamp(ramp_code="RAMP-02", name="Ramp Biomassa 02 (Cacah/Tongkol)", biomass_type="tongkol_jagung", max_capacity_kg=45000.0, current_stock_kg=8000.0, aggregate_mc=14.0, aggregate_ash=2.5, aggregate_lhv_kcal=4100.0),
+            LoadingRamp(ramp_code="RAMP-03", name="Ramp Biomassa 03 (Serbuk Kayu)", biomass_type="serbuk_sengon", max_capacity_kg=40000.0, current_stock_kg=5000.0, aggregate_mc=28.0, aggregate_ash=1.5, aggregate_lhv_kcal=3800.0),
+            LoadingRamp(ramp_code="RAMP-04", name="Ramp Biomassa 04 (Cangkang/Tempurung)", biomass_type="tempurung_kelapa", max_capacity_kg=50000.0, current_stock_kg=12000.0, aggregate_mc=10.5, aggregate_ash=2.0, aggregate_lhv_kcal=4600.0),
+        ]
+        for r in defaults:
+            db.add(r)
+        await db.flush()
+        ramps = defaults
+
+    return [
+        {
+            "id": r.id,
+            "ramp_code": r.ramp_code,
+            "name": r.name,
+            "biomass_type": r.biomass_type,
+            "max_capacity_kg": r.max_capacity_kg,
+            "current_stock_kg": r.current_stock_kg,
+            "available_capacity_kg": max(0.0, r.max_capacity_kg - r.current_stock_kg),
+            "utilization_pct": round((r.current_stock_kg / r.max_capacity_kg * 100), 1) if r.max_capacity_kg > 0 else 0,
+            "aggregate_mc": r.aggregate_mc,
+            "aggregate_ash": r.aggregate_ash,
+            "aggregate_lhv_kcal": r.aggregate_lhv_kcal,
+            "is_active": r.is_active,
+            "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+        }
+        for r in ramps
+    ]
+
+
+@router.post("/gate-receptions", status_code=201)
+async def create_gate_reception(
+    req: GateReceptionCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_pabrik_only)],
+):
+    """Penerimaan muatan di Gerbang Pabrik & QC Timbangan Jembatan."""
+    from ..models.industrial import GateReception, LoadingRamp, FactoryInvoice
+    from datetime import timedelta
+
+    net_weight = req.gross_weight - req.tare_weight
+    if net_weight <= 0:
+        raise HTTPException(400, "Berat kotor (gross) harus lebih besar daripada berat tara!")
+
+    if req.qc_decision == "ACCEPTED":
+        accepted_qty = net_weight
+        rejected_qty = 0.0
+    elif req.qc_decision == "REJECTED":
+        accepted_qty = 0.0
+        rejected_qty = net_weight
+        if not req.rejection_reason:
+            raise HTTPException(422, "Penolakan total wajib mencantumkan alasan penolakan tertulis!")
+    elif req.qc_decision == "PARTIALLY_ACCEPTED":
+        accepted_qty = req.accepted_qty_kg if req.accepted_qty_kg is not None else 0.0
+        rejected_qty = req.rejected_qty_kg if req.rejected_qty_kg is not None else (net_weight - accepted_qty)
+        if accepted_qty + rejected_qty > net_weight + 0.1 or accepted_qty < 0 or rejected_qty < 0:
+            raise HTTPException(400, f"Jumlah kuantitas diterima ({accepted_qty} kg) + ditolak ({rejected_qty} kg) tidak cocok dengan total netto timbangan ({net_weight} kg)!")
+        if rejected_qty > 0 and not req.rejection_reason:
+            raise HTTPException(422, "Penerimaan sebagian wajib mencantumkan alasan penolakan untuk porsi yang ditolak!")
+    else:
+        raise HTTPException(400, f"Keputusan QC tidak valid: {req.qc_decision}")
+
+    # Cek tunggakan TOP yang overdue
+    overdue_invoices = (await db.execute(
+        select(FactoryInvoice)
+        .where(FactoryInvoice.mill_id == user.id, FactoryInvoice.is_overdue.is_(True), FactoryInvoice.status != "PAID")
+    )).scalars().all()
+    if overdue_invoices and req.payment_scheme == "TOP":
+        raise HTTPException(403, "Transaksi ditolak! Pabrik memiliki tagihan TOP yang telah jatuh tempo belum dilunasi. Wajib melunasi tagihan overdue sebelum membuka transaksi TOP baru.")
+
+    # Alokasi Loading Ramp
+    allocated_ramp = None
+    if accepted_qty > 0 and req.allocated_ramp_id:
+        ramp = (await db.execute(
+            select(LoadingRamp).where(LoadingRamp.id == req.allocated_ramp_id).with_for_update()
+        )).scalar_one_or_none()
+        if not ramp:
+            raise HTTPException(404, f"Loading Ramp ID {req.allocated_ramp_id} tidak ditemukan.")
+        if (ramp.current_stock_kg + accepted_qty) > ramp.max_capacity_kg:
+            raise HTTPException(409, f"Kapasitas fisik {ramp.ramp_code} terlampaui! Kapasitas maks: {ramp.max_capacity_kg} kg, Stok saat ini: {ramp.current_stock_kg} kg, Muatan masuk: {accepted_qty} kg.")
+        
+        old_stock = ramp.current_stock_kg
+        new_total_stock = old_stock + accepted_qty
+        if new_total_stock > 0:
+            new_mc = ((old_stock * ramp.aggregate_mc) + (accepted_qty * req.tested_mc_pct)) / new_total_stock
+            new_ash = ((old_stock * ramp.aggregate_ash) + (accepted_qty * req.tested_ash_pct)) / new_total_stock
+            new_lhv = ((old_stock * ramp.aggregate_lhv_kcal) + (accepted_qty * req.tested_lhv_kcal)) / new_total_stock
+            ramp.current_stock_kg = new_total_stock
+            ramp.aggregate_mc = round(new_mc, 2)
+            ramp.aggregate_ash = round(new_ash, 2)
+            ramp.aggregate_lhv_kcal = round(new_lhv, 1)
+            ramp.updated_at = datetime.now(timezone.utc)
+            allocated_ramp = ramp
+
+    ticket_num = f"GATE-{datetime.now(timezone.utc).strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
+    reception = GateReception(
+        ticket_number=ticket_num,
+        mill_id=user.id,
+        collector_id=req.collector_id,
+        delivery_request_id=req.delivery_request_id,
+        vehicle_plate=req.vehicle_plate.upper(),
+        driver_name=req.driver_name,
+        logistics_carrier=req.logistics_carrier,
+        biomass_type=req.biomass_type,
+        gross_weight=req.gross_weight,
+        tare_weight=req.tare_weight,
+        net_weight=net_weight,
+        tested_mc_pct=req.tested_mc_pct,
+        tested_ash_pct=req.tested_ash_pct,
+        tested_lhv_kcal=req.tested_lhv_kcal,
+        contamination_pct=req.contamination_pct,
+        qc_decision=req.qc_decision,
+        accepted_qty_kg=accepted_qty,
+        rejected_qty_kg=rejected_qty,
+        rejection_reason=req.rejection_reason,
+        qc_photo_url=req.qc_photo_url,
+        allocated_ramp_id=allocated_ramp.id if allocated_ramp else None,
+    )
+    db.add(reception)
+    await db.flush()
+
+    dr_id = req.delivery_request_id
+    if not dr_id:
+        dr = DeliveryRequest(
+            collector_id=req.collector_id,
+            quantity_kg=net_weight,
+            moisture_est=req.tested_mc_pct,
+            ash_est=req.tested_ash_pct,
+            proposed_date=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            proposed_price_per_kg=req.unit_price_rp,
+            status=RequestStatus.REJECTED if accepted_qty == 0 else RequestStatus.ACCEPTED,
+            logistics_carrier=req.logistics_carrier,
+            note=f"Gate Reception {req.qc_decision}: {req.rejection_reason or ''}"
+        )
+        db.add(dr)
+        await db.flush()
+        dr_id = dr.id
+    else:
+        dr = await db.get(DeliveryRequest, dr_id)
+        if dr and dr.quantity_kg > 0:
+            sh_data = shrinkage_fields(dr.quantity_kg, net_weight)
+            if sh_data.get("discrepancy_flag"):
+                _audit.warning("Gate Reception %s susut melebihi batas toleransi: %s", reception.ticket_number, sh_data.get("discrepancy_note"))
+
+    return_manifest = None
+    reason_code = "lainnya"
+    if rejected_qty > 0:
+        if req.rejection_reason:
+            r_lower = req.rejection_reason.lower()
+            if "basah" in r_lower or req.tested_mc_pct > 25.0:
+                reason_code = "basah"
+            elif "jamur" in r_lower:
+                reason_code = "berjamur"
+            elif "kontaminan" in r_lower or req.contamination_pct > 5.0:
+                reason_code = "kontaminan"
+            elif "berat" in r_lower or "selisih" in r_lower:
+                reason_code = "selisih_berat"
+
+        rc = ReturnCase(
+            request_id=dr_id,
+            stage="gerbang_pabrik",
+            reason_code=ReturnReason(reason_code),
+            moisture=req.tested_mc_pct,
+            quantity_kg=rejected_qty,
+            location="pabrik",
+            disposition=ReturnDisposition.RETURN_TO_SENDER,
+            cost_bearer="pengepul",
+            status="selesai",
+            opened_by_id=user.id,
+            resolved_by_id=user.id,
+            note=req.rejection_reason,
+            resolution_note=f"Surat Jalan Retur (Return Manifest) diterbitkan di gerbang pabrik untuk {rejected_qty} kg muatan ditolak.",
+            resolved_at=datetime.now(timezone.utc),
+        )
+        db.add(rc)
+        await db.flush()
+        reception.return_case_id = rc.id
+        return_manifest = {
+            "return_case_id": rc.id,
+            "stage": rc.stage,
+            "disposition": rc.disposition.value if hasattr(rc.disposition, 'value') else str(rc.disposition),
+            "cost_bearer": rc.cost_bearer,
+            "quantity_kg": rc.quantity_kg,
+            "reason_code": rc.reason_code.value if hasattr(rc.reason_code, 'value') else str(rc.reason_code),
+            "note": rc.note,
+        }
+
+    # Teruskan timbangan & status ke harvest petani terlampir (propagasi custody sirkular)
+    await factory_ops._receive_linked_harvests(
+        db, user, dr_id, net_weight,
+        rejected=(req.qc_decision == "REJECTED"),
+        lot_code=reception.ticket_number,
+        reject_category=reason_code if req.qc_decision == "REJECTED" else None,
+        gross_kg=req.gross_weight,
+        tare_kg=req.tare_weight,
+        slip_url=req.qc_photo_url
+    )
+
+    # Release or fulfill stock locks for this collector & biomass
+    from ..models.harvest import Harvest
+    from ..models.trade import StockListing
+    await db.execute(
+        update(Harvest)
+        .where(
+            Harvest.collector_id == req.collector_id,
+            Harvest.commodity == req.biomass_type,
+            Harvest.is_locked.is_(True),
+            Harvest.locked_by_mill_id == user.id
+        )
+        .values(is_locked=False, locked_by_mill_id=None, locked_at=None)
+    )
+    await db.execute(
+        update(StockListing)
+        .where(
+            StockListing.commodity == req.biomass_type,
+            StockListing.is_locked.is_(True),
+            StockListing.locked_by_mill_id == user.id
+        )
+        .values(is_locked=False, locked_by_mill_id=None, locked_at=None)
+    )
+
+    eff_unit_price = req.unit_price_rp
+    total_amount = round(accepted_qty * req.unit_price_rp)
+
+    # Buat InboundQC lot record untuk bridging ke proses manufaktur batch
+    qc_grade = "A" if req.tested_mc_pct <= 14.0 else ("B" if req.tested_mc_pct <= 18.0 else "C")
+    qc_score = max(40.0, round(100.0 - req.tested_mc_pct - req.tested_ash_pct, 1))
+    inb_decision = QCDecision.ACCEPT if req.qc_decision == "ACCEPTED" else (
+        QCDecision.ACCEPT_PENALTY if req.qc_decision == "PARTIALLY_ACCEPTED" else QCDecision.REJECT
+    )
+    inbound_qc_obj = InboundQC(
+        request_id=dr_id,
+        gross_kg=req.gross_weight,
+        tare_kg=req.tare_weight,
+        net_kg=net_weight,
+        payable_kg=accepted_qty,
+        moisture=req.tested_mc_pct,
+        ash=req.tested_ash_pct,
+        volatile_matter=req.tested_lhv_kcal / 50.0 if req.tested_lhv_kcal else 70.0,
+        fixed_carbon=15.0,
+        contamination=req.contamination_pct,
+        grade=qc_grade,
+        score=qc_score,
+        decision=inb_decision,
+        final_price_per_kg=eff_unit_price,
+        total_payment_rp=total_amount,
+        remaining_kg=accepted_qty,
+        verification_code=reception.ticket_number,
+        evidence_photo_url=req.qc_photo_url,
+        inspector_id=user.id,
+        note=req.rejection_reason or f"Gate reception {reception.ticket_number}",
+        rejected_kg=rejected_qty,
+    )
+    db.add(inbound_qc_obj)
+    await db.flush()
+
+    # Trigger settlement langsung ke dompet pengepul
+    if accepted_qty > 0:
+        await factory_ops.settle_qc(db, inbound_qc_obj, req.collector_id, user)
+
+    invoice = None
+    if accepted_qty > 0:
+        inv_num = f"INV-{datetime.now(timezone.utc).strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
+        now = datetime.now(timezone.utc)
+        due_date = now + timedelta(days=req.due_days)
+
+        if req.payment_scheme == "CASH":
+            dp_paid = float(total_amount)
+            remaining = 0.0
+            inv_status = "PAID"
+            settled_at = now
+        elif req.payment_scheme == "DP":
+            dp_paid = min(float(req.dp_paid_amount), float(total_amount))
+            remaining = float(total_amount) - dp_paid
+            inv_status = "PARTIALLY_PAID" if dp_paid > 0 else "PENDING"
+            settled_at = None
+        else:
+            dp_paid = 0.0
+            remaining = float(total_amount)
+            inv_status = "PENDING"
+            settled_at = None
+
+        invoice = FactoryInvoice(
+            invoice_number=inv_num,
+            mill_id=user.id,
+            collector_id=req.collector_id,
+            gate_reception_id=reception.id,
+            biomass_type=req.biomass_type,
+            billable_qty_kg=accepted_qty,
+            unit_price_rp=eff_unit_price,
+            total_amount_rp=float(total_amount),
+            payment_scheme=req.payment_scheme,
+            dp_paid_amount=dp_paid,
+            remaining_amount=remaining,
+            due_date=due_date,
+            is_overdue=False,
+            status=inv_status,
+            settled_at=settled_at,
+        )
+        db.add(invoice)
+        await db.flush()
+
+    return {
+        "success": True,
+        "gate_ticket": {
+            "id": reception.id,
+            "ticket_number": reception.ticket_number,
+            "vehicle_plate": reception.vehicle_plate,
+            "driver_name": reception.driver_name,
+            "carrier": reception.logistics_carrier,
+            "biomass_type": reception.biomass_type,
+            "gross_weight": reception.gross_weight,
+            "tare_weight": reception.tare_weight,
+            "net_weight": reception.net_weight,
+            "qc_decision": reception.qc_decision,
+            "accepted_qty_kg": reception.accepted_qty_kg,
+            "rejected_qty_kg": reception.rejected_qty_kg,
+            "rejection_reason": reception.rejection_reason,
+            "allocated_ramp": allocated_ramp.ramp_code if allocated_ramp else None,
+            "return_case_id": reception.return_case_id,
+        },
+        "ramp_status": {
+            "ramp_code": allocated_ramp.ramp_code,
+            "new_stock_kg": allocated_ramp.current_stock_kg,
+            "aggregate_mc": allocated_ramp.aggregate_mc,
+            "aggregate_ash": allocated_ramp.aggregate_ash,
+            "aggregate_lhv": allocated_ramp.aggregate_lhv_kcal,
+        } if allocated_ramp else None,
+        "invoice": {
+            "invoice_number": invoice.invoice_number,
+            "total_amount_rp": invoice.total_amount_rp,
+            "payment_scheme": invoice.payment_scheme,
+            "dp_paid": invoice.dp_paid_amount,
+            "remaining": invoice.remaining_amount,
+            "status": invoice.status,
+            "due_date": invoice.due_date.strftime("%Y-%m-%d"),
+        } if invoice else None,
+        "return_manifest": return_manifest,
+        "message": f"✅ QC Selesai: {reception.qc_decision} ({accepted_qty} kg masuk ramp, {rejected_qty} kg ditolak).",
+    }
+
+
+@router.get("/invoices")
+async def list_factory_invoices(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_audit_read)],
+    biomass_type: str | None = None,
+    status: str | None = None,
+):
+    """Daftar tagihan pabrik (Invoices) terkelompok berdasarkan biomassa & status jatuh tempo."""
+    from ..models.industrial import FactoryInvoice
+    from ..models.user import User
+    now = datetime.now(timezone.utc)
+    
+    query = (
+        select(FactoryInvoice, User)
+        .join(User, User.id == FactoryInvoice.collector_id)
+        .order_by(FactoryInvoice.id.desc())
+    )
+    if biomass_type:
+        query = query.where(FactoryInvoice.biomass_type == biomass_type)
+    if status:
+        query = query.where(FactoryInvoice.status == status)
+
+    rows = (await db.execute(query.limit(100))).all()
+    invoices_list = []
+    for inv, col in rows:
+        is_overdue = inv.status != "PAID" and inv.due_date < now
+        if is_overdue and not inv.is_overdue:
+            inv.is_overdue = True
+            inv.status = "OVERDUE"
+        
+        invoices_list.append({
+            "id": inv.id,
+            "invoice_number": inv.invoice_number,
+            "collector_name": col.full_name,
+            "biomass_type": inv.biomass_type,
+            "billable_qty_kg": inv.billable_qty_kg,
+            "unit_price_rp": inv.unit_price_rp,
+            "total_amount_rp": inv.total_amount_rp,
+            "payment_scheme": inv.payment_scheme,
+            "dp_paid_amount": inv.dp_paid_amount,
+            "remaining_amount": inv.remaining_amount,
+            "due_date": inv.due_date.strftime("%Y-%m-%d"),
+            "is_overdue": inv.is_overdue,
+            "status": inv.status,
+            "created_at": inv.created_at.isoformat() if inv.created_at else None,
+        })
+    return invoices_list
+
+
+@router.get("/gate-receptions")
+async def list_gate_receptions(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_audit_read)],
+    biomass_type: str | None = None,
+):
+    """Daftar riwayat penerimaan gerbang & hasil QC jembatan timbang."""
+    from ..models.industrial import GateReception
+    query = select(GateReception).order_by(GateReception.id.desc())
+    if biomass_type:
+        query = query.where(GateReception.biomass_type == biomass_type)
+    rows = (await db.execute(query.limit(100))).scalars().all()
+    return [
+        {
+            "id": g.id,
+            "ticket_number": g.ticket_number,
+            "vehicle_plate": g.vehicle_plate,
+            "driver_name": g.driver_name,
+            "carrier": g.logistics_carrier,
+            "biomass_type": g.biomass_type,
+            "gross_weight": g.gross_weight,
+            "tare_weight": g.tare_weight,
+            "net_weight": g.net_weight,
+            "qc_decision": g.qc_decision,
+            "accepted_qty_kg": g.accepted_qty_kg,
+            "rejected_qty_kg": g.rejected_qty_kg,
+            "rejection_reason": g.rejection_reason,
+            "qc_photo_url": g.qc_photo_url,
+            "created_at": g.created_at.isoformat() if g.created_at else None,
+        }
+        for g in rows
+    ]
+
+
+# -----------------------------------------------------------------------------
+# FASE 3: Multi-Ramp Blending Optimizer & Production Execution
+# -----------------------------------------------------------------------------
+class BlendOptimizeRequest(BaseModel):
+    batch_size_kg: float = Field(10000.0, gt=0, le=500000.0)
+    target_selling_prices: dict[str, float] | None = None
+
+
+class BlendCommitRequest(BaseModel):
+    target_product: str = Field(..., pattern="^(BIOPELLET|BIOCHAR|BIO_SILICA|BRIQUETTE)$")
+    total_input_kg: float = Field(..., gt=0)
+    ramp_allocations: list[dict] = Field(..., min_length=1)
+    cost_per_kg: float = Field(..., ge=0)
+    target_selling_price_per_kg: float = Field(..., gt=0)
+    estimated_margin_rp: float
+    net_tco2e: float
+    final_mc_pct: float
+    final_ash_pct: float
+    final_lhv_kcal: float
+
+
+@router.post("/blends/optimize")
+async def optimize_multi_ramp_blend(
+    req: BlendOptimizeRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_audit_read)],
+):
+    """Mesin Rekomendasi Blending Multi-Ramp untuk 4 Produk Akhir."""
+    from ..models.industrial import LoadingRamp
+
+    ramps = (await db.execute(
+        select(LoadingRamp).where(LoadingRamp.is_active.is_(True), LoadingRamp.current_stock_kg > 0)
+    )).scalars().all()
+
+    if not ramps:
+        # Jika belum ada stok, buat sampel simulasi ramp agar kalkulator selalu interaktif
+        defaults = [
+            LoadingRamp(ramp_code="RAMP-01", name="Ramp Biomassa 01 (Granular/Sekam)", biomass_type="sekam_padi", max_capacity_kg=60000.0, current_stock_kg=18000.0, aggregate_mc=13.5, aggregate_ash=17.0, aggregate_lhv_kcal=3450.0),
+            LoadingRamp(ramp_code="RAMP-02", name="Ramp Biomassa 02 (Cacah/Tongkol)", biomass_type="tongkol_jagung", max_capacity_kg=45000.0, current_stock_kg=12000.0, aggregate_mc=14.0, aggregate_ash=2.5, aggregate_lhv_kcal=4100.0),
+            LoadingRamp(ramp_code="RAMP-03", name="Ramp Biomassa 03 (Serbuk Kayu)", biomass_type="serbuk_sengon", max_capacity_kg=40000.0, current_stock_kg=9000.0, aggregate_mc=28.0, aggregate_ash=1.5, aggregate_lhv_kcal=3800.0),
+            LoadingRamp(ramp_code="RAMP-04", name="Ramp Biomassa 04 (Cangkang/Tempurung)", biomass_type="tempurung_kelapa", max_capacity_kg=50000.0, current_stock_kg=15000.0, aggregate_mc=10.5, aggregate_ash=2.0, aggregate_lhv_kcal=4600.0),
+        ]
+        for r in defaults:
+            db.add(r)
+        await db.flush()
+        ramps = defaults
+
+    total_avail = sum(r.current_stock_kg for r in ramps)
+    target_kg = min(req.batch_size_kg, total_avail)
+
+    prices = {
+        "BIOPELLET": 1600.0,
+        "BIOCHAR": 5500.0,
+        "BIO_SILICA": 22000.0,
+        "BRIQUETTE": 3200.0,
+    }
+    if req.target_selling_prices:
+        prices.update(req.target_selling_prices)
+
+    opex_per_kg = {
+        "BIOPELLET": 450.0,
+        "BIOCHAR": 1200.0,
+        "BIO_SILICA": 5500.0,
+        "BRIQUETTE": 700.0,
+    }
+
+    yield_factors = {
+        "BIOPELLET": 0.92,
+        "BIOCHAR": 0.28,
+        "BIO_SILICA": 0.12,
+        "BRIQUETTE": 0.85,
+    }
+
+    carbon_factors = {
+        "BIOPELLET": 1.45,
+        "BIOCHAR": 2.85,
+        "BIO_SILICA": 1.10,
+        "BRIQUETTE": 1.25,
+    }
+
+    recommendations = []
+
+    # 1. BIOPELLET (Abu rendah, lignin/kalori tinggi: serbuk kayu, ampas tebu, tongkol)
+    alloc_pellet = []
+    accum = 0.0
+    sorted_for_pellet = sorted(
+        ramps,
+        key=lambda r: (
+            0 if any(k in r.biomass_type for k in ("sengon", "kayu", "tebu", "jagung")) else 1,
+            r.aggregate_ash,
+            -r.aggregate_lhv_kcal
+        )
+    )
+    for r in sorted_for_pellet:
+        needed = target_kg - accum
+        take = min(r.current_stock_kg * 0.7, needed)
+        if take > 0:
+            alloc_pellet.append({"ramp_id": r.id, "ramp_code": r.ramp_code, "name": r.name, "biomass": r.biomass_type, "qty_kg": round(take, 1)})
+            accum += take
+        if accum >= target_kg:
+            break
+    
+    # 2. BIOCHAR (Karbonisasi luas: Sekam / Tempurung / Serbuk / Tebu)
+    alloc_biochar = []
+    accum = 0.0
+    sorted_for_char = sorted(ramps, key=lambda r: 0 if r.biomass_type in ("sekam_padi", "tempurung_kelapa", "ampas_tebu") else 1)
+    for r in sorted_for_char:
+        needed = target_kg - accum
+        take = min(r.current_stock_kg * 0.7, needed)
+        if take > 0:
+            alloc_biochar.append({"ramp_id": r.id, "ramp_code": r.ramp_code, "name": r.name, "biomass": r.biomass_type, "qty_kg": round(take, 1)})
+            accum += take
+        if accum >= target_kg:
+            break
+
+    # 3. BIO-SILIKA (Matriks Khusus: Wajib biomassa kaya silika / sekam padi)
+    alloc_silica = []
+    sekam_ramps = [r for r in ramps if "sekam" in r.biomass_type]
+    if sekam_ramps:
+        sr = sekam_ramps[0]
+        take = min(sr.current_stock_kg * 0.8, target_kg)
+        alloc_silica.append({"ramp_id": sr.id, "ramp_code": sr.ramp_code, "name": sr.name, "biomass": sr.biomass_type, "qty_kg": round(take, 1)})
+    else:
+        alloc_silica = []
+
+    # 4. BRIKET (Campuran arang kalori tinggi & densitas padat)
+    alloc_briquette = []
+    accum = 0.0
+    sorted_for_briq = sorted(ramps, key=lambda r: -r.aggregate_lhv_kcal)
+    for r in sorted_for_briq:
+        needed = target_kg - accum
+        take = min(r.current_stock_kg * 0.7, needed)
+        if take > 0:
+            alloc_briquette.append({"ramp_id": r.id, "ramp_code": r.ramp_code, "name": r.name, "biomass": r.biomass_type, "qty_kg": round(take, 1)})
+            accum += take
+        if accum >= target_kg:
+            break
+
+    # Matriks Kecocokan Bahan Baku (Feedstock Compatibility Matrix)
+    compatibility_rules = {
+        "BIOPELLET": {
+            "preferred": ["serbuk_sengon", "ampas_tebu", "tongkol_jagung"],
+            "restricted": ["sekam_padi"],
+            "rationale": "Membutuhkan lignin tinggi sebagai binder alami dan kadar abu rendah (<3%) untuk mencegah slagging pada boiler.",
+        },
+        "BIOCHAR": {
+            "preferred": ["sekam_padi", "tempurung_kelapa", "ampas_tebu", "serbuk_sengon"],
+            "restricted": [],
+            "rationale": "Cocok untuk hampir semua biomassa berselulosa/lignin; menghasilkan karbon aktif pembenah tanah & carbon sink.",
+        },
+        "BIO_SILICA": {
+            "preferred": ["sekam_padi"],
+            "restricted": ["serbuk_sengon", "tongkol_jagung", "ampas_tebu", "tempurung_kelapa"],
+            "rationale": "Secara kimiawi wajib abu biomassa bersilika amorf tinggi (~20% SiO2 pada sekam padi). Kayu/tongkol tidak menghasilkan silika presipitasi murni.",
+        },
+        "BRIQUETTE": {
+            "preferred": ["tempurung_kelapa", "tongkol_jagung", "serbuk_sengon"],
+            "restricted": [],
+            "rationale": "Membutuhkan nilai kalor tinggi (>4000 kcal/kg) dan daya rekat arang yang kokoh.",
+        },
+    }
+
+    product_configs = [
+        ("BIOPELLET", "Biopellet Industri & Ekspor", alloc_pellet),
+        ("BIOCHAR", "Biochar Pembenah Tanah & C-Sink", alloc_biochar),
+        ("BIO_SILICA", "Bio-Silika Presipitasi Kemurnian Tinggi", alloc_silica),
+        ("BRIQUETTE", "Briket Arang Kalori Tinggi", alloc_briquette),
+    ]
+
+    for p_key, p_name, alloc in product_configs:
+        tot_input = sum(a["qty_kg"] for a in alloc)
+        if tot_input <= 0:
+            continue
+        ramp_map = {r.id: r for r in ramps}
+        calc_mc = sum(a["qty_kg"] * ramp_map[a["ramp_id"]].aggregate_mc for a in alloc if a["ramp_id"] in ramp_map) / tot_input
+        calc_ash = sum(a["qty_kg"] * ramp_map[a["ramp_id"]].aggregate_ash for a in alloc if a["ramp_id"] in ramp_map) / tot_input
+        calc_lhv = sum(a["qty_kg"] * ramp_map[a["ramp_id"]].aggregate_lhv_kcal for a in alloc if a["ramp_id"] in ramp_map) / tot_input
+
+        output_qty = tot_input * yield_factors[p_key]
+        raw_feedstock_cost_per_kg = 450.0
+        hpp_per_kg = (raw_feedstock_cost_per_kg / yield_factors[p_key]) + opex_per_kg[p_key]
+        sell_price = prices[p_key]
+        margin_per_kg = sell_price - hpp_per_kg
+        total_profit_rp = margin_per_kg * output_qty
+
+        process_emission_factor = 0.08
+        net_tco2e = ((output_qty / 1000.0) * carbon_factors[p_key]) - ((tot_input / 1000.0) * process_emission_factor)
+
+        # Evaluasi kecocokan formulasi bahan baku
+        compat = compatibility_rules.get(p_key, {})
+        used_biomass = [a["biomass"] for a in alloc]
+        is_fully_compatible = all(any(pref in b for pref in compat.get("preferred", [])) for b in used_biomass)
+        compat_score = 1.0 if is_fully_compatible else 0.70
+
+        # Evaluasi Indeks Alkali & Risiko Terak Boiler (Miles 1996; Zhu 2014)
+        from ..biomass_seed import BIOMASS_SEED
+        from ..engines.energy import calculate_wte_drying_penalty
+        seed_dict = {s["code"]: s for s in BIOMASS_SEED}
+        
+        tot_alk_kg = 0.0
+        tot_hhv_wt = 0.0
+        for a in alloc:
+            b_code = a["biomass"]
+            s_match = seed_dict.get(b_code)
+            if not s_match:
+                for k, v in seed_dict.items():
+                    if k in b_code or b_code in k:
+                        s_match = v
+                        break
+            if not s_match:
+                s_match = seed_dict.get("sekam_padi", {})
+            ash_val = s_match.get("ash_pct_db", 2.0)
+            k2o_val = s_match.get("k2o_pct_ash", 10.0) or 0.0
+            na2o_val = s_match.get("na2o_pct_ash", 1.0) or 0.0
+            hhv_val = s_match.get("hhv_db_mj_kg", 18.0) or 18.0
+
+            w_fraction = a["qty_kg"] / tot_input
+            tot_alk_kg += w_fraction * (ash_val * (k2o_val + na2o_val) / 10000.0)
+            tot_hhv_wt += w_fraction * hhv_val
+
+        alkali_idx = (tot_alk_kg / (tot_hhv_wt / 1000.0)) if tot_hhv_wt > 0 else 0.0
+        if alkali_idx < 0.17:
+            slagging_verdict = "AMAN"
+        elif alkali_idx <= 0.34:
+            slagging_verdict = "WASPADA"
+        else:
+            slagging_verdict = "BAHAYA"
+
+        drying_penalty = calculate_wte_drying_penalty(
+            feedstock_kg=tot_input,
+            moisture_pct=calc_mc,
+            target_moisture_pct=14.0,
+            lhv_dry_kcal=calc_lhv,
+        )
+
+        recommendations.append({
+            "target_product": p_key,
+            "product_name": p_name,
+            "total_input_kg": tot_input,
+            "estimated_output_kg": round(output_qty, 1),
+            "yield_pct": round(yield_factors[p_key] * 100, 1),
+            "ramp_allocations": alloc,
+            "final_mc_pct": round(calc_mc, 1),
+            "final_ash_pct": round(calc_ash, 1),
+            "final_lhv_kcal": round(calc_lhv, 0),
+            "alkali_index": round(alkali_idx, 3),
+            "slagging_verdict": slagging_verdict,
+            "drying_penalty": drying_penalty,
+            "hpp_per_kg": round(hpp_per_kg, 0),
+            "target_selling_price_per_kg": sell_price,
+            "margin_per_kg": round(margin_per_kg, 0),
+            "total_profit_rp": round(total_profit_rp, 0),
+            "net_tco2e": round(net_tco2e, 2),
+            "feedstock_compatibility": {
+                "is_compatible": is_fully_compatible,
+                "compatibility_score": compat_score,
+                "technical_basis": compat.get("rationale"),
+                "preferred_feedstocks": compat.get("preferred", []),
+            },
+            "is_most_profitable": False,
+            "is_lowest_carbon": False,
+        })
+
+    if recommendations:
+        best_profit = max(recommendations, key=lambda x: x["total_profit_rp"])
+        best_profit["is_most_profitable"] = True
+        best_carbon = max(recommendations, key=lambda x: x["net_tco2e"])
+        best_carbon["is_lowest_carbon"] = True
+
+    return {
+        "batch_size_kg": target_kg,
+        "total_stock_available_kg": total_avail,
+        "recommendations": recommendations,
+    }
+
+
+@router.post("/blends/commit", status_code=201)
+async def commit_production_blend(
+    req: BlendCommitRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_pabrik_only)],
+):
+    """Eksekusi dan Kunci Batch Produksi Blending Multi-Ramp."""
+    from ..models.industrial import LoadingRamp, ProductionBlend, ByProductLedger
+
+    for alloc in req.ramp_allocations:
+        r_id = alloc["ramp_id"]
+        qty = alloc["qty_kg"]
+        ramp = (await db.execute(
+            select(LoadingRamp).where(LoadingRamp.id == r_id).with_for_update()
+        )).scalar_one_or_none()
+        if not ramp:
+            raise HTTPException(404, f"Ramp ID {r_id} tidak ditemukan.")
+        if ramp.current_stock_kg < qty:
+            raise HTTPException(409, f"Stok pada {ramp.ramp_code} tidak mencukupi! Tersedia: {ramp.current_stock_kg} kg, Diminta: {qty} kg.")
+        ramp.current_stock_kg -= qty
+        ramp.updated_at = datetime.now(timezone.utc)
+
+    blend_code = f"BLD-{datetime.now(timezone.utc).strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
+    blend = ProductionBlend(
+        blend_code=blend_code,
+        mill_id=user.id,
+        target_product=req.target_product,
+        ramp_allocations=req.ramp_allocations,
+        total_input_kg=req.total_input_kg,
+        final_mc_pct=req.final_mc_pct,
+        final_ash_pct=req.final_ash_pct,
+        final_lhv_kcal=req.final_lhv_kcal,
+        cost_per_kg=req.cost_per_kg,
+        target_selling_price_per_kg=req.target_selling_price_per_kg,
+        estimated_margin_rp=req.estimated_margin_rp,
+        net_tco2e=req.net_tco2e,
+    )
+    db.add(blend)
+    await db.flush()
+
+    by_products = []
+    if req.target_product == "BIOPELLET":
+        fa_kg = round(req.total_input_kg * 0.05, 1)
+        bp = ByProductLedger(
+            blend_id=blend.id,
+            mill_id=user.id,
+            by_product_type="FLY_ASH",
+            quantity_kg=fa_kg,
+            circular_status="STORED",
+            notes=f"Fly ash sisa pembakaran boiler pellet batch {blend_code}",
+        )
+        db.add(bp)
+        by_products.append({"type": "FLY_ASH", "qty_kg": fa_kg})
+    elif req.target_product == "BIOCHAR":
+        wv_kg = round(req.total_input_kg * 0.15, 1)
+        bp1 = ByProductLedger(
+            blend_id=blend.id,
+            mill_id=user.id,
+            by_product_type="WOOD_VINEGAR",
+            quantity_kg=wv_kg,
+            circular_status="STORED",
+            notes=f"Asap cair pirolisis (wood vinegar) & syngas dari batch {blend_code}",
+        )
+        db.add(bp1)
+        by_products.append({"type": "WOOD_VINEGAR", "qty_kg": wv_kg})
+    elif req.target_product == "BIO_SILICA":
+        ba_kg = round(req.total_input_kg * 0.40, 1)
+        bp = ByProductLedger(
+            blend_id=blend.id,
+            mill_id=user.id,
+            by_product_type="BOTTOM_ASH",
+            quantity_kg=ba_kg,
+            circular_status="STORED",
+            notes=f"Residu abu bawah ekstraksi silika batch {blend_code}",
+        )
+        db.add(bp)
+        by_products.append({"type": "BOTTOM_ASH", "qty_kg": ba_kg})
+    elif req.target_product == "BRIQUETTE":
+        bo_kg = round(req.total_input_kg * 0.08, 1)
+        bp = ByProductLedger(
+            blend_id=blend.id,
+            mill_id=user.id,
+            by_product_type="BIO_OIL",
+            quantity_kg=bo_kg,
+            circular_status="STORED",
+            notes=f"Tar bio-oil sampingan pirolisis briket {blend_code}",
+        )
+        db.add(bp)
+        by_products.append({"type": "BIO_OIL", "qty_kg": bo_kg})
+
+    await db.flush()
+
+    return {
+        "success": True,
+        "blend_code": blend.blend_code,
+        "target_product": blend.target_product,
+        "total_input_kg": blend.total_input_kg,
+        "estimated_margin_rp": blend.estimated_margin_rp,
+        "net_tco2e": blend.net_tco2e,
+        "by_products_recorded": by_products,
+        "message": f"🎉 Batch {blend.blend_code} ({blend.target_product}) berhasil dikunci dan stok ramp telah dipotong.",
+    }
+
+
+@router.get("/blends")
+async def list_production_blends(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_audit_read)],
+):
+    """Daftar riwayat batch blending produksi yang telah dieksekusi."""
+    from ..models.industrial import ProductionBlend
+    rows = (await db.execute(
+        select(ProductionBlend).order_by(ProductionBlend.id.desc()).limit(50)
+    )).scalars().all()
+    return [
+        {
+            "id": b.id,
+            "blend_code": b.blend_code,
+            "target_product": b.target_product,
+            "ramp_allocations": b.ramp_allocations,
+            "total_input_kg": b.total_input_kg,
+            "final_mc_pct": b.final_mc_pct,
+            "final_ash_pct": b.final_ash_pct,
+            "final_lhv_kcal": b.final_lhv_kcal,
+            "estimated_margin_rp": b.estimated_margin_rp,
+            "net_tco2e": b.net_tco2e,
+            "created_at": b.created_at.isoformat() if b.created_at else None,
+        }
+        for b in rows
+    ]
+
+
+@router.get("/by-products")
+async def list_by_products(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_audit_read)],
+):
+    """Daftar hasil samping (by-products) dan inventaris sirkular."""
+    from ..models.industrial import ByProductLedger
+    rows = (await db.execute(
+        select(ByProductLedger).order_by(ByProductLedger.id.desc()).limit(50)
+    )).scalars().all()
+    return [
+        {
+            "id": bp.id,
+            "by_product_type": bp.by_product_type,
+            "quantity_kg": bp.quantity_kg,
+            "circular_status": bp.circular_status,
+            "pb_ppm": bp.pb_ppm,
+            "cd_ppm": bp.cd_ppm,
+            "as_ppm": bp.as_ppm,
+            "is_safety_passed": bp.is_safety_passed,
+            "lab_cert_no": bp.lab_cert_no,
+            "notes": bp.notes,
+            "created_at": bp.created_at.isoformat() if bp.created_at else None,
+        }
+        for bp in rows
+    ]
+
+
+# -----------------------------------------------------------------------------
+# FASE 4: Grouped Monitoring Dashboard & Circular Ledgers
+# -----------------------------------------------------------------------------
+@router.get("/dashboard/biomass-grouped")
+async def get_biomass_grouped_dashboard(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_audit_read)],
+):
+    """Ringkasan metrik analitik gerbang, inventaris ramp, dan keuangan terkelompok per jenis biomassa."""
+    from ..models.industrial import GateReception, LoadingRamp, FactoryInvoice
+
+    receptions = (await db.execute(select(GateReception))).scalars().all()
+    ramps = (await db.execute(select(LoadingRamp))).scalars().all()
+    invoices = (await db.execute(select(FactoryInvoice))).scalars().all()
+
+    all_types = set()
+    for g in receptions:
+        all_types.add(g.biomass_type)
+    for r in ramps:
+        all_types.add(r.biomass_type)
+    for inv in invoices:
+        all_types.add(inv.biomass_type)
+
+    if not all_types:
+        all_types = {"sekam_padi", "tongkol_jagung", "serbuk_sengon", "tempurung_kelapa"}
+
+    grouped_data = []
+    for b_type in sorted(all_types):
+        b_rec = [g for g in receptions if g.biomass_type == b_type]
+        b_ramps = [r for r in ramps if r.biomass_type == b_type]
+        b_invs = [inv for inv in invoices if inv.biomass_type == b_type]
+
+        tot_in = sum(g.net_weight for g in b_rec)
+        tot_acc = sum(g.accepted_qty_kg for g in b_rec)
+        tot_rej = sum(g.rejected_qty_kg for g in b_rec)
+        rej_rate = round((tot_rej / tot_in * 100), 1) if tot_in > 0 else 0.0
+
+        avg_mc = round(sum(g.tested_mc_pct for g in b_rec) / len(b_rec), 1) if b_rec else 0.0
+        avg_ash = round(sum(g.tested_ash_pct for g in b_rec) / len(b_rec), 1) if b_rec else 0.0
+        avg_lhv = round(sum(g.tested_lhv_kcal for g in b_rec) / len(b_rec), 0) if b_rec else 0.0
+
+        stock_ramp = sum(r.current_stock_kg for r in b_ramps)
+        cap_ramp = sum(r.max_capacity_kg for r in b_ramps)
+
+        tot_invoiced = sum(inv.total_amount_rp for inv in b_invs)
+        tot_paid = sum(inv.dp_paid_amount for inv in b_invs if inv.status == "PAID") + sum(inv.dp_paid_amount for inv in b_invs if inv.status != "PAID")
+        tot_unpaid = sum(inv.remaining_amount for inv in b_invs if inv.status != "PAID")
+
+        grouped_data.append({
+            "biomass_type": b_type,
+            "display_name": b_type.replace("_", " ").title(),
+            "incoming_trips": len(b_rec),
+            "total_incoming_kg": tot_in,
+            "total_accepted_kg": tot_acc,
+            "total_rejected_kg": tot_rej,
+            "rejection_rate_pct": rej_rate,
+            "avg_mc_pct": avg_mc,
+            "avg_ash_pct": avg_ash,
+            "avg_lhv_kcal": avg_lhv,
+            "ramp_stock_kg": stock_ramp,
+            "ramp_capacity_kg": cap_ramp,
+            "total_invoiced_rp": tot_invoiced,
+            "total_paid_rp": tot_paid,
+            "total_unpaid_rp": tot_unpaid,
+        })
+
+    return {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "summary": grouped_data,
+        "grouped": {d["biomass_type"]: d for d in grouped_data},
+    }
+
+
+@router.get("/collector-feedback-logs")
+async def list_collector_feedback_logs(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_audit_read)],
+    collector_id: int | None = None,
+):
+    """Log umpan balik mutu gerbang, alasan penolakan, dan rekomendasi perbaikan untuk pengepul."""
+    from ..models.industrial import GateReception
+    from ..models.user import User
+
+    query = (
+        select(GateReception, User)
+        .join(User, User.id == GateReception.collector_id)
+        .order_by(GateReception.id.desc())
+    )
+    if collector_id:
+        query = query.where(GateReception.collector_id == collector_id)
+
+    rows = (await db.execute(query.limit(100))).all()
+    feedback_logs = []
+    for g, col in rows:
+        recs = []
+        if g.tested_mc_pct > 20.0:
+            recs.append(f"Kadar air tinggi ({g.tested_mc_pct}%). Jemur ulang atau simpan di tempat kering berventilasi sebelum dikirim.")
+        if g.tested_ash_pct > 15.0 and "sekam" in g.biomass_type:
+            recs.append(f"Kadar abu biomassa tinggi ({g.tested_ash_pct}%). Hindari penumpukan langsung di tanah dan bersihkan pasir.")
+        if g.contamination_pct > 5.0:
+            recs.append(f"Tingkat kontaminasi fisik ({g.contamination_pct}%) tinggi. Ayak biomassa untuk memisahkan kerikil dan benda asing.")
+        if not recs and g.qc_decision == "ACCEPTED":
+            recs.append("Mutu biomassa prima, memenuhi standar grade premium pabrik.")
+
+        feedback_logs.append({
+            "reception_id": g.id,
+            "ticket_number": g.ticket_number,
+            "collector_id": col.id,
+            "collector_name": col.full_name,
+            "vehicle_plate": g.vehicle_plate,
+            "biomass_type": g.biomass_type,
+            "net_weight_kg": g.net_weight,
+            "qc_decision": g.qc_decision,
+            "accepted_qty_kg": g.accepted_qty_kg,
+            "rejected_qty_kg": g.rejected_qty_kg,
+            "rejection_reason": g.rejection_reason,
+            "tested_mc_pct": g.tested_mc_pct,
+            "tested_ash_pct": g.tested_ash_pct,
+            "tested_lhv_kcal": g.tested_lhv_kcal,
+            "actionable_feedback": " ".join(recs),
+            "created_at": g.created_at.isoformat() if g.created_at else None,
+        })
+
+    return feedback_logs
+
+
+# -----------------------------------------------------------------------------
+# FASE 5: Cross-Collector Stocks, Anti-Double Booking & Closed-Loop Biochar
+# -----------------------------------------------------------------------------
+class ReserveStockRequest(BaseModel):
+    harvest_ids: list[int] = Field(default_factory=list)
+    listing_ids: list[int] = Field(default_factory=list)
+
+
+@router.get("/collector-stocks")
+async def list_collector_stocks(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_audit_read)],
+    biomass_type: str | None = None,
+):
+    """Katalog stok biomassa lintas pengepul spesialis, terkelompok (grouped) per jenis biomassa."""
+    from ..models.harvest import Harvest
+    from ..models.trade import StockListing
+    from ..services import trade
+
+    # Query verified harvests in collector possession
+    h_query = (
+        select(Harvest, User)
+        .join(User, User.id == Harvest.collector_id)
+        .where(Harvest.status == HarvestStatus.VERIFIED, Harvest.delivery_request_id.is_(None))
+    )
+    if biomass_type:
+        h_query = h_query.where(Harvest.commodity == biomass_type)
+    harvest_rows = (await db.execute(h_query.order_by(Harvest.id.desc()))).all()
+
+    # Query open listings
+    l_query = (
+        select(StockListing, User)
+        .join(User, User.id == StockListing.farmer_id)
+        .where(StockListing.status.in_(trade.OPEN_STATES), StockListing.remaining_kg > 1e-6)
+    )
+    if biomass_type:
+        l_query = l_query.where(StockListing.commodity == biomass_type)
+    listing_rows = (await db.execute(l_query.order_by(StockListing.id.desc()))).all()
+
+    # Grouping per jenis biomassa
+    grouped = {}
+    for h, collector in harvest_rows:
+        b_type = h.commodity or "sekam_padi"
+        if b_type not in grouped:
+            grouped[b_type] = {
+                "biomass_type": b_type,
+                "biomass_name": b_type.replace("_", " ").title(),
+                "total_stock_kg": 0.0,
+                "available_stock_kg": 0.0,
+                "locked_stock_kg": 0.0,
+                "items": [],
+            }
+        qty = h.verified_kg or h.quantity_kg
+        is_locked = bool(h.is_locked)
+        grouped[b_type]["total_stock_kg"] += qty
+        if is_locked:
+            grouped[b_type]["locked_stock_kg"] += qty
+        else:
+            grouped[b_type]["available_stock_kg"] += qty
+
+        grouped[b_type]["items"].append({
+            "id": h.id,
+            "source_type": "harvest",
+            "collector_id": collector.id,
+            "collector_name": collector.full_name or collector.username,
+            "collector_phone": collector.phone,
+            "commodity": b_type,
+            "quantity_kg": qty,
+            "moisture_pct": h.moisture,
+            "ash_pct": h.ash,
+            "grade": h.grade.value if h.grade and hasattr(h.grade, 'value') else (h.grade or "A"),
+            "price_per_kg": h.agreed_price_per_kg or h.base_price_per_kg or 450.0,
+            "is_locked": is_locked,
+            "locked_by_mill_id": h.locked_by_mill_id,
+        })
+
+    for l, farmer in listing_rows:
+        b_type = l.commodity or "sekam_padi"
+        if b_type not in grouped:
+            grouped[b_type] = {
+                "biomass_type": b_type,
+                "biomass_name": b_type.replace("_", " ").title(),
+                "total_stock_kg": 0.0,
+                "available_stock_kg": 0.0,
+                "locked_stock_kg": 0.0,
+                "items": [],
+            }
+        qty = l.remaining_kg
+        is_locked = bool(l.is_locked)
+        grouped[b_type]["total_stock_kg"] += qty
+        if is_locked:
+            grouped[b_type]["locked_stock_kg"] += qty
+        else:
+            grouped[b_type]["available_stock_kg"] += qty
+
+        hrg = l.ask_price_jemput or l.ask_price_antar or l.floor_price or 450.0
+        grouped[b_type]["items"].append({
+            "id": l.id,
+            "source_type": "listing",
+            "farmer_id": farmer.id,
+            "farmer_name": farmer.full_name or farmer.username,
+            "farmer_phone": farmer.phone,
+            "commodity": b_type,
+            "quantity_kg": qty,
+            "moisture_pct": l.moisture_pct,
+            "ash_pct": None,
+            "grade": l.grade_estimate or "A",
+            "price_per_kg": hrg,
+            "is_locked": is_locked,
+            "locked_by_mill_id": l.locked_by_mill_id,
+        })
+
+    return {
+        "grouped": grouped,
+        "total_biomass_types": len(grouped),
+        "grand_total_stock_kg": sum(g["total_stock_kg"] for g in grouped.values()),
+    }
+
+
+@router.post("/reserve-stock")
+async def reserve_stock(
+    req: ReserveStockRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_pabrik_only)],
+):
+    """Kunci stok biomassa saat pabrik menerbitkan rencana pengiriman (Anti-Double Booking)."""
+    from ..models.harvest import Harvest
+    from ..models.trade import StockListing
+
+    now = datetime.now(timezone.utc)
+    if req.harvest_ids:
+        harvests = (await db.execute(
+            select(Harvest).where(Harvest.id.in_(req.harvest_ids)).with_for_update()
+        )).scalars().all()
+        for h in harvests:
+            if h.is_locked and h.locked_by_mill_id != user.id:
+                raise HTTPException(409, f"Harvest #{h.id} ({h.commodity}) sedang dikunci oleh pabrik lain!")
+            h.is_locked = True
+            h.locked_by_mill_id = user.id
+            h.locked_at = now
+
+    if req.listing_ids:
+        listings = (await db.execute(
+            select(StockListing).where(StockListing.id.in_(req.listing_ids)).with_for_update()
+        )).scalars().all()
+        for l in listings:
+            if l.is_locked and l.locked_by_mill_id != user.id:
+                raise HTTPException(409, f"Listing #{l.id} ({l.commodity}) sedang dikunci oleh pabrik lain!")
+            l.is_locked = True
+            l.locked_by_mill_id = user.id
+            l.locked_at = now
+
+    await db.flush()
+    return {
+        "success": True,
+        "message": f"Berhasil mengunci {len(req.harvest_ids)} harvest dan {len(req.listing_ids)} listing stok.",
+        "locked_by_mill_id": user.id,
+        "locked_at": now.isoformat(),
+    }
+
+
+@router.post("/release-stock")
+async def release_stock(
+    req: ReserveStockRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_pabrik_only)],
+):
+    """Lepas kunci stok biomassa."""
+    from ..models.harvest import Harvest
+    from ..models.trade import StockListing
+
+    if req.harvest_ids:
+        await db.execute(
+            update(Harvest)
+            .where(Harvest.id.in_(req.harvest_ids), Harvest.locked_by_mill_id == user.id)
+            .values(is_locked=False, locked_by_mill_id=None, locked_at=None)
+        )
+    if req.listing_ids:
+        await db.execute(
+            update(StockListing)
+            .where(StockListing.id.in_(req.listing_ids), StockListing.locked_by_mill_id == user.id)
+            .values(is_locked=False, locked_by_mill_id=None, locked_at=None)
+        )
+    await db.flush()
+    return {"success": True, "message": "Kunci stok berhasil dilepas."}
+
+
+@router.get("/closed-loop-biochar")
+async def get_closed_loop_biochar(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_audit_read)],
+):
+    """Traceability sirkular biochar end-to-end: Kiln Pabrik -> Pengepul -> Armada Backhaul -> Lahan Petani."""
+    from ..models.circular import BiocharRequest, BiocharDistribution, BiocharQualityEvaluation
+    from ..models.industrial import ProductionBlend
+
+    blends = (await db.execute(
+        select(ProductionBlend).where(ProductionBlend.target_product == "BIOCHAR").order_by(ProductionBlend.id.desc())
+    )).scalars().all()
+
+    distributions = (await db.execute(
+        select(BiocharDistribution).order_by(BiocharDistribution.id.desc())
+    )).scalars().all()
+
+    requests = (await db.execute(
+        select(BiocharRequest, User)
+        .join(User, User.id == BiocharRequest.farmer_id)
+        .order_by(BiocharRequest.id.desc())
+    )).all()
+
+    evaluations = (await db.execute(
+        select(BiocharQualityEvaluation, User)
+        .join(User, User.id == BiocharQualityEvaluation.farmer_id)
+        .order_by(BiocharQualityEvaluation.id.desc())
+    )).all()
+
+    trace_items = []
+    for b in blends:
+        trace_items.append({
+            "stage": "KILN_PRODUCTION",
+            "batch_code": b.blend_code,
+            "product": "BIOCHAR",
+            "output_kg": round(b.total_input_kg * 0.28, 1),
+            "carbon_seq_tco2e": b.net_tco2e,
+            "created_at": b.created_at.isoformat() if b.created_at else None,
+        })
+
+    for d in distributions:
+        trace_items.append({
+            "stage": "DISPATCH_COLLECTOR",
+            "dispatch_code": d.dispatch_code,
+            "collector_id": d.collector_id,
+            "driver_id": d.driver_id,
+            "vehicle_plate": d.vehicle_plate,
+            "weight_kg": d.total_weight_kg,
+            "status": d.status,
+            "created_at": d.created_at.isoformat() if d.created_at else None,
+        })
+
+    eval_map = {e.biochar_request_id: (e, u) for e, u in evaluations if e.biochar_request_id}
+    farmer_traces = []
+    for r, u in requests:
+        ev, _ = eval_map.get(r.id, (None, None))
+        farmer_traces.append({
+            "request_code": r.request_code,
+            "farmer_name": u.full_name or u.username,
+            "requested_kg": r.requested_kg,
+            "status": r.status,
+            "delivery_point": r.delivery_point,
+            "evaluated": ev is not None,
+            "evaluation": {
+                "overall_score": ev.overall_score,
+                "mesh_rating": ev.grain_size_mesh_rating,
+                "pyrolysis_rating": ev.pyrolysis_maturity_rating,
+                "moisture_rating": ev.moisture_rating,
+                "soil_impact_rating": ev.soil_impact_rating,
+                "notes": ev.review_notes,
+            } if ev else None,
+        })
+
+    return {
+        "summary": {
+            "total_biochar_produced_kg": sum(b.total_input_kg * 0.28 for b in blends),
+            "total_distributed_kg": sum(d.total_weight_kg for d in distributions),
+            "total_farmer_requests": len(requests),
+            "total_evaluations": len(evaluations),
+        },
+        "kiln_batches": [b.blend_code for b in blends],
+        "traces": trace_items,
+        "farmer_applications": farmer_traces,
+    }
+
+
+# -----------------------------------------------------------------------------
+# FASE 5 & 6: Loading Ramp Management, Gatekeeper Uji Logam Berat & Pelunasan TOP
+# -----------------------------------------------------------------------------
+
+
+class LoadingRampCreate(BaseModel):
+    ramp_code: str = Field(..., max_length=20)
+    name: str = Field(..., max_length=100)
+    biomass_type: str = Field(..., max_length=50)
+    max_capacity_kg: float = Field(50000.0, gt=0)
+    current_stock_kg: float = Field(0.0, ge=0)
+    aggregate_mc: float = Field(12.0, ge=0, le=60)
+    aggregate_ash: float = Field(15.0, ge=0, le=60)
+    aggregate_lhv_kcal: float = Field(3500.0, ge=1000, le=7000)
+
+
+@router.post("/loading-ramps", status_code=201)
+async def create_or_update_loading_ramp(
+    req: LoadingRampCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_pabrik_only)],
+):
+    """Tambah atau perbarui konfigurasi Loading Ramp pabrik."""
+    from ..models.industrial import LoadingRamp
+    existing = (await db.execute(
+        select(LoadingRamp).where(LoadingRamp.ramp_code == req.ramp_code.upper()).with_for_update()
+    )).scalar_one_or_none()
+
+    if existing:
+        existing.name = req.name
+        existing.biomass_type = req.biomass_type
+        existing.max_capacity_kg = req.max_capacity_kg
+        existing.current_stock_kg = req.current_stock_kg
+        existing.aggregate_mc = req.aggregate_mc
+        existing.aggregate_ash = req.aggregate_ash
+        existing.aggregate_lhv_kcal = req.aggregate_lhv_kcal
+        existing.updated_at = datetime.now(timezone.utc)
+        ramp = existing
+    else:
+        ramp = LoadingRamp(
+            ramp_code=req.ramp_code.upper(),
+            name=req.name,
+            mill_id=user.id,
+            biomass_type=req.biomass_type,
+            max_capacity_kg=req.max_capacity_kg,
+            current_stock_kg=req.current_stock_kg,
+            aggregate_mc=req.aggregate_mc,
+            aggregate_ash=req.aggregate_ash,
+            aggregate_lhv_kcal=req.aggregate_lhv_kcal,
+            is_active=True,
+        )
+        db.add(ramp)
+
+    await db.flush()
+    return {
+        "success": True,
+        "id": ramp.id,
+        "ramp_code": ramp.ramp_code,
+        "name": ramp.name,
+        "current_stock_kg": ramp.current_stock_kg,
+        "message": f"Loading Ramp {ramp.ramp_code} berhasil disimpan."
+    }
+
+
+class SafetyTestRequest(BaseModel):
+    pb_ppm: float = Field(..., ge=0, description="Kandungan Timbal / Pb (PPM)")
+    cd_ppm: float = Field(..., ge=0, description="Kandungan Kadmium / Cd (PPM)")
+    as_ppm: float = Field(..., ge=0, description="Kandungan Arsenik / As (PPM)")
+    lab_cert_no: str = Field(..., min_length=3, max_length=80, description="Nomor Sertifikat Uji Lab KAN/ISO 17025")
+
+
+@router.post("/by-products/{byproduct_id}/safety-test")
+async def test_byproduct_heavy_metals(
+    byproduct_id: int,
+    req: SafetyTestRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_pabrik_only)],
+):
+    """Gatekeeper Keamanan Kimia: Validasi batas logam berat (Pb <50 ppm, Cd <2 ppm, As <10 ppm) sebelum biochar/abu diizinkan ke tanah pertanian."""
+    from ..models.industrial import ByProductLedger
+    bp = (await db.execute(
+        select(ByProductLedger).where(ByProductLedger.id == byproduct_id).with_for_update()
+    )).scalar_one_or_none()
+    if not bp:
+        raise HTTPException(404, "Data by-product tidak ditemukan.")
+
+    # Evaluasi ambang batas Kementan / EBC / IBI
+    passed = (req.pb_ppm < 50.0) and (req.cd_ppm < 2.0) and (req.as_ppm < 10.0)
+    bp.pb_ppm = req.pb_ppm
+    bp.cd_ppm = req.cd_ppm
+    bp.as_ppm = req.as_ppm
+    bp.is_safety_passed = passed
+    bp.lab_cert_no = req.lab_cert_no
+
+    if passed:
+        bp.circular_status = "APPROVED_FOR_SOIL"
+        msg = f"✅ Uji Logam Berat LOLOS (Pb: {req.pb_ppm:g}, Cd: {req.cd_ppm:g}, As: {req.as_ppm:g} ppm). Biochar disetujui untuk pembenah tanah sawah!"
+    else:
+        bp.circular_status = "REJECTED_HAZARDOUS"
+        msg = f"⛔ PERINGATAN: Melebihi ambang batas aman logam berat! (Batas: Pb<50, Cd<2, As<10 ppm). Status dikarantina B3, dilarang disalurkan ke petani."
+
+    await db.flush()
+    return {
+        "success": True,
+        "byproduct_id": bp.id,
+        "is_safety_passed": passed,
+        "circular_status": bp.circular_status,
+        "lab_cert_no": bp.lab_cert_no,
+        "message": msg
+    }
+
+
+class InvoicePaymentRequest(BaseModel):
+    amount_rp: float = Field(..., gt=0)
+    payment_method: str = Field("TRANSFER", description="'TRANSFER' | 'CASH' | 'GIRO'")
+    reference_note: str | None = Field(None, max_length=200)
+
+
+@router.post("/invoices/{invoice_id}/pay")
+async def pay_factory_invoice(
+    invoice_id: int,
+    req: InvoicePaymentRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_pabrik_only)],
+):
+    """Pelunasan tagihan pabrik (Invoice TOP / DP) untuk membuka kembali pemblokiran order."""
+    from ..models.industrial import FactoryInvoice
+    inv = (await db.execute(
+        select(FactoryInvoice).where(FactoryInvoice.id == invoice_id).with_for_update()
+    )).scalar_one_or_none()
+    if not inv:
+        raise HTTPException(404, "Invoice tidak ditemukan.")
+
+    inv.dp_paid_amount += req.amount_rp
+    inv.remaining_amount = max(0.0, inv.total_amount_rp - inv.dp_paid_amount)
+    if inv.remaining_amount <= 1e-6:
+        inv.status = "PAID"
+        inv.is_overdue = False
+        inv.settled_at = datetime.now(timezone.utc)
+    else:
+        inv.status = "PARTIALLY_PAID"
+
+    await db.flush()
+    return {
+        "success": True,
+        "invoice_number": inv.invoice_number,
+        "status": inv.status,
+        "remaining_amount_rp": inv.remaining_amount,
+        "is_overdue": inv.is_overdue,
+        "message": f"Pembayaran Rp{req.amount_rp:g} berhasil dicatat. Sisa tagihan: Rp{inv.remaining_amount:g}."
+    }
 

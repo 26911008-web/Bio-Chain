@@ -72,7 +72,7 @@ def _status(value, target, direction: str) -> str:
 
 
 def _kpi(key, label, unit, value, target=None, direction="min", prev=None, target_src=None,
-         need=None, action=None, impact=None, weight=1.0, fmt_target=None):
+         need=None, action=None, impact=None, weight=1.0, fmt_target=None, breakdown=None):
     st = _status(value, target, direction)
     if st == "data_kurang" and not need:
         need = "Belum ada data pada jendela evaluasi — muncul otomatis setelah transaksi tercatat."
@@ -89,6 +89,7 @@ def _kpi(key, label, unit, value, target=None, direction="min", prev=None, targe
         "action": action if st in ("perhatian", "kritis") else None,
         "impact": impact if st in ("perhatian", "kritis") else None,
         "target_label": fmt_target,
+        "breakdown": breakdown or [],
     }
 
 
@@ -105,13 +106,178 @@ async def _harvest_quality(db: AsyncSession, farmer_id: int, lo, hi) -> dict:
     graded = [h for h in rows if h.grade is not None]
     moist = [h.moisture for h in rows if h.moisture is not None]
     est = [(h.quantity_kg, h.verified_kg) for h in rows if h.quantity_kg and h.verified_kg]
+
+    # Breakdown per komoditas
+    by_com: dict[str, dict] = {}
+    for h in rows:
+        c = h.commodity or "sekam_padi"
+        if c not in by_com:
+            by_com[c] = {"rows": [], "graded": [], "moist": [], "est": [], "priced": []}
+        by_com[c]["rows"].append(h)
+        if h.grade is not None:
+            by_com[c]["graded"].append(h)
+        if h.moisture is not None:
+            by_com[c]["moist"].append(h.moisture)
+        if h.quantity_kg and h.verified_kg:
+            by_com[c]["est"].append((h.quantity_kg, h.verified_kg))
+        if h.total_price and h.verified_kg:
+            by_com[c]["priced"].append((h.total_price, h.verified_kg))
+
+    from ..models.biomass import BiomassParameter
+    bp_rows = (await db.execute(select(BiomassParameter.code, BiomassParameter.name))).all()
+    names = {r[0]: r[1] for r in bp_rows}
+
+    breakdown = {}
+    for c, d in by_com.items():
+        priced_tot = sum(p for p, _ in d["priced"])
+        kg_tot = sum(k for _, k in d["priced"])
+        avg_p = round(priced_tot / kg_tot, 1) if kg_tot else None
+        breakdown[c] = {
+            "commodity": c,
+            "name": names.get(c, c.replace("_", " ").title()),
+            "lots": len(d["rows"]),
+            "grade_a_pct": _ratio(sum(1 for h in d["graded"] if _v(h.grade) == "A"), len(d["graded"])),
+            "avg_moisture": round(sum(d["moist"]) / len(d["moist"]), 2) if d["moist"] else None,
+            "estimate_gap_pct": _ratio(sum(abs(q - v) for q, v in d["est"]), sum(v for _, v in d["est"])),
+            "avg_price": avg_p,
+            "verified_kg": kg_tot,
+        }
+
     return {
         "lots": len(rows),
         "grade_a_pct": _ratio(sum(1 for h in graded if _v(h.grade) == "A"), len(graded)),
         "avg_moisture": round(sum(moist) / len(moist), 2) if moist else None,
         "estimate_gap_pct": _ratio(sum(abs(q - v) for q, v in est), sum(v for _, v in est)),
         "rejected": sum(1 for h in rows if _v(h.status) == HarvestStatus.REJECTED.value),
+        "breakdown": breakdown,
     }
+
+
+async def _collector_commodity_breakdowns(db: AsyncSession, collector_id: int, lo, hi) -> dict:
+    from ..models.biomass import BiomassParameter
+    from ..models.factory_ops import DeliveryRequest, InboundQC, CollectorSettlement
+
+    bp_rows = (await db.execute(select(BiomassParameter.code, BiomassParameter.name))).all()
+    names = {r[0]: r[1] for r in bp_rows}
+
+    by_com: dict[str, dict] = {}
+    def _init(c):
+        if c not in by_com:
+            by_com[c] = {
+                "name": names.get(c, c.replace("_", " ").title()),
+                "bought_kg": 0.0, "paid_rp": 0.0,
+                "sold_kg": 0.0, "received_rp": 0.0,
+                "shrink_ref_kg": 0.0, "shrink_recv_kg": 0.0,
+                "rejected_kg": 0.0,
+                "outstanding_rp": 0.0, "billed_rp": 0.0,
+                "unpriced_kg": 0.0,
+            }
+        return by_com[c]
+
+    # 1. Pembelian dari petani yang diverifikasi
+    h_rows = (await db.execute(select(Harvest).where(
+        Harvest.collector_id == collector_id,
+        Harvest.verified_at.is_not(None),
+        Harvest.verified_at >= lo, Harvest.verified_at < hi
+    ))).scalars().all()
+    for h in h_rows:
+        c = h.commodity or "sekam_padi"
+        d = _init(c)
+        if h.verified_kg:
+            d["bought_kg"] += h.verified_kg
+            if h.total_price:
+                d["paid_rp"] += h.total_price
+
+    # 2. Pengiriman via rute armada ke pabrik
+    delivered_harvests = (await db.execute(select(Harvest).where(
+        Harvest.collector_id == collector_id,
+        Harvest.delivered_at.is_not(None),
+        Harvest.delivered_at >= lo, Harvest.delivered_at < hi
+    ))).scalars().all()
+    for h in delivered_harvests:
+        c = h.commodity or "sekam_padi"
+        d = _init(c)
+        if h.received_kg:
+            d["sold_kg"] += h.received_kg
+            if h.verified_kg:
+                d["shrink_ref_kg"] += h.verified_kg
+                d["shrink_recv_kg"] += h.received_kg
+
+    # 3. Pengiriman lewat InboundQC pabrik
+    qc_rows = (await db.execute(
+        select(InboundQC, DeliveryRequest)
+        .join(DeliveryRequest, DeliveryRequest.id == InboundQC.request_id)
+        .where(DeliveryRequest.collector_id == collector_id,
+               InboundQC.created_at >= lo, InboundQC.created_at < hi)
+    )).all()
+    for qc, dr in qc_rows:
+        c_found = (await db.execute(select(Harvest.commodity).where(
+            Harvest.delivery_request_id == dr.id
+        ).limit(1))).scalar_one_or_none()
+        c = c_found or "sekam_padi"
+        d = _init(c)
+        if _v(qc.decision) == "tolak":
+            d["rejected_kg"] += (qc.net_kg or 0.0)
+        else:
+            d["sold_kg"] += (qc.net_kg or 0.0)
+
+    # 4. Tagihan settlement ke pabrik
+    st_rows = (await db.execute(
+        select(CollectorSettlement).where(
+            CollectorSettlement.collector_id == collector_id,
+            CollectorSettlement.created_at >= lo, CollectorSettlement.created_at < hi
+        )
+    )).scalars().all()
+    for st in st_rows:
+        c = "sekam_padi"
+        if st.source == "rute" and st.harvest_id:
+            h_c = (await db.execute(select(Harvest.commodity).where(Harvest.id == st.harvest_id))).scalar_one_or_none()
+            if h_c: c = h_c
+        elif st.source == "qc" and st.qc_id:
+            dr_id = (await db.execute(select(InboundQC.request_id).where(InboundQC.id == st.qc_id))).scalar_one_or_none()
+            if dr_id:
+                h_c = (await db.execute(select(Harvest.commodity).where(Harvest.delivery_request_id == dr_id).limit(1))).scalar_one_or_none()
+                if h_c: c = h_c
+        d = _init(c)
+        if st.amount_rp is None:
+            d["unpriced_kg"] += (st.payable_kg or 0.0)
+        else:
+            d["billed_rp"] += st.amount_rp
+            d["received_rp"] += st.amount_rp
+            if _v(st.status) != "dibayar":
+                d["outstanding_rp"] += st.amount_rp
+
+    if not by_com:
+        for code in ["sekam_padi", "tongkol_jagung"]:
+            if code in names:
+                _init(code)
+
+    out = {}
+    for c, d in by_com.items():
+        buy_p = round(d["paid_rp"] / d["bought_kg"], 1) if d["bought_kg"] > 0 and d["paid_rp"] > 0 else None
+        sell_p = round(d["received_rp"] / d["sold_kg"], 1) if d["sold_kg"] > 0 and d["received_rp"] > 0 else None
+        margin = round(sell_p - buy_p, 1) if (sell_p is not None and buy_p is not None) else None
+
+        shrink_pct = None
+        if d["shrink_ref_kg"] > 0:
+            diff = d["shrink_ref_kg"] - d["shrink_recv_kg"]
+            shrink_pct = round(max(0.0, (diff / d["shrink_ref_kg"]) * 100), 2)
+
+        tot_handled = d["sold_kg"] + d["rejected_kg"]
+        reject_pct = round((d["rejected_kg"] / tot_handled) * 100, 2) if tot_handled > 0 else (0.0 if d["sold_kg"] > 0 else None)
+        outstanding_pct = round((d["outstanding_rp"] / d["billed_rp"]) * 100, 1) if d["billed_rp"] > 0 else None
+
+        out[c] = {
+            "commodity": c,
+            "name": d["name"],
+            "margin_per_kg": margin,
+            "shrinkage_pct": shrink_pct,
+            "reject_pct": reject_pct,
+            "outstanding_pct": outstanding_pct,
+            "outstanding_rp": round(d["outstanding_rp"]) if d["outstanding_rp"] > 0 else None,
+            "unpriced_kg": round(d["unpriced_kg"], 1) if d["unpriced_kg"] > 0 else (0.0 if d["sold_kg"] > 0 else None),
+        }
+    return out
 
 
 async def _stop_stats(db: AsyncSession, driver_id: int, lo, hi) -> dict:
@@ -137,9 +303,10 @@ def _window_bounds(months: list[str]):
     return _window(months)
 
 
-async def evaluate(db: AsyncSession, user: User) -> dict:
+async def evaluate(db: AsyncSession, user: User, window_months: int | None = None) -> dict:
     role = _v(user.role)
-    n = int(P("evaluasi.window_months"))
+    n = int(window_months or P("evaluasi.window_months"))
+    n = max(1, min(n, 24))
     months = _months_back(2 * n)
     rep = await monthly_report(db, user, months[0], months[-1])
     rows = rep["months"]
@@ -158,25 +325,37 @@ async def evaluate(db: AsyncSession, user: User) -> dict:
         prev_price = _ratio(_sum(prev_rows, "cost.income_rp"), _sum(prev_rows, "supply.verified_kg"), 1)
         base = P("harga_mutu.base_price_per_kg")
         m_best = P("harga_mutu.moisture_best")
+
+        bd = q_cur.get("breakdown", {})
+        price_bd = [{"commodity": c, "name": d["name"], "value": d["avg_price"], "unit": "Rp/kg"}
+                    for c, d in bd.items() if d.get("avg_price") is not None]
+        grade_bd = [{"commodity": c, "name": d["name"], "value": d["grade_a_pct"], "unit": "%"}
+                    for c, d in bd.items() if d.get("grade_a_pct") is not None]
+        moist_bd = [{"commodity": c, "name": d["name"], "value": d["avg_moisture"], "unit": "%"}
+                    for c, d in bd.items() if d.get("avg_moisture") is not None]
+        est_bd = [{"commodity": c, "name": d["name"], "value": d["estimate_gap_pct"], "unit": "%"}
+                  for c, d in bd.items() if d.get("estimate_gap_pct") is not None]
+
         kpis += [
             _kpi("harga_rata", "Harga rata-rata diterima", "Rp/kg", avg_price, base, "min", prev_price,
                  "harga_mutu.base_price_per_kg", need="Belum ada sekam yang ditimbang pengepul pada jendela ini.",
                  action="Naikkan mutu (kadar air ≤ target) atau pasang listing lelang agar pengepul bersaing harga.",
                  impact=_impact("rp", (base - (avg_price or 0)) * kg, "selisih ke harga dasar × kg ditimbang"),
-                 weight=1.5, fmt_target=f"≥ harga dasar Rp{base:,.0f}/kg"),
+                 weight=1.5, fmt_target=f"≥ harga dasar Rp{base:,.0f}/kg", breakdown=price_bd),
             _kpi("grade_a", "Porsi lot Grade A", "%", q_cur["grade_a_pct"], P("evaluasi.grade_a_share_min_pct"), "min",
                  q_prev["grade_a_pct"], "evaluasi.grade_a_share_min_pct",
                  need="Belum ada lot yang dinilai mutunya.",
                  action="Jemur sekam tipis sebelum pengepul datang; simpan di bawah atap/terpal agar tidak lembap.",
-                 weight=1.2),
+                 weight=1.2, breakdown=grade_bd),
             _kpi("kadar_air", "Kadar air rata-rata saat ditimbang", "%", q_cur["avg_moisture"], m_best, "max",
                  q_prev["avg_moisture"], "harga_mutu.moisture_best", need="Kadar air belum tercatat pada timbangan.",
                  action="Kadar air di atas target menurunkan harga basis kering — keringkan hingga ≤ target.",
-                 fmt_target=f"≤ {m_best:g}%"),
+                 fmt_target=f"≤ {m_best:g}%", breakdown=moist_bd),
             _kpi("akurasi_taksiran", "Selisih taksiran vs timbangan", "%", q_cur["estimate_gap_pct"],
                  P("sirkular.estimate_tolerance_pct"), "max", q_prev["estimate_gap_pct"],
                  "sirkular.estimate_tolerance_pct", need="Belum ada lot yang ditimbang.",
-                 action="Hitung jumlah karung × berat rata-rata per karung saat melapor agar armada tidak salah muat."),
+                 action="Hitung jumlah karung × berat rata-rata per karung saat melapor agar armada tidak salah muat.",
+                 breakdown=est_bd),
             _kpi("biochar_masuk", "Biochar masuk dompet", "kg", _sum(cur_rows, "conversion.biochar_credited_kg"),
                  None, "min", _sum(prev_rows, "conversion.biochar_credited_kg")),
         ]
@@ -199,33 +378,45 @@ async def evaluate(db: AsyncSession, user: User) -> dict:
         tgt_margin = P("pasar.default_margin_per_kg")
         shrink = _mean(cur_rows, "supply.shrinkage_pct")
         reject_pct = _ratio(rejected, sold + rejected)
+        col_bd = await _collector_commodity_breakdowns(db, user.id, lo_cur, hi_cur)
+        margin_bd = [{"commodity": c, "name": d["name"], "value": d["margin_per_kg"] if d["margin_per_kg"] is not None else 0.0, "unit": "Rp/kg"}
+                     for c, d in col_bd.items()]
+        susut_bd = [{"commodity": c, "name": d["name"], "value": d["shrinkage_pct"] if d["shrinkage_pct"] is not None else 0.0, "unit": "%"}
+                    for c, d in col_bd.items()]
+        ditolak_bd = [{"commodity": c, "name": d["name"], "value": d["reject_pct"] if d["reject_pct"] is not None else 0.0, "unit": "%"}
+                      for c, d in col_bd.items()]
+        piutang_bd = [{"commodity": c, "name": d["name"], "value": d["outstanding_pct"] if d["outstanding_pct"] is not None else 0.0, "unit": "%"}
+                      for c, d in col_bd.items()]
+        unpriced_bd = [{"commodity": c, "name": d["name"], "value": d["unpriced_kg"] if d["unpriced_kg"] is not None else 0.0, "unit": "kg"}
+                       for c, d in col_bd.items()]
+
         kpis += [
             _kpi("margin_per_kg", "Margin per kg (jual − beli)", "Rp/kg", margin, tgt_margin, "min", pmargin,
                  "pasar.default_margin_per_kg", need="Butuh pembelian dari petani DAN tagihan berharga ke pabrik.",
                  action="Gunakan Bid Advisor agar tawaran tidak melewati batas atas; tagih harga kontrak basis kering.",
                  impact=_impact("rp", (tgt_margin - (margin or 0)) * sold, "selisih margin × kg terjual"),
-                 weight=1.5, fmt_target=f"≥ Rp{tgt_margin:,.0f}/kg"),
+                 weight=1.5, fmt_target=f"≥ Rp{tgt_margin:,.0f}/kg", breakdown=margin_bd),
             _kpi("susut", "Susut timbangan ke pabrik", "%", shrink, tol_shrink, "max",
                  _mean(prev_rows, "supply.shrinkage_pct"), "sirkular.shrinkage_tolerance_pct",
                  need="Belum ada muatan yang ditimbang ulang pabrik.",
                  action="Kalibrasi timbangan tiap awal shift, tutup bak dengan terpal, kurangi waktu tunggu di gudang.",
                  impact=_impact("rp", ((shrink or 0) - tol_shrink) / 100 * sold * (sell or 0),
                                 "kg susut di atas toleransi × harga jual"), weight=1.3,
-                 fmt_target=f"≤ {tol_shrink:g}%"),
-            _kpi("ditolak", "Porsi sekam ditolak pabrik", "%", reject_pct, P("evaluasi.reject_max_pct"), "max",
+                 fmt_target=f"≤ {tol_shrink:g}%", breakdown=susut_bd),
+            _kpi("ditolak", "Porsi biomassa ditolak pabrik", "%", reject_pct, P("evaluasi.reject_max_pct"), "max",
                  _ratio(_sum(prev_rows, "supply.rejected_kg"),
                         _sum(prev_rows, "supply.sold_to_factory_kg") + _sum(prev_rows, "supply.rejected_kg")),
                  "evaluasi.reject_max_pct", need="Belum ada lot yang diperiksa QC pabrik.",
                  action="Uji kadar air sebelum muat; pisahkan lot basah (beli untuk dikeringkan) dari lot siap kirim.",
-                 impact=_impact("kg", rejected, "kg ditolak pada jendela ini")),
+                 impact=_impact("kg", rejected, "kg ditolak pada jendela ini"), breakdown=ditolak_bd),
             _kpi("piutang", "Tagihan pabrik belum dibayar", "%", _ratio(outstanding, billed),
                  P("evaluasi.collector_outstanding_max_pct"), "max", None, "evaluasi.collector_outstanding_max_pct",
                  need="Belum ada tagihan berharga ke pabrik.",
                  action="Tindak lanjuti tagihan berstatus 'terutang' dengan operator pabrik.",
-                 impact=_impact("rp", outstanding, "Rp tertahan di pabrik")),
+                 impact=_impact("rp", outstanding, "Rp tertahan di pabrik"), breakdown=piutang_bd),
             _kpi("tanpa_harga", "Diterima pabrik tanpa harga", "kg", unpriced, 0.0, "max", None, None,
                  action="Minta pabrik menetapkan harga settlement agar margin bulan ini final.",
-                 impact=_impact("kg", unpriced, "kg menunggu harga"), fmt_target="0 kg"),
+                 impact=_impact("kg", unpriced, "kg menunggu harga"), fmt_target="0 kg", breakdown=unpriced_bd),
         ]
         q = ctx.get("antrean_verifikasi") or {}
         kpis.append(_kpi("antrean", "Antrean laporan petani menunggu verifikasi", "laporan",
@@ -349,7 +540,7 @@ async def evaluate(db: AsyncSession, user: User) -> dict:
                         "action": k["action"], "impact": k["impact"]} for k in priorities],
         "series": series,
         "flow": flow,
-        "params_hint": "Target dapat diubah di menu Parameter → Target Evaluasi & Optimasi (pabrik/admin).",
+        "params_hint": "",
     }
 
 

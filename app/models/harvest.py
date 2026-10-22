@@ -101,13 +101,35 @@ class Harvest(Base):
     conversion_id = Column(Integer, ForeignKey("conversions.id"), nullable=True, index=True)
     version = Column(Integer, default=1, nullable=False)   # dinaikkan setiap transisi (compare-and-swap)
 
+    # 022 Omni Extensions
+    transaction_mode = Column(String(16), nullable=False, default="DIRECT")
+    logistics_mode = Column(String(16), nullable=False, default="PICKUP")
+    payment_status = Column(String(16), nullable=False, default="UNPAID")
+    farmer_claimed_qty = Column(Double, nullable=True)
+    actual_weighed_qty = Column(Double, nullable=True)
+    deviation_kg = Column(Double, nullable=True)
+    deviation_pct = Column(Double, nullable=True)
+    qc_status = Column(String(16), default="PENDING")
+    qc_rejection_reason = Column(Text, nullable=True)
+    qr_verification_token = Column(String(64), unique=True, nullable=True, index=True)
+    gross_weight = Column(Double, nullable=True)
+    tare_weight = Column(Double, nullable=True)
+    net_weight = Column(Double, nullable=True)
+    weighbridge_slip_url = Column(Text, nullable=True)
+    biochar_backhaul_requested = Column(Boolean, default=False)
+    biochar_backhaul_kg = Column(Double, default=0.0)
+
     # Asal pasar B2B: harga & skema hasil kesepakatan lelang (menggantikan harga dasar saat verifikasi)
     listing_id = Column(Integer, ForeignKey("stock_listings.id"), nullable=True, index=True)
     bid_id = Column(Integer, ForeignKey("bids.id"), nullable=True)
     agreed_price_per_kg = Column(Double, nullable=True)
     delivery_scheme = Column(String(10), nullable=True)
-    # Rantai ke pabrik: harvest dilampirkan pengepul pada Delivery Request → QC → batch → dompet biochar
     delivery_request_id = Column(Integer, ForeignKey("delivery_requests.id"), nullable=True, index=True)
+    # Anti-Double Booking: Stock Locking saat dipesan Pabrik
+    is_locked = Column(Boolean, default=False, nullable=True, index=True)
+    locked_by_mill_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    locked_at = Column(DateTime(timezone=True), nullable=True)
+    origin_qr_code = Column(String(100), nullable=True)
 
     reported_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     verified_at = Column(DateTime(timezone=True), nullable=True)

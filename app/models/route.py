@@ -36,6 +36,7 @@ class Route(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     driver_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     vehicle_plate = Column(String(20), nullable=True)
+    logistics_carrier = Column(String(30), default="FACTORY_FLEET", index=True)
     status = Column(Enum(RouteStatus, native_enum=False, values_callable=lambda x: [e.value for e in x]), default=RouteStatus.PLANNED, index=True)
 
     # Vehicle params

@@ -120,8 +120,8 @@ def _role(user: User) -> str:
     return user.role.value if hasattr(user.role, "value") else str(user.role)
 
 
-async def _evaluation(user: User, db: AsyncSession) -> dict:
-    ev = await insights.evaluate(db, user)
+async def _evaluation(user: User, db: AsyncSession, window_months: int | None = None) -> dict:
+    ev = await insights.evaluate(db, user, window_months=window_months)
     await db.commit()                             # lepas koneksi DB sebelum menunggu LLM
     return ev
 
@@ -132,10 +132,13 @@ def _opt_messages(user: User, ev: dict, focus: str | None) -> list[dict]:
 
 
 @router.get("/evaluation")
-async def evaluation(user: Annotated[User, Depends(get_current_user)],
-                     db: Annotated[AsyncSession, Depends(get_db)]):
+async def evaluation(
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    window_months: int | None = None,
+):
     """KPI, skor, dan prioritas optimasi (deterministik, tanpa kuota AI)."""
-    ev = await _evaluation(user, db)
+    ev = await _evaluation(user, db, window_months=window_months)
     return {**ev, "summary_markdown": insights.deterministic_markdown(ev)}
 
 

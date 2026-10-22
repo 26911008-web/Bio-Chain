@@ -98,13 +98,15 @@
     h2.id = "role-hero-title";
     body.append(h2);
     if (demo && demo.description) body.append(el("p", null, demo.description));
-    const chips = el("div", "role-chips");
-    if (split) chips.append(el("span", "role-chip", `${meta.icon} ${split[2]}`));
-    if (meta.mode) chips.append(el("span", "role-chip", meta.mode));
-    if (meta.extra) chips.append(el("span", "role-chip", meta.extra));
-    const place = user && [user.kecamatan, user.kabupaten].filter(Boolean).join(", ");
-    if (place) chips.append(el("span", "role-chip", `📍 ${place}`));
-    body.append(chips);
+    if (role !== "petani" && role !== "pengepul") {
+      const chips = el("div", "role-chips");
+      if (split) chips.append(el("span", "role-chip", `${meta.icon} ${split[2]}`));
+      if (meta.mode) chips.append(el("span", "role-chip", meta.mode));
+      if (meta.extra) chips.append(el("span", "role-chip", meta.extra));
+      const place = user && [user.kecamatan, user.kabupaten].filter(Boolean).join(", ");
+      if (place) chips.append(el("span", "role-chip", `📍 ${place}`));
+      body.append(chips);
+    }
 
     const emblem = el("div", "role-emblem");
     emblem.setAttribute("aria-hidden", "true");

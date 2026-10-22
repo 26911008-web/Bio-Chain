@@ -58,6 +58,9 @@ class User(Base):
     xp_total = Column(Integer, default=0)
     incentive_tier = Column(Enum(IncentiveTier), default=IncentiveTier.PEMULA)
 
+    # Spesialisasi komoditas (khusus persona Pengepul: 1 pengepul = 1 komoditas spesifik)
+    specialization_commodity = Column(String(50), nullable=True, index=True)
+
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))

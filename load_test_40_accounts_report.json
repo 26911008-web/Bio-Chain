@@ -1,0 +1,153 @@
+{
+  "timestamp": "2026-10-05 21:19:39",
+  "accounts_count": 40,
+  "benchmark_summary": {
+    "total_requests": 760,
+    "successful_requests": 760,
+    "failed_requests": 0,
+    "success_rate_pct": 100.0,
+    "min_ms": 10.691600007703528,
+    "avg_ms": 605.0595372369762,
+    "median_ms": 300.03040000156034,
+    "p95_ms": 1808.758700004546,
+    "p99_ms": 9315.821500000311,
+    "max_ms": 11045.44000000169,
+    "by_endpoint": {
+      "POST /api/v1/auth/login": {
+        "count": 40,
+        "avg_ms": 5707.953695000469,
+        "p95_ms": 10816.042500009644
+      },
+      "GET /api/v1/farmer/harvests": {
+        "count": 60,
+        "avg_ms": 372.2377833342762,
+        "p95_ms": 1207.8493000008166
+      },
+      "GET /api/v1/collector/market": {
+        "count": 60,
+        "avg_ms": 506.44074833277654,
+        "p95_ms": 1511.7580000078306
+      },
+      "GET /api/v1/driver/active-route": {
+        "count": 16,
+        "avg_ms": 428.6735499972565,
+        "p95_ms": 1391.3823000038974
+      },
+      "GET /api/v1/farmer/listings": {
+        "count": 60,
+        "avg_ms": 239.50999333367994,
+        "p95_ms": 627.3335000005318
+      },
+      "GET /api/v1/factory/delivery-requests": {
+        "count": 16,
+        "avg_ms": 686.746612499519,
+        "p95_ms": 1843.0222000024514
+      },
+      "GET /api/v1/auditor/summary": {
+        "count": 8,
+        "avg_ms": 638.5745875013527,
+        "p95_ms": 1845.8456999942428
+      },
+      "GET /api/v1/collector/delivery-requests": {
+        "count": 60,
+        "avg_ms": 426.69055333244614,
+        "p95_ms": 1356.334700001753
+      },
+      "GET /api/v1/farmer/incentive": {
+        "count": 60,
+        "avg_ms": 345.03856666512246,
+        "p95_ms": 859.6358999930089
+      },
+      "GET /api/v1/factory/settlements": {
+        "count": 16,
+        "avg_ms": 282.4227500032066,
+        "p95_ms": 689.6882000000915
+      },
+      "GET /api/v1/auditor/discrepancies": {
+        "count": 8,
+        "avg_ms": 585.4764625019016,
+        "p95_ms": 1392.6398000039626
+      },
+      "GET /api/v1/collector/available-harvests": {
+        "count": 60,
+        "avg_ms": 330.98117333526415,
+        "p95_ms": 1261.2606000038795
+      },
+      "GET /api/v1/farmer/wallet": {
+        "count": 60,
+        "avg_ms": 267.6810316668707,
+        "p95_ms": 784.5215999986976
+      },
+      "GET /api/v1/factory/qc/lots": {
+        "count": 16,
+        "avg_ms": 249.68441875080316,
+        "p95_ms": 526.1094999877969
+      },
+      "GET /api/v1/auditor/mass-balance/1": {
+        "count": 8,
+        "avg_ms": 279.46252500078117,
+        "p95_ms": 584.3320999993011
+      },
+      "GET /api/v1/collector/daily-summary": {
+        "count": 60,
+        "avg_ms": 192.56787333385242,
+        "p95_ms": 543.6391999974148
+      },
+      "POST /api/v1/farmer/harvest": {
+        "count": 60,
+        "avg_ms": 224.30703333229758,
+        "p95_ms": 575.7456999999704
+      },
+      "GET /api/v1/factory/batches": {
+        "count": 16,
+        "avg_ms": 361.3393125024231,
+        "p95_ms": 1004.8336999898311
+      },
+      "POST /api/v1/collector/pickup-plan": {
+        "count": 60,
+        "avg_ms": 176.40035333436876,
+        "p95_ms": 489.97519999102224
+      },
+      "POST /api/v1/factory/pricing/recommend": {
+        "count": 16,
+        "avg_ms": 152.86368749639223,
+        "p95_ms": 469.6297000045888
+      }
+    },
+    "by_persona": {
+      "petani": {
+        "count": 315,
+        "avg_ms": 397.92758666643215,
+        "p95_ms": 1207.8493000008166
+      },
+      "pengepul": {
+        "count": 315,
+        "avg_ms": 599.2071342861949,
+        "p95_ms": 1764.6942999999737
+      },
+      "driver": {
+        "count": 20,
+        "avg_ms": 2185.777184997278,
+        "p95_ms": 9776.528900008998
+      },
+      "pabrik": {
+        "count": 84,
+        "avg_ms": 811.222338095658,
+        "p95_ms": 1843.0222000024514
+      },
+      "auditor": {
+        "count": 26,
+        "avg_ms": 1303.4458115401392,
+        "p95_ms": 10816.042500009644
+      }
+    }
+  },
+  "overall_rps": 45.5906211885606,
+  "total_duration_s": 16.67009530001087,
+  "phases": {
+    "phase1_login_storm_s": 11.058665200005635,
+    "phase2_wave1_s": 1.7165061999985483,
+    "phase2_wave2_s": 1.363645000004908,
+    "phase3_burst_s": 2.53127890000178
+  }
+}

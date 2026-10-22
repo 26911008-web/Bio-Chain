@@ -28,7 +28,9 @@ from pydantic import BaseModel, Field
 
 from ..params import P
 from .quality import biochar_yield_db
+from ..biomass_seed import BIOMASS_SEED
 
+_SEED_LOOKUP = {r["code"]: r for r in BIOMASS_SEED}
 PRODUCTS = ("bio_pellet", "biochar", "bio_silika")
 PRODUCT_LABEL = {"bio_pellet": "Bio-pellet / Briket", "biochar": "Biochar", "bio_silika": "Bio-silika"}
 # bio_oil = kondensat/tar pirolisis (bisa dijual sebagai asap cair) — dicatat di neraca massa agar BOM lengkap
@@ -70,7 +72,8 @@ class YieldSplit:
 
 def process_yields(moisture_pct: float, ash_pct_db: float, temp_c: float | None = None,
                    pellet_share: float | None = None, silica_share: float | None = None,
-                   silica_route: str | None = None, silica_husk_share: float | None = None) -> YieldSplit:
+                   silica_route: str | None = None, silica_husk_share: float | None = None,
+                   sio2_pct_ash: float | None = None, hhv_db_mj_kg: float | None = None) -> YieldSplit:
     temp_c = P("limbah.pyrolysis_temp_c") if temp_c is None else temp_c
     route = P("pabrik.silica_route") if silica_route is None else silica_route
     if route not in SILICA_ROUTES:
@@ -81,7 +84,8 @@ def process_yields(moisture_pct: float, ash_pct_db: float, temp_c: float | None 
     if s_p + s_x > 1 + 1e-12:
         raise ValueError("Porsi pellet + porsi silika dari sekam melebihi 1.")
     m, dry = moisture_pct / 100, 1 - moisture_pct / 100
-    sio2 = P("rendemen.sio2_fraction_of_ash")
+    sio2 = (sio2_pct_ash / 100.0) if sio2_pct_ash is not None else P("rendemen.sio2_fraction_of_ash")
+    hhv = hhv_db_mj_kg if hhv_db_mj_kg is not None else P("karbon.husk_hhv_mj_kg")
     # Lini pellet: keringkan ke kadar air produk (tidak menambah air bila sudah lebih kering)
     m_p = P("pabrik.pellet_moisture_pct") / 100
     pellet_wet = s_p * dry / (1 - m_p) if m > m_p else s_p
@@ -93,7 +97,7 @@ def process_yields(moisture_pct: float, ash_pct_db: float, temp_c: float | None 
     eff_x = P("pabrik.silica_eff_ash") if route == "abu_pembakaran" else P("pabrik.silica_eff_direct")
     silica_x = ash_x * sio2 * eff_x if s_x else 0.0
     combustion_gas = s_x * dry - ash_x                          # bahan organik kering → CO₂ + H₂O (+ panas)
-    heat_mj = s_x * dry * P("karbon.husk_hhv_mj_kg") * P("limbah.eta_boiler_heat") if route == "abu_pembakaran" else 0.0
+    heat_mj = s_x * dry * hhv * P("limbah.eta_boiler_heat") if route == "abu_pembakaran" else 0.0
     # Lini pirolisis: seluruh air & volatil keluar; char = bahan kering × rendemen Engine ②
     feed = 1 - s_p - s_x
     y = biochar_yield_db(temp_c, ash_pct_db) / 100
@@ -139,6 +143,7 @@ def fixed_cost_per_month() -> dict[str, float]:
 
 
 class PricingRequest(BaseModel):
+    commodity_code: str | None = Field(None, max_length=24, description="Kode komoditas (mis. sekam_padi, tempurung_kelapa, serbuk_sengon)")
     moisture: float = Field(..., ge=0, le=60, description="% basis basah")
     ash: float = Field(18.0, ge=0, le=60, description="% basis kering")
     contamination: float = Field(0, ge=0, le=50)
@@ -147,6 +152,8 @@ class PricingRequest(BaseModel):
     silica_share: float | None = Field(None, ge=0, le=1, description="Jalur biochar: porsi char diekstrak")
     silica_route: str | None = Field(None, pattern="^(biochar|abu_pembakaran|sekam_langsung)$")
     silica_husk_share: float | None = Field(None, ge=0, le=1, description="Jalur abu / sekam langsung")
+    sio2_pct_ash: float | None = Field(None, ge=0, le=100)
+    hhv_db_mj_kg: float | None = Field(None, gt=5, lt=35)
     price_pellet_per_kg: float | None = Field(None, ge=0, le=100_000, description="Kosong = dari menu Parameter")
     price_biochar_per_kg: float | None = Field(None, ge=0, le=100_000)
     price_silica_per_kg: float | None = Field(None, ge=0, le=500_000)
@@ -157,8 +164,17 @@ class PricingRequest(BaseModel):
                 "bio_silika": self.price_silica_per_kg}
 
     def route_kw(self) -> dict:
+        sio2 = self.sio2_pct_ash
+        hhv = self.hhv_db_mj_kg
+        if self.commodity_code and self.commodity_code in _SEED_LOOKUP:
+            seed = _SEED_LOOKUP[self.commodity_code]
+            if sio2 is None:
+                sio2 = seed.get("sio2_pct_ash")
+            if hhv is None:
+                hhv = seed.get("hhv_db_mj_kg")
         return {"temp_c": self.pyrolysis_temp_c, "pellet_share": self.pellet_share, "silica_share": self.silica_share,
-                "silica_route": self.silica_route, "silica_husk_share": self.silica_husk_share}
+                "silica_route": self.silica_route, "silica_husk_share": self.silica_husk_share,
+                "sio2_pct_ash": sio2, "hhv_db_mj_kg": hhv}
 
 
 def _price_point(moisture, ash, contamination, pr: dict, **kw) -> dict:

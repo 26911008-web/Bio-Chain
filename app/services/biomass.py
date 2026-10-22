@@ -36,7 +36,6 @@ def _iso(d):
     return _aware(d).isoformat() if d else None
 
 
-# ---------------------------------------------------------------- master biomassa
 def biomass_dict(b: BiomassParameter) -> dict:
     out = {c.name: getattr(b, c.name) for c in BiomassParameter.__table__.columns}
     out["updated_at"] = _iso(b.updated_at)
@@ -152,7 +151,8 @@ def base_price_for(b: BiomassParameter) -> float | None:
     """Harga beli dasar Rp/kg. Sekam: parameter lama harga_mutu.base_price_per_kg bila master belum diisi."""
     if b.base_price_per_kg is not None:
         return b.base_price_per_kg
-    return P("harga_mutu.base_price_per_kg") if b.code == "sekam_padi" else None
+    val = P("harga_mutu.base_price_per_kg")
+    return float(val) if (b.code == "sekam_padi" and val is not None) else None
 
 
 # ---------------------------------------------------------------- gudang pengepul

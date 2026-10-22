@@ -42,8 +42,23 @@ async def set_consents(req: ConsentRequest, user: Annotated[User, Depends(get_cu
 
 
 @router.get("/data-export")
-async def data_export(user: Annotated[User, Depends(get_current_user)], db: Annotated[AsyncSession, Depends(get_db)]):
+async def data_export(
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    format: str = "json",
+):
     data = await privacy.export_data(db, user)
+    if format.lower() == "docx":
+        from fastapi import Response
+        docx_bytes = privacy.export_data_docx(data)
+        return Response(
+            content=docx_bytes,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={
+                "Content-Disposition": f'attachment; filename="biochain-data-saya-{user.id}.docx"',
+                "Cache-Control": "no-store",
+            },
+        )
     return JSONResponse(data, headers={"Content-Disposition": f'attachment; filename="biochain-data-saya-{user.id}.json"',
                                        "Cache-Control": "no-store"})
 

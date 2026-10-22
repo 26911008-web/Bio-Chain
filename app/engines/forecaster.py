@@ -10,18 +10,44 @@ Referensi:
 """
 
 import math
-from pydantic import BaseModel, Field
+from datetime import datetime, date
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ..params import P
 
 class ForecastInput(BaseModel):
-    harvest_area_ha: float = Field(..., gt=0, description="Luas panen total (ha)")
-    month: int = Field(..., ge=1, le=12, description="Bulan target prediksi")
-    year: int = Field(..., ge=2024, le=2035)
+    model_config = ConfigDict(extra="ignore")
+
+    harvest_area_ha: float | None = Field(None, gt=0, description="Luas panen total (ha)")
+    month: int | None = Field(None, ge=1, le=12, description="Bulan target prediksi")
+    year: int | None = Field(None, ge=2020, le=2035)
     historical_avg_ton: float | None = Field(
         None, ge=0,
         description="Rata-rata pasokan bulanan historis (ton)"
     )
+    date: str | None = Field(None, description="Tanggal acuan prediksi (YYYY-MM-DD)")
+
+    @model_validator(mode="before")
+    @classmethod
+    def populate_defaults(cls, data: any):
+        if isinstance(data, dict):
+            now = datetime.now()
+            if data.get("date"):
+                try:
+                    d = date.fromisoformat(str(data["date"])[:10])
+                    if not data.get("month"):
+                        data["month"] = d.month
+                    if not data.get("year"):
+                        data["year"] = d.year
+                except Exception:
+                    pass
+            if not data.get("month"):
+                data["month"] = now.month
+            if not data.get("year"):
+                data["year"] = max(2024, now.year)
+            if not data.get("harvest_area_ha"):
+                data["harvest_area_ha"] = float(P("proyeksi.harvest_area_ha", 50.0) or 50.0)
+        return data
 
 
 class ForecastResult(BaseModel):

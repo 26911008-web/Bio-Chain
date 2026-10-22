@@ -18,7 +18,7 @@ from typing import Any
 from .config import settings
 
 GROUPS = {
-    "harga_mutu": "Harga & Mutu Sekam",
+    "harga_mutu": "Harga & Mutu Biomassa",
     "rendemen": "Model Rendemen Biochar",
     "sirkular": "Mass Balance & Ekonomi Sirkular",
     "logistik": "Logistik & Rute",
@@ -92,7 +92,7 @@ _SRC_PHYLLIS = "Nilai tipikal literatur (Phyllis2 ECN/TNO; Vassilev 2010) — ga
 
 DEFS: list[ParamDef] = [
     # ---------------- Harga & mutu sekam (Engine ② + verifikasi pengepul)
-    _n("harga_mutu.base_price_per_kg", "Harga dasar sekam", settings.BASE_PRICE_PER_KG, "Rp/kg", 1, 10_000,
+    _n("harga_mutu.base_price_per_kg", "Harga dasar biomassa", settings.BASE_PRICE_PER_KG, "Rp/kg", 1, 10_000,
        "Harga sebelum pengali grade (pembelian non-lelang)."),
     _n("harga_mutu.mult_A", "Pengali harga Grade A", 1.15, "×", 0, 3),
     _n("harga_mutu.mult_B", "Pengali harga Grade B", 1.05, "×", 0, 3),
@@ -136,7 +136,7 @@ DEFS: list[ParamDef] = [
     _n("sirkular.estimate_tolerance_pct", "Toleransi taksiran petani vs timbangan", settings.ESTIMATE_TOLERANCE_PCT,
        "%", 0, 100),
     _n("sirkular.farmer_return_share", "Porsi biochar dikembalikan ke petani", settings.BIOCHAR_FARMER_RETURN_SHARE,
-       "fraksi", 0, 1, "Dibagi proporsional berat sekam yang diterima pabrik."),
+       "fraksi", 0, 1, "Dibagi proporsional berat biomassa yang diterima pabrik."),
     # ---------------- Logistik
     _n("logistik.road_factor", "Faktor jalan (jarak jalan ÷ jarak lurus)", 1.3, "×", 1, 3,
        "Ganti dengan rasio aktual dari OSRM/GPS armada."),
@@ -182,9 +182,9 @@ DEFS: list[ParamDef] = [
     _n("pasar.farmer_payment_due_days", "Batas waktu bayar petani", 3, "hari", 0, 60,
        "Lot terverifikasi yang belum dibayar melewati batas ini ditandai 'terlambat' di menu Pembayaran petani."),
     # ---------------- Karbon
-    ParamDef("karbon.price_per_tco2_rp", "Harga pasar karbon / NEK", None, "Rp/tCO₂e", 0, 10_000_000,
-             help="Wajib diisi; dasar penilaian nilai ekonomi karbon. Contoh IDXCarbon: Rp 69.000–300.000/tCO₂e.",
-             source="Pasar karbon / IDXCarbon", required_input=True),
+    ParamDef("karbon.price_per_tco2_rp", "Harga pasar karbon / NEK", 150_000.0, "Rp/tCO₂e", 0, 10_000_000,
+             help="Dasar penilaian nilai ekonomi karbon. Contoh IDXCarbon: Rp 69.000–300.000/tCO₂e.",
+             source="Pasar karbon / IDXCarbon", required_input=False),
     _n("karbon.coal_ef_kg_co2_per_gj", "Faktor emisi batubara", 96.1, "kgCO₂/GJ", 50, 150,
        source="IPCC 2006 Vol.2 Ch.2 (sub-bituminous)"),
     _n("karbon.husk_hhv_mj_kg", "Nilai kalor sekam (basis kering)", 13.5, "MJ/kg", 5, 25),
@@ -354,13 +354,12 @@ DEFS: list[ParamDef] = [
 # ---------------- Pabrik & biaya produksi (Fase 3). Harga jual = asumsi pasar, WAJIB diganti harga kontrak aktual.
 _PB = "pabrik"
 DEFS += [
-    # Harga jual = INPUT wajib (tanpa angka bawaan): isi dengan harga kontrak/pasar aktual
     ParamDef(f"{_PB}.price_biochar_per_kg", "Harga jual biochar", None, "Rp/kg", 0, 100_000, required_input=True,
-             help="Wajib diisi — harga kontrak/pasar aktual. Tanpa ini harga beli & biaya per produk tidak dihitung."),
+             help="Harga jual biochar (Rp/kg). Wajib diisi kontrak penjualan."),
     ParamDef(f"{_PB}.price_pellet_per_kg", "Harga jual bio-pellet", None, "Rp/kg", 0, 100_000, required_input=True,
-             help="Wajib diisi — harga kontrak/pasar aktual."),
+             help="Harga jual bio-pellet (Rp/kg). Wajib diisi kontrak penjualan."),
     ParamDef(f"{_PB}.price_silica_per_kg", "Harga jual bio-silika", None, "Rp/kg", 0, 500_000, required_input=True,
-             help="Wajib diisi — harga kontrak/pasar aktual (sesuai kemurnian produk)."),
+             help="Harga jual bio-silika (Rp/kg). Wajib diisi kontrak penjualan."),
     _n(f"{_PB}.pellet_share", "Porsi sekam ke lini pellet", 0.30, "fraksi", 0, 1,
        "Sisanya masuk pirolisis. Dapat ditimpa per batch."),
     ParamDef(f"{_PB}.silica_route", "Jalur produksi bio-silika", "biochar", kind="choice", options=(
@@ -395,7 +394,7 @@ DEFS += [
     _n(f"{_PB}.operating_hours_per_month", "Jam operasi per bulan", 416.0, "jam", 1, 744),
     _n(f"{_PB}.other_fixed_cost_per_month", "Biaya tetap lain per bulan", 60_000_000.0, "Rp/bulan", 0, 1e11,
        "Gaji tetap, sewa, asuransi, perawatan terjadwal."),
-    _n(f"{_PB}.planned_input_ton_per_month", "Rencana sekam diolah per bulan", 300.0, "ton/bulan", 1, 1_000_000),
+    _n(f"{_PB}.planned_input_ton_per_month", "Rencana biomassa diolah per bulan", 300.0, "ton/bulan", 1, 1_000_000),
     _n(f"{_PB}.target_margin_pct", "Margin target", 15.0, "% nilai produk", 0, 90),
     _n(f"{_PB}.reference_moisture_pct", "Kadar air acuan harga", 11.0, "% bb", 0, 60,
        "Harga kontrak disetarakan basis kering terhadap kadar air ini."),
@@ -415,7 +414,7 @@ DEFS += [
     _n("evaluasi.grade_a_share_min_pct", "Porsi Grade A minimum (petani)", 60.0, "% lot", 0, 100),
     _n("evaluasi.collector_outstanding_max_pct", "Piutang pabrik maksimum (pengepul)", 30.0, "% tagihan", 0, 100,
        "Tagihan ke pabrik yang belum dibayar dibanding total tagihan pada jendela evaluasi."),
-    _n("evaluasi.reject_max_pct", "Porsi sekam ditolak maksimum", 5.0, "% berat", 0, 100),
+    _n("evaluasi.reject_max_pct", "Porsi biomassa ditolak maksimum", 5.0, "% berat", 0, 100),
     _n("evaluasi.stop_success_min_pct", "Keberhasilan stop penjemputan minimum", 90.0, "% stop", 0, 100,
        "Stop dijemput dibanding stop dijemput + gagal (supir)."),
     _n("evaluasi.vehicle_utilization_min_pct", "Utilisasi bak truk minimum", 85.0, "% volume", 0, 100,
@@ -461,7 +460,7 @@ DEFS += [
     _n("biochar_sawah.rate_recommended_max_t_ha", "Dosis anjuran maksimum", 2.0, "t/ha", 0, 50,
        "Dosis kecil lebih ekonomis untuk biochar terbatas; sebarkan merata ke lebih banyak lahan/musim."),
     _n("evaluasi.plant_capacity_min_pct", "Pemenuhan rencana input pabrik minimum", 80.0, "% rencana", 0, 200,
-       "Sekam diterima per bulan dibanding parameter Pabrik → Rencana sekam diolah per bulan."),
+       "Sekam diterima per bulan dibanding parameter Pabrik → Rencana biomassa diolah per bulan."),
 ]
 REGISTRY: dict[str, ParamDef] = {d.key: d for d in DEFS}
 
@@ -471,10 +470,13 @@ _loaded_at = 0.0
 REFRESH_S = 30.0
 
 
-def P(key: str) -> Any:
+def P(key: str, default: Any = None) -> Any:
     """Nilai parameter aktif (dari DB bila pernah diubah, selain itu default)."""
-    d = REGISTRY[key]
-    return _values.get(key, d.default)
+    d = REGISTRY.get(key)
+    if d is None:
+        return default
+    val = _values.get(key, d.default)
+    return val if val is not None else default
 
 
 class ParamError(ValueError):

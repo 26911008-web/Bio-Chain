@@ -60,6 +60,10 @@ class BiomassParameter(Base):
     moisture_ref_pct = Column(Double, nullable=False)
     moisture_reject_pct = Column(Double, nullable=False)
     contaminant_tol_pct = Column(Double, nullable=False, default=2.0, server_default="2")
+    # Logam berat (Heavy Metals) - Standar EBC / IBI / Kementan
+    pb_ppm = Column(Double, default=5.0)   # Timbal (Batas aman < 50 ppm)
+    cd_ppm = Column(Double, default=0.2)   # Kadmium (Batas aman < 2 ppm)
+    as_ppm = Column(Double, default=1.0)   # Arsenik (Batas aman < 10 ppm)
     base_price_per_kg = Column(Double, nullable=True)        # harga beli dasar — WAJIB diisi pabrik (tanpa bawaan)
     source = Column(Text, nullable=False)
     updated_by_id = Column(Integer, ForeignKey("users.id"))
@@ -179,6 +183,25 @@ class IndustrialAshLedger(Base):
     disposal_note = Column(Text)
     created_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, default=_now, server_default=func.now())
+
+
+class FeedstockParameter(Base):
+    __tablename__ = "feedstock_parameters"
+
+    code = Column(String(30), primary_key=True)
+    name = Column(String(100), nullable=False)
+    moisture_typical_pct = Column(Double, nullable=False)
+    ash_typical_pct = Column(Double, nullable=False)
+    lhv_typical_kcal_kg = Column(Double, nullable=False)
+    bulk_density_kg_m3 = Column(Double, nullable=False, default=150.0)
+    sio2_pct_ash = Column(Double, default=0.0)
+    k2o_pct_ash = Column(Double, default=0.0)
+    pb_max_ppm = Column(Double, nullable=False, default=50.0)
+    cd_max_ppm = Column(Double, nullable=False, default=2.0)
+    as_max_ppm = Column(Double, nullable=False, default=10.0)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+
 
 
 @event.listens_for(BiomassParameter.__table__, "after_create")

@@ -13,8 +13,16 @@ build/
 
 # Environment
 .env
+.env.*
+!.env.example
 .venv/
 venv/
+
+# Node & Frontend Tools
+node_modules/
+.next/
+jscpd-report/
+repomix-output.*
 
 # IDE
 .vscode/
@@ -27,6 +35,7 @@ pgdata/
 .pytest_cache/
 htmlcov/
 .coverage
+scratch/
 
 # OS
 .DS_Store

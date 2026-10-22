@@ -197,14 +197,26 @@ async def farmer_overview(db: AsyncSession, farmer: User) -> dict:
             days = (now - ver).days if ver else None
             dp = dps.get(h.id)
             dp_amt = Decimal(dp.amount_rp) if dp is not None and dp.status == "aktif" else Decimal(0)
-            waiting.append({"harvest_id": h.id, "collector_name": collector_name, "verified_kg": h.verified_kg,
-                            "grade": _v(h.grade) if h.grade else None, "gross_rp": int(gross),
-                            "dp_rp": int(dp_amt), "net_rp": int(max(Decimal(0), gross - tax - dp_amt)),
-                            "verified_at": ver.isoformat() if ver else None, "days_waiting": days,
-                            "late": days is not None and days > due})
+            waiting.append({
+                "harvest_id": h.id, "collector_name": collector_name, "verified_kg": h.verified_kg,
+                "grade": _v(h.grade) if h.grade else None, "gross_rp": int(gross),
+                "dp_rp": int(dp_amt), "net_rp": int(max(Decimal(0), gross - tax - dp_amt)),
+                "verified_at": ver.isoformat() if ver else None, "days_waiting": days,
+                "late": days is not None and days > due,
+                "origin_qr_code": getattr(h, "origin_qr_code", None) or h.qr_code or f"WR-HV-{h.id:04d}",
+                "commodity": h.commodity or "sekam_padi",
+                "commodity_name": (h.commodity or "sekam_padi").replace("_", " ").title(),
+                "receipt_code": None,
+                "dp_receipt_code": dp.receipt_code if dp else None,
+            })
         elif _v(h.status) == HarvestStatus.REPORTED.value:
-            unweighed.append({"harvest_id": h.id, "quantity_kg": h.quantity_kg, "collector_name": collector_name,
-                              "reported_at": h.reported_at.isoformat() if h.reported_at else None})
+            unweighed.append({
+                "harvest_id": h.id, "quantity_kg": h.quantity_kg, "collector_name": collector_name,
+                "reported_at": h.reported_at.isoformat() if h.reported_at else None,
+                "origin_qr_code": getattr(h, "origin_qr_code", None) or h.qr_code or f"WR-HV-{h.id:04d}",
+                "commodity": h.commodity or "sekam_padi",
+                "commodity_name": (h.commodity or "sekam_padi").replace("_", " ").title(),
+            })
     return {
         "down_payments": [dp_dict(d) for d in sorted(dps.values(), key=lambda x: -x.id)][:50],
         "due_days": due,

@@ -29,7 +29,14 @@
     ${canWrite() ? `<section class="card" aria-labelledby="fx-br-title">
       <div class="card-header"><div><h3 class="card-title" id="fx-br-title">♻️ Serah-terima Biochar ke Petani</h3>
         <p class="card-sub">Pengajuan petani untuk sawah. Dompet petani baru berkurang saat karung diserahkan.</p></div></div>
-      <div id="fx-br"><p class="muted">Memuat…</p></div></section>` : ""}
+      <div id="fx-br"><p class="muted">Memuat…</p></div></section>
+
+    <section class="card" aria-labelledby="fx-bd-title">
+      <div class="card-header"><div><h3 class="card-title" id="fx-bd-title">🚚 Surat Jalan Muatan Balik Biochar (Pabrik ➔ Pengepul / Driver)</h3>
+        <p class="card-sub">Pabrik menerbitkan surat jalan biochar muatan balik agar armada tidak pulang kosong. Pengangkutan terlacak via QR checkpoint supir.</p></div>
+        <button type="button" class="btn btn-primary btn-sm" id="btn-fx-dispatch-biochar">➕ Terbitkan Surat Jalan Biochar</button>
+      </div>
+      <div id="fx-bd-list"><p class="muted">Memuat riwayat surat jalan…</p></div></section>` : ""}
 
     <section class="card" aria-labelledby="fx-bm-title">
       <div class="card-header"><div><h3 class="card-title" id="fx-bm-title">🌾 Master Multi-Biomassa</h3>
@@ -64,6 +71,51 @@
       </div>
       <button type="button" class="btn btn-primary btn-sm" id="fx-cv-go">⚡ Hitung</button>
       <div id="fx-cv-out" style="margin-top:12px;"></div></section>
+
+    <section class="card" aria-labelledby="fx-opt-title" id="fx-opt-card">
+      <div class="card-header"><div><h3 class="card-title" id="fx-opt-title">🎯 Prototipe 4 — Optimasi Multi-Biomassa ke Produk Akhir</h3>
+        <p class="card-sub">Evaluasi komprehensif &amp; alokasi LP stok pabrik: konversi aneka biomassa menjadi <b>Bio-Pellet, Briket, Biochar, dan Bio-Silika</b> (neraca massa, SEC/IKE, margin Rp, karbon tCO₂e, kepatuhan SNI/ISO).</p></div>
+        <div style="display:flex; gap:6px;">
+          <button type="button" class="btn btn-primary btn-sm" id="fx-opt-tab-eval">🔍 Evaluasi Lot</button>
+          <button type="button" class="btn btn-secondary btn-sm" id="fx-opt-tab-alloc">⚙️ Alokasi Stok Pabrik</button>
+        </div>
+      </div>
+
+      <!-- Mode 1: Evaluasi Umpan Spesifik -->
+      <div id="fx-opt-view-eval" style="margin-top:8px;">
+        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:8px;">
+          <div class="form-group"><label for="fx-opt-com">Komoditas biomassa</label><select id="fx-opt-com"></select></div>
+          <div class="form-group"><label for="fx-opt-kg">Jumlah umpan (kg)</label><input id="fx-opt-kg" type="number" min="100" step="500" value="10000"></div>
+          <div class="form-group"><label for="fx-opt-mc">MC aktual (%)</label><input id="fx-opt-mc" type="number" min="0" max="90" step="0.5" placeholder="tipikal"></div>
+          <div class="form-group"><label for="fx-opt-price">Harga beli (Rp/kg)</label><input id="fx-opt-price" type="number" min="0" step="10" placeholder="dasar komoditas"></div>
+        </div>
+        <button type="button" class="btn btn-primary btn-sm" id="fx-opt-eval-go" style="margin-top:6px;">⚡ Evaluasi 4 Produk Akhir</button>
+        <div id="fx-opt-eval-out" style="margin-top:12px;"></div>
+      </div>
+
+      <!-- Mode 2: Solver Alokasi Stok Pabrik -->
+      <div id="fx-opt-view-alloc" style="display:none; margin-top:8px;">
+        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:8px;">
+          <div class="form-group"><label for="fx-opt-obj">Tujuan optimasi (LP Objective)</label>
+            <select id="fx-opt-obj">
+              <option value="max_profit">💰 Maksimal Keuntungan / Margin (Rp)</option>
+              <option value="max_energy">⚡ Maksimal Output Energi Bersih (GJ)</option>
+              <option value="max_carbon">🌱 Maksimal Net Carbon Sink (tCO₂e)</option>
+              <option value="balanced">⚖️ Seimbang (Multi-Kriteria)</option>
+            </select>
+          </div>
+          <div class="form-group" style="grid-column:span 2;"><label class="kpi-lbl">Batas Kapasitas Mesin Pabrik (kg produk/bulan)</label>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; font-size:12px; margin-top:4px;" id="fx-opt-caps-inputs">
+              <!-- diisi dari config -->
+            </div>
+          </div>
+        </div>
+        <h4 style="margin:12px 0 4px;">Inventori Stok Biomassa Pabrik</h4>
+        <div id="fx-opt-alloc-stocks" class="table-scroll"><p class="muted">Memuat stok...</p></div>
+        <button type="button" class="btn btn-primary btn-sm" id="fx-opt-alloc-go" style="margin-top:8px;">🎯 Jalankan Solver Alokasi HiGHS</button>
+        <div id="fx-opt-alloc-out" style="margin-top:12px;"></div>
+      </div>
+    </section>
 
     <section class="card" aria-labelledby="fx-sec-title">
       <div class="card-header"><div><h3 class="card-title" id="fx-sec-title">📈 Prototipe 3 — Pemantauan SEC/IKE &amp; Deteksi Anomali</h3>
@@ -154,6 +206,114 @@
           </tbody></table></div>`
         : emptyState("♻️", "Tidak ada pengajuan", "Pengajuan biochar dari petani muncul di sini.");
     } catch (e) { box.innerHTML = `<div class="banner banner-error" role="alert">⚠️ ${H(e.message)}</div>`; }
+  }
+
+  async function loadBiocharDispatches() {
+    const box = $("fx-bd-list");
+    if (!box) return;
+    try {
+      const rows = await api("/api/v1/factory/biochar-dispatches");
+      if (!rows.length) {
+        box.innerHTML = emptyState("🚚", "Belum ada surat jalan biochar", "Pabrik dapat menerbitkan muatan balik biochar untuk diantar armada ke sawah petani.");
+        return;
+      }
+      const groups = {};
+      rows.forEach(r => {
+        const meta = (typeof window.getMonthYearMeta === "function")
+          ? window.getMonthYearMeta(r.created_at)
+          : { key: "2026-10", label: "Oktober 2026" };
+        if (!groups[meta.key]) groups[meta.key] = { meta, items: [], totalKg: 0, totalBags: 0 };
+        groups[meta.key].items.push(r);
+        groups[meta.key].totalKg += (Number(r.total_weight_kg) || 0);
+        groups[meta.key].totalBags += (Number(r.total_bags) || 0);
+      });
+      const sortedKeys = Object.keys(groups).sort().reverse();
+      box.innerHTML = `<div class="table-scroll"><table class="data-table"><thead><tr><th>No. Surat Jalan</th><th>Pengepul</th>
+          <th class="num">Berat (kg)</th><th class="num">Karung</th><th>Plat Armada</th><th>Status</th><th>QR Checkpoint</th></tr></thead><tbody>
+          ${sortedKeys.map(k => {
+            const g = groups[k];
+            return `
+              <tr class="group-header-row" style="background:var(--surface-2); font-weight:700;">
+                <td colspan="7" style="padding:10px 14px; border-top:2px solid var(--border); color:var(--ink);">
+                  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                      <span style="font-size:1.05rem;">📅 ${H(g.meta.label)}</span>
+                      <span class="badge badge-purple">${g.items.length} Surat Jalan</span>
+                      <span class="badge badge-green">${num(g.totalKg, 0)} kg (${num(g.totalKg/1000, 2)} Ton)</span>
+                      <span class="badge badge-blue">${num(g.totalBags, 0)} Karung</span>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+              ${g.items.map(r => `<tr>
+                <td><b>${H(r.dispatch_code)}</b><br><span class="kpi-lbl">${H((r.created_at || "").slice(0, 10))}</span></td>
+                <td>${H(r.collector_name)}</td>
+                <td class="num"><b>${num(r.total_weight_kg, 1)}</b></td>
+                <td class="num">${Number(r.total_bags || 0)}</td>
+                <td><code>${H(r.vehicle_plate || "-")}</code></td>
+                <td><span class="badge ${r.status === "DELIVERED_TO_FARMER" ? "badge-green" : "badge-blue"}">${H(r.status)}</span></td>
+                <td><button type="button" class="btn btn-secondary btn-sm" data-fx-dsp-qr="${H(r.qr_dispatch_token)}" data-fx-dsp-code="${H(r.dispatch_code)}" data-fx-dsp-kg="${num(r.total_weight_kg, 0)}">Tampilkan QR</button></td>
+              </tr>`).join("")}
+            `;
+          }).join("")}
+          </tbody></table></div>`;
+    } catch (e) { box.innerHTML = `<div class="banner banner-error" role="alert">⚠️ ${H(e.message)}</div>`; }
+  }
+
+  function openBiocharDispatchModal() {
+    const d = document.createElement("dialog");
+    d.className = "ui-confirm";
+    d.innerHTML = `<form method="dialog" style="max-width:440px;">
+      <h3>🚚 Terbitkan Surat Jalan Muatan Balik Biochar</h3>
+      <p class="ui-confirm-body">Muatan balik biochar mengoptimalkan utilisasi armada dan mewujudkan rantai pasok sirkular (ZONA 5B ➔ ZONA 4).</p>
+      <div class="form-group"><label for="fx-bd-col">Pengepul Mitra</label>
+        <select id="fx-bd-col" required>
+          <option value="2">UD Sekam Berkah (#2)</option>
+          <option value="3">UD Jagung Makmur (#3)</option>
+          <option value="11">UD Kayu Lestari (#11)</option>
+          <option value="12">UD Tebu Barokah (#12)</option>
+        </select></div>
+      <div class="form-group"><label for="fx-bd-drv">Supir / Driver Ditugaskan</label>
+        <select id="fx-bd-drv" required>
+          <option value="4">Budi Santoso - Driver (#4)</option>
+          <option value="13">Joko Widodo - Driver (#13)</option>
+        </select></div>
+      <div class="form-group"><label for="fx-bd-plate">Nomor Plat Truk</label>
+        <input id="fx-bd-plate" required value="AB 8888 XY" maxlength="20"></div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+        <div class="form-group"><label for="fx-bd-kg">Total Berat (kg)</label>
+          <input id="fx-bd-kg" type="number" min="50" max="20000" step="25" value="500" required></div>
+        <div class="form-group"><label for="fx-bd-bags">Jumlah Karung (sak)</label>
+          <input id="fx-bd-bags" type="number" min="1" max="1000" step="1" value="20" required></div>
+      </div>
+      <div class="form-group"><label for="fx-bd-inst">Instruksi Muat &amp; Penurunan</label>
+        <input id="fx-bd-inst" value="Antar ke sawah binaan petani kelompok tani mitra" maxlength="250"></div>
+      <div class="ui-confirm-actions">
+        <button value="no" class="btn btn-secondary" formnovalidate>Batal</button>
+        <button value="yes" class="btn btn-primary">Terbitkan &amp; Buat QR</button>
+      </div></form>`;
+    document.body.appendChild(d);
+    d.addEventListener("close", async () => {
+      if (d.returnValue === "yes") {
+        try {
+          const colId = Number(d.querySelector("#fx-bd-col").value);
+          const drvId = Number(d.querySelector("#fx-bd-drv").value);
+          const plate = d.querySelector("#fx-bd-plate").value.trim();
+          const kg = Number(d.querySelector("#fx-bd-kg").value);
+          const bags = Number(d.querySelector("#fx-bd-bags").value);
+          const inst = d.querySelector("#fx-bd-inst").value.trim();
+          const r = await api("/api/v1/factory/dispatch-biochar", {
+            method: "POST",
+            body: { collector_id: colId, driver_id: drvId, vehicle_plate: plate, total_weight_kg: kg, total_bags: bags, loading_instructions: inst }
+          });
+          showToast(r.message, "✅");
+          openModal("Surat Jalan Muatan Balik Biochar", r.qr_dispatch_token, `${r.dispatch_code} · ${num(r.total_weight_kg, 0)} kg biochar (${r.total_bags} karung)`);
+          loadBiocharDispatches();
+        } catch (err) { showToast(err.message, "❌"); }
+      }
+      d.remove();
+    });
+    d.showModal();
   }
 
   async function loadCharges() {
@@ -687,6 +847,252 @@
     }, "⏳");
   }
 
+  // ---------------------------------------------------------------- Prototipe 4: Optimasi Multi-Biomassa ke Produk Akhir
+  let optConfig = null;
+  const GRADE_BADGE = { S: "badge-green", A: "badge-green", B: "badge-blue", C: "badge-amber", D: "badge-red" };
+  const PROD_ICONS = { bio_pellet: "🪵", briket: "⬛", biochar: "🪴", bio_silika: "🧪" };
+
+  async function initProductOptimization() {
+    if (!$("fx-opt-card")) return;
+    try {
+      optConfig = await api("/api/v1/factory/optimization/config");
+      if (!bmCache.length) bmCache = await api("/api/v1/biomass");
+
+      const tabEval = $("fx-opt-tab-eval"), tabAlloc = $("fx-opt-tab-alloc");
+      const viewEval = $("fx-opt-view-eval"), viewAlloc = $("fx-opt-view-alloc");
+      if (tabEval && tabAlloc && viewEval && viewAlloc) {
+        tabEval.onclick = () => {
+          tabEval.className = "btn btn-primary btn-sm"; tabAlloc.className = "btn btn-secondary btn-sm";
+          viewEval.style.display = "block"; viewAlloc.style.display = "none";
+        };
+        tabAlloc.onclick = () => {
+          tabAlloc.className = "btn btn-primary btn-sm"; tabEval.className = "btn btn-secondary btn-sm";
+          viewAlloc.style.display = "block"; viewEval.style.display = "none";
+        };
+      }
+
+      if ($("fx-opt-com")) {
+        $("fx-opt-com").innerHTML = bmCache.map(b => `<option value="${H(b.code)}">${H(b.name)}</option>`).join("");
+        $("fx-opt-com").onchange = () => {
+          const item = bmCache.find(x => x.code === $("fx-opt-com").value);
+          if (item) {
+            if (item.moisture_typ_pct != null) $("fx-opt-mc").value = item.moisture_typ_pct;
+            if (item.base_price_per_kg != null) $("fx-opt-price").value = item.base_price_per_kg;
+          }
+        };
+        const first = bmCache[0];
+        if (first) {
+          if (first.moisture_typ_pct != null) $("fx-opt-mc").value = first.moisture_typ_pct;
+          if (first.base_price_per_kg != null) $("fx-opt-price").value = first.base_price_per_kg;
+        }
+      }
+      if ($("fx-opt-eval-go")) $("fx-opt-eval-go").onclick = runProductEvaluation;
+
+      const capsBox = $("fx-opt-caps-inputs");
+      if (capsBox && optConfig && optConfig.capacities) {
+        capsBox.innerHTML = Object.entries(optConfig.capacities).map(([p, cap]) => {
+          const pInfo = (optConfig.products || {})[p] || {};
+          return `<div style="display:inline-flex; align-items:center; gap:4px; margin-right:8px;">
+            <span>${PROD_ICONS[p] || ""} <b>${H(pInfo.name || p)}</b>:</span>
+            <input type="number" min="0" step="5000" id="fx-opt-cap-${H(p)}" value="${Number(cap)}" style="width:90px;" class="btn btn-secondary btn-sm"> kg
+          </div>`;
+        }).join("");
+      }
+
+      renderAllocStocks();
+      if ($("fx-opt-alloc-go")) $("fx-opt-alloc-go").onclick = runProductAllocation;
+
+      runProductEvaluation();
+    } catch (e) {
+      console.warn("Product optimization init error:", e);
+    }
+  }
+
+  function renderAllocStocks() {
+    const box = $("fx-opt-alloc-stocks");
+    if (!box) return;
+    const defaults = { sekam_padi: 25000, serbuk_kayu: 20000, tempurung_kelapa: 15000, tongkol_jagung: 10000, bagasse_tebu: 10000 };
+    box.innerHTML = `<table class="data-table"><thead><tr>
+      <th>Pakai</th><th>Komoditas Biomassa</th><th class="num">Stok Umpan (kg)</th>
+      <th class="num">MC (%)</th><th class="num">Harga Beli (Rp/kg)</th><th class="num">Abu (% bk)</th>
+    </tr></thead><tbody>${bmCache.map(b => {
+      const defKg = defaults[b.code] || 5000;
+      return `<tr>
+        <td><input type="checkbox" data-opt-stk-use="${H(b.code)}" ${defaults[b.code] ? "checked" : ""} aria-label="Gunakan stok ${H(b.name)}"></td>
+        <td><b>${H(b.name)}</b><br><span class="kpi-lbl">${H(b.code)}</span></td>
+        <td class="num"><input type="number" min="0" step="500" data-opt-stk-kg="${H(b.code)}" value="${defKg}" style="width:110px;" class="btn btn-secondary btn-sm"></td>
+        <td class="num"><input type="number" min="0" max="90" step="0.5" data-opt-stk-mc="${H(b.code)}" value="${Number(b.moisture_typ_pct || 14)}" style="width:75px;" class="btn btn-secondary btn-sm"></td>
+        <td class="num"><input type="number" min="0" step="10" data-opt-stk-price="${H(b.code)}" value="${H(b.base_price_per_kg ?? 350)}" style="width:85px;" class="btn btn-secondary btn-sm"></td>
+        <td class="num">${num(b.ash_pct_db, 1)}%</td>
+      </tr>`;
+    }).join("")}</tbody></table>`;
+  }
+
+  function getSelectedAllocStocks() {
+    return [...document.querySelectorAll("[data-opt-stk-use]:checked")].map(cb => {
+      const code = cb.dataset.optStkUse;
+      const getVal = (prefix) => {
+        const el = document.querySelector(`[data-opt-stk-${prefix}="${CSS.escape(code)}"]`);
+        return el ? el.value : "";
+      };
+      return {
+        code,
+        stock_kg: Number(getVal("kg")) || 0,
+        moisture_pct: getVal("mc") === "" ? null : Number(getVal("mc")),
+        purchase_price_per_kg: getVal("price") === "" ? null : Number(getVal("price"))
+      };
+    }).filter(s => s.stock_kg > 0);
+  }
+
+  async function runProductEvaluation() {
+    const out = $("fx-opt-eval-out");
+    if (!out) return;
+    return withBusy($("fx-opt-eval-go"), async () => {
+      try {
+        const com = $("fx-opt-com").value;
+        const kg = Number($("fx-opt-kg").value) || 10000;
+        const mc = numOrNull($("fx-opt-mc").value);
+        const price = numOrNull($("fx-opt-price").value);
+
+        const r = await api("/api/v1/factory/optimization/evaluate", {
+          body: { commodity_code: com, quantity_kg: kg, moisture_pct: mc, purchase_price_per_kg: price }
+        });
+
+        const rec = r.recommendation || {};
+        const fd = r.feedstock || {};
+        out.innerHTML = `
+          <div class="banner banner-info" role="note" style="margin-bottom:12px;">
+            <div style="font-size:14px; font-weight:600; margin-bottom:4px;">🧭 Rekomendasi Optimal: ${H(rec.synthesis_rationale)}</div>
+            <div class="kpi-lbl" style="display:flex; gap:16px; flex-wrap:wrap;">
+              <span>💰 Profit Tertinggi: <b>${H(rec.best_economic_product)}</b></span>
+              <span>⚡ Energi Maksimal: <b>${H(rec.best_energy_product)}</b></span>
+              <span>🌱 Carbon Sink Maksimal: <b>${H(rec.best_carbon_product)}</b></span>
+              <span>🏆 Pilihan Terbaik: <b>${H(rec.overall_recommended_product)}</b></span>
+            </div>
+          </div>
+          <p class="kpi-lbl">Hasil analisis konversi ${num(fd.quantity_kg, 0)} kg <b>${H(fd.name)}</b> (MC ${num(fd.moisture_pct, 1)}%, Abu ${num(fd.ash_pct_db, 1)}% bk, LHV ${num(fd.lhv_db_mj_kg, 1)} MJ/kg):</p>
+          <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:12px; margin-top:8px;">
+            ${Object.entries(r.products).map(([k, p]) => {
+              const st = p.suitability || {};
+              const y = p.yield || {};
+              const ec = p.economics || {};
+              const en = p.energy || {};
+              const cb = p.carbon || {};
+              return `<div class="card" style="margin:0; border:1px solid var(--border-color, #e0e0e0); padding:12px; border-radius:8px;">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
+                  <div>
+                    <h4 style="margin:0; font-size:15px;">${PROD_ICONS[k] || "📦"} ${H(p.name)}</h4>
+                    <span class="kpi-lbl">${H(p.standard)}</span>
+                  </div>
+                  <span class="badge ${GRADE_BADGE[st.grade] || "badge-gray"}" title="${H(st.verdict)}">
+                    ${H(st.grade)} (${num(st.score, 0)}/100)
+                  </span>
+                </div>
+                <div class="kpi-row" style="margin:6px 0; gap:4px;">
+                  <div class="kpi-tile" style="padding:6px;"><div class="kpi-lbl">Hasil Produk</div><div class="kpi-val" style="font-size:15px;">${num(y.product_output_kg, 1)} kg</div><div class="kpi-lbl">Yield ${num(y.yield_pct, 1)}%</div></div>
+                  <div class="kpi-tile" style="padding:6px;"><div class="kpi-lbl">Gross Margin</div><div class="kpi-val ${ec.gross_margin_rp >= 0 ? "kpi-green" : "kpi-amber"}" style="font-size:15px;">${rp(ec.gross_margin_rp)}</div><div class="kpi-lbl">${num(ec.gross_margin_pct, 1)}% margin</div></div>
+                </div>
+                <div class="kpi-row" style="margin:6px 0; gap:4px;">
+                  <div class="kpi-tile" style="padding:6px;"><div class="kpi-lbl">SEC Listrik</div><div class="kpi-val" style="font-size:14px;">${num(en.electricity_sec_kwh_per_ton, 1)}</div><div class="kpi-lbl">kWh/t produk</div></div>
+                  <div class="kpi-tile" style="padding:6px;"><div class="kpi-lbl">Net Karbon</div><div class="kpi-val" style="font-size:14px;">${num(cb.net_carbon_balance_tco2e, 3)}</div><div class="kpi-lbl">tCO₂e balance</div></div>
+                </div>
+                <div style="font-size:12px; margin-top:8px; line-height:1.4;">
+                  <div>💰 <b>Harga:</b> ${rp(ec.selling_price_rp_per_kg)}/kg · <b>Margin/t:</b> ${rp(ec.margin_per_ton_feed_rp)}</div>
+                  <div>⚡ <b>LHV:</b> ${num(en.product_lhv_ar_mj_kg, 1)} MJ/kg · <b>Energi:</b> ${num(en.total_energy_gj, 1)} GJ</div>
+                </div>
+                ${st.warnings && st.warnings.length ? `<div class="banner banner-warning" role="note" style="margin-top:8px; padding:4px 8px; font-size:11px;">⚠️ ${H(st.warnings[0])}</div>` : ""}
+                ${st.compliance && st.compliance.length ? `<div style="font-size:11px; margin-top:6px; color:var(--text-muted, #666);">${st.compliance.map(c => `<span>${c.ok ? "✅" : "⛔"} ${H(c.standard)}</span>`).join(" · ")}</div>` : ""}
+              </div>`;
+            }).join("")}
+          </div>
+        `;
+      } catch (err) {
+        out.innerHTML = `<div class="banner banner-error" role="alert">⚠️ ${H(err.message)}</div>`;
+      }
+    }, "⏳");
+  }
+
+  async function runProductAllocation() {
+    const out = $("fx-opt-alloc-out");
+    if (!out) return;
+    const stocks = getSelectedAllocStocks();
+    if (!stocks.length) return showToast("Pilih minimal satu komoditas dengan stok > 0.", "⚠️");
+
+    return withBusy($("fx-opt-alloc-go"), async () => {
+      try {
+        const obj = $("fx-opt-obj").value;
+        const caps = {};
+        for (const p of ["bio_pellet", "briket", "biochar", "bio_silika"]) {
+          const el = $(`fx-opt-cap-${p}`);
+          if (el && el.value !== "") caps[p] = Number(el.value);
+        }
+
+        const r = await api("/api/v1/factory/optimization/allocate", {
+          body: { objective: obj, stocks, capacities: caps }
+        });
+
+        if (r.status !== "optimal" && r.status !== "success") {
+          out.innerHTML = `<div class="banner banner-warning" role="alert">⚠️ Status Solver: ${H(r.status)}. Alokasi mungkin belum konvergen sepenuhnya.</div>`;
+          return;
+        }
+
+        const sm = r.summary || {};
+        out.innerHTML = `
+          <div class="kpi-row" style="margin-top:12px;">
+            <div class="kpi-tile"><div class="kpi-lbl">Biomassa Terolah</div><div class="kpi-val">${num(sm.total_feedstock_used_kg, 0)} kg</div><div class="kpi-lbl">${num(sm.total_feedstock_used_kg / 1000, 1)} ton umpan</div></div>
+            <div class="kpi-tile"><div class="kpi-lbl">Total Produk</div><div class="kpi-val">${num(sm.total_product_output_kg, 0)} kg</div><div class="kpi-lbl">${num(sm.total_product_output_kg / 1000, 1)} ton produk</div></div>
+            <div class="kpi-tile kpi-green"><div class="kpi-lbl">Total Gross Margin</div><div class="kpi-val">${rp(sm.total_gross_margin_rp)}</div><div class="kpi-lbl">Revenue ${rp(sm.total_revenue_rp)}</div></div>
+            <div class="kpi-tile"><div class="kpi-lbl">Output Energi</div><div class="kpi-val">${num(sm.total_energy_output_gj, 1)} GJ</div><div class="kpi-lbl">LHV produk</div></div>
+            <div class="kpi-tile"><div class="kpi-lbl">Net Carbon Balance</div><div class="kpi-val">${num(sm.total_net_carbon_balance_tco2e, 2)}</div><div class="kpi-lbl">tCO₂e mitigasi/sink</div></div>
+          </div>
+
+          <h4 style="margin:16px 0 6px;">Rencana Alokasi Produksi Optimal (HiGHS Solver)</h4>
+          <div class="table-scroll"><table class="data-table"><thead><tr>
+            <th>Umpan Biomassa</th><th>Produk Tujuan</th><th class="num">Alokasi Umpan</th>
+            <th class="num">Estimasi Output</th><th class="num">Gross Margin</th><th class="num">Output Energi</th><th class="num">Net Karbon</th><th>Kesesuaian Mutu</th>
+          </tr></thead><tbody>${r.allocations.map(a => `<tr>
+            <td><b>${H(a.feedstock_name)}</b></td>
+            <td>${PROD_ICONS[a.product_key] || ""} <b>${H(a.product_name)}</b></td>
+            <td class="num"><b>${num(a.allocated_kg, 0)} kg</b></td>
+            <td class="num">${num(a.product_output_kg, 0)} kg</td>
+            <td class="num ${a.gross_margin_rp >= 0 ? "kpi-green" : "kpi-amber"}">${rp(a.gross_margin_rp)}</td>
+            <td class="num">${num(a.energy_gj, 1)} GJ</td>
+            <td class="num">${num(a.net_carbon_tco2e, 3)} tCO₂e</td>
+            <td><span class="badge ${GRADE_BADGE[a.suitability_score >= 85 ? "S" : a.suitability_score >= 70 ? "A" : a.suitability_score >= 55 ? "B" : "C"]}">${H(a.suitability_verdict)} (${num(a.suitability_score, 0)})</span></td>
+          </tr>`).join("")}</tbody></table></div>
+
+          <h4 style="margin:16px 0 6px;">Utilisasi Kapasitas Lini Mesin Pabrik</h4>
+          <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:8px;">
+            ${Object.entries(r.capacity_utilization).map(([p, cu]) => {
+              const pInfo = (optConfig.products || {})[p] || {};
+              const pct = Math.min(100, Math.round(cu.utilization_pct || 0));
+              return `<div class="card" style="margin:0; padding:10px; border-radius:6px; border:1px solid var(--border-color, #e0e0e0);">
+                <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:600;">
+                  <span>${PROD_ICONS[p] || ""} ${H(pInfo.name || p)}</span>
+                  <span>${pct}%</span>
+                </div>
+                <div style="background:var(--border-color, #eee); height:8px; border-radius:4px; overflow:hidden; margin:6px 0;">
+                  <div style="background:var(--primary, #2e7d32); width:${pct}%; height:100%;"></div>
+                </div>
+                <div class="kpi-lbl">${num(cu.allocated_product_kg, 0)} kg / ${num(cu.capacity_kg, 0)} kg batas</div>
+              </div>`;
+            }).join("")}
+          </div>
+
+          ${r.managerial_insights && r.managerial_insights.length ? `
+            <div class="banner banner-info" role="note" style="margin-top:14px;">
+              <div style="font-weight:600; margin-bottom:4px;">💡 Insight &amp; Rekomendasi Manajerial Pabrik:</div>
+              <ul style="margin:0; padding-left:18px; font-size:12.5px; line-height:1.5;">
+                ${r.managerial_insights.map(i => `<li>${H(i)}</li>`).join("")}
+              </ul>
+            </div>` : ""}
+        `;
+      } catch (err) {
+        out.innerHTML = `<div class="banner banner-error" role="alert">⚠️ ${H(err.message)}</div>`;
+      }
+    }, "⏳");
+  }
+
   // ---------------------------------------------------------------- Prototipe 3: SEC/IKE & anomali
   let secChart = null;
   const today = () => new Date().toISOString().slice(0, 10);
@@ -696,8 +1102,9 @@
     if ($("fx-sec-date")) $("fx-sec-date").value = today();
     $("fx-sec-feed").innerHTML = `<option value="">—</option>` + bmCache.map(b => `<option value="${H(b.code)}">${H(b.name)}</option>`).join("");
     await loadSecFacilities();
-    $("fx-sec-go").onclick = runSec;
-    if ($("fx-sec-add")) { $("fx-sec-add").onclick = addSecLog; $("fx-sec-import").onclick = importSecCsv; }
+    if ($("fx-sec-go")) $("fx-sec-go").onclick = runSec;
+    if ($("fx-sec-add")) $("fx-sec-add").onclick = addSecLog;
+    if ($("fx-sec-import")) $("fx-sec-import").onclick = importSecCsv;
   }
 
   async function loadSecFacilities() {
@@ -873,20 +1280,25 @@
   window.renderFactoryExtras = function (container) {
     if (!container || !["pabrik", "admin", "auditor"].includes(role())) return;
     container.insertAdjacentHTML("beforeend", HTML());
-    $("fx-eff-go").onclick = loadEfficiency;
-    $("fx-esg-go").onclick = loadEsg;
-    $("fx-esg-csv").onclick = downloadEsgCsv;
-    $("fx-esg-print").onclick = () => { document.body.classList.add("print-esg"); window.print(); };
+    if ($("fx-eff-go")) $("fx-eff-go").onclick = loadEfficiency;
+    if ($("fx-esg-go")) $("fx-esg-go").onclick = loadEsg;
+    if ($("fx-esg-csv")) $("fx-esg-csv").onclick = downloadEsgCsv;
+    if ($("fx-esg-print")) $("fx-esg-print").onclick = () => { document.body.classList.add("print-esg"); window.print(); };
     window.addEventListener("afterprint", () => document.body.classList.remove("print-esg"), { once: false });
-    if (canWrite()) loadRedemptions();
+    if (canWrite()) {
+      loadRedemptions();
+      loadBiocharDispatches();
+      if ($("btn-fx-dispatch-biochar")) $("btn-fx-dispatch-biochar").onclick = openBiocharDispatchModal;
+    }
     if ($("fx-cc-form")) {
       $("fx-cc-form").addEventListener("submit", ccSubmit);
       $("fx-cc-form").addEventListener("input", () => { $("fx-cc-submit").disabled = true; });   // ubah isian → pratinjau ulang
       $("fx-cc-photo").addEventListener("change", () => { ccPhotoUrl = null; });
     }
     loadClaims();
-    loadBiomass().then(() => { initFuelBlend(); initConversion(); initSec(); }); loadAsh();
-    if ($("fx-grp-new")) { $("fx-grp-new").onclick = newGroup; $("fx-ash-new").onclick = newAsh; }
+    loadBiomass().then(() => { initFuelBlend(); initConversion(); initSec(); initProductOptimization(); }); loadAsh();
+    if ($("fx-grp-new")) $("fx-grp-new").onclick = newGroup;
+    if ($("fx-ash-new")) $("fx-ash-new").onclick = newAsh;
     loadCharges();
     loadEfficiency(); loadEsg();
   };
@@ -919,5 +1331,7 @@
     if (a) return actionDialog(a.dataset.fxAdopt);
     const s = e.target.closest("[data-fx-status]");
     if (s) return setStatus(Number(s.dataset.fxStatus), s.dataset.to);
+    const dspQr = e.target.closest("[data-fx-dsp-qr]");
+    if (dspQr) return openModal("Surat Jalan Biochar", dspQr.dataset.fxDspQr, `${dspQr.dataset.fxDspCode} · ${dspQr.dataset.fxDspKg} kg biochar`);
   });
 })();

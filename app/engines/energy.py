@@ -186,3 +186,55 @@ def analyze(req: EnergyAnalysisRequest) -> dict:
             "tariff_rp_per_kwh": round(tariff, 1),
         },
     }
+
+
+def calculate_wte_drying_penalty(
+    feedstock_kg: float,
+    moisture_pct: float,
+    target_moisture_pct: float = 14.0,
+    lhv_dry_kcal: float = 3800.0,
+    boiler_efficiency: float = 0.82,
+    turbine_efficiency: float = 0.28,
+) -> dict:
+    """Kalkulator Penalti Termal Pengeringan WtE (Waste-to-Energy):
+    Menghitung energi laten penguapan air (2,44 MJ/kg air) yang membebani efisiensi netto
+    pembangkit biomassa/pirolisis bila kadar air masuk > target (default 14%).
+    """
+    if moisture_pct <= target_moisture_pct:
+        return {
+            "moisture_excess_pct": 0.0,
+            "water_to_evaporate_kg": 0.0,
+            "drying_energy_mj": 0.0,
+            "drying_energy_kwh": 0.0,
+            "net_electric_penalty_kwh": 0.0,
+            "net_loss_rp": 0.0,
+            "efficiency_derating_pct": 0.0,
+            "status": "OPTIMAL (Kadar air memenuhi spesifikasi boiler/pirolisis)",
+        }
+
+    dry_matter_kg = feedstock_kg * (1.0 - moisture_pct / 100.0)
+    target_total_kg = dry_matter_kg / (1.0 - target_moisture_pct / 100.0)
+    water_evap_kg = max(0.0, feedstock_kg - target_total_kg)
+
+    drying_energy_mj = water_evap_kg * 2.44
+    drying_energy_kwh = drying_energy_mj / 3.6
+
+    overall_wte_eff = boiler_efficiency * turbine_efficiency
+    net_electric_loss_kwh = drying_energy_kwh * overall_wte_eff
+
+    tariff = P("energi.tariff_rp_per_kwh")
+    net_loss_rp = net_electric_loss_kwh * tariff
+
+    initial_thermal_mj = (dry_matter_kg * (lhv_dry_kcal * 0.004184))
+    derating_pct = (drying_energy_mj / initial_thermal_mj * 100.0) if initial_thermal_mj > 0 else 0.0
+
+    return {
+        "moisture_excess_pct": round(moisture_pct - target_moisture_pct, 2),
+        "water_to_evaporate_kg": round(water_evap_kg, 2),
+        "drying_energy_mj": round(drying_energy_mj, 2),
+        "drying_energy_kwh": round(drying_energy_kwh, 2),
+        "net_electric_penalty_kwh": round(net_electric_loss_kwh, 2),
+        "net_loss_rp": round(net_loss_rp, 0),
+        "efficiency_derating_pct": round(derating_pct, 2),
+        "status": f"PENALTI TERMAL: {water_evap_kg:.1f} kg air harus diuapkan, memotong output {net_electric_loss_kwh:.1f} kWh",
+    }

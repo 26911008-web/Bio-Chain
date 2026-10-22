@@ -1,0 +1,346 @@
+%%{init: {'theme': 'base', 'flowchart': {'curve': 'basis', 'nodeSpacing': 45, 'rankSpacing': 55}, 'maxTextSize': 1000000}}%%
+flowchart TB
+
+    %% ============================================================================
+    %% DEFINISI STANDAR GEOMETRI & WARNA MUTLAK (v2.0 — Audit Forensik 5 Fase)
+    %% ============================================================================
+    classDef startNode fill:#1E88E5,stroke:#1565C0,stroke-width:2px,color:#ffffff,font-weight:bold;
+    classDef stepOperasional fill:#E3F2FD,stroke:#64B5F6,stroke-width:2px,color:#1E293B;
+    classDef inputData fill:#FFF9C4,stroke:#FBC02D,stroke-width:2px,color:#1E293B;
+    classDef stepKhusus fill:#EDE7F6,stroke:#9575CD,stroke-width:2px,color:#1E293B,font-weight:600;
+    classDef decisionNode fill:#ECEFF1,stroke:#90A4AE,stroke-width:2px,color:#1E293B,font-weight:bold;
+    classDef resultHijau fill:#10B981,stroke:#059669,stroke-width:2px,color:#ffffff,font-weight:bold;
+    classDef resultOranye fill:#F59E0B,stroke:#D97706,stroke-width:2px,color:#ffffff,font-weight:bold;
+    classDef resultMerah fill:#EF4444,stroke:#DC2626,stroke-width:2px,color:#ffffff,font-weight:bold;
+
+    %% ============================================================================
+    %% ZONA 1: AWAL — MODUL PETANI (PENAWARAN, LELANG & EVALUASI)
+    %% N01–N21 | 21 Nodes
+    %% ============================================================================
+    subgraph ZONA_1["🌾 ZONA 1: AWAL — MODUL PETANI (PENAWARAN, LELANG & EVALUASI)"]
+        direction TB
+        N01(["Mulai: Petani Memiliki Stok Panen Biomassa"]):::startNode
+        N02[/"Input Lapor Biomassa: Jenis, Qty (kg), Kadar Air (% MC), Foto Sampel & Request Biochar"/]:::inputData
+        N03{"Pilih Jalur Penjualan Biomassa?"}:::decisionNode
+
+        %% Cabang Penjualan Langsung
+        N04{"Pilihan Pengiriman Jalur Langsung?"}:::decisionNode
+        N05["Pilih Pengepul Spesialis & Tetapkan Opsi Dijemput Pengepul"]:::stepOperasional
+        N06["Pilih Pengepul Spesialis & Tetapkan Opsi Antar Mandiri Petani"]:::stepOperasional
+
+        %% Cabang Bursa Lelang
+        N07[/"Input Set Harga Dasar Lelang (Floor Price) & Timer Durasi Lelang"/]:::inputData
+        N08["Listing Bursa Lelang Aktif & Terbuka untuk Seluruh Pengepul"]:::stepOperasional
+        N09{"Petani Setuju Menerima Tawaran Pengepul?"}:::decisionNode
+        N10(["Lelang Batal / Expired (Stok Petani Dikembalikan)"]):::resultMerah
+        N11{"Pilihan Pengiriman Hasil Lelang?"}:::decisionNode
+        N12["Kesepakatan Lelang: Skema Dijemput Pengepul"]:::stepOperasional
+        N13["Kesepakatan Lelang: Skema Antar Mandiri oleh Petani"]:::stepOperasional
+
+        %% Alur Konfirmasi Jadwal — KOREKSI: N14 → Step Umum (bukan Input)
+        N14["Terima Rencana Jadwal Jemput dari Pengepul"]:::stepOperasional
+        N15{"Petani Menyetujui Jadwal Jemput?"}:::decisionNode
+        N16(["Minta Penyesuaian Jadwal (Reschedule) ke Pengepul"]):::resultOranye
+        N17(["Jadwal Penjemputan Terkonfirmasi Resmi"]):::resultHijau
+
+        %% Panel Evaluasi & Reputasi Petani — KOREKSI TOPOLOGI: N19/N20/N21 → N18 → loop N02
+        N19["Menerima Rekap Feedback QC Lapangan & Deviasi Timbang"]:::stepOperasional
+        N20["Evaluasi Rekam Jejak Kecepatan Pembayaran Pengepul (DP & Lunas)"]:::stepOperasional
+        N21["Evaluasi Dompet Biochar, Serapan Karbon & Kesuburan Lahan"]:::stepKhusus
+        N18["Panel Evaluasi Petani: Analisis Historis, Mutu & Kemitraan"]:::stepOperasional
+
+        %% Relasi Internal Zona 1
+        N01 --> N02
+        N02 --> N03
+        N03 -->|"Harga Langsung Pengepul"| N04
+        N04 -->|"Dijemput Pengepul"| N05
+        N04 -->|"Antar Mandiri"| N06
+
+        N03 -->|"Bursa Lelang (Bidding)"| N07
+        N07 --> N08
+        N08 --> N09
+        N09 -->|"Tidak / Waktu Habis"| N10
+        N09 -->|"Ya / Setujui Tawaran"| N11
+        N11 -->|"Dijemput Pengepul"| N12
+        N11 -->|"Antar Mandiri"| N13
+
+        N14 --> N15
+        N15 -->|"Tolak / Bentrok"| N16
+        N15 -->|"Setuju"| N17
+
+        %% KOREKSI: Konvergensi Evaluasi — N19/N20/N21 masuk ke N18 (bukan keluar dari N18)
+        N19 --> N18
+        N20 --> N18
+        N21 --> N18
+        N18 -. "Rekam Historis untuk Siklus Panen Berikutnya" .-> N02
+    end
+
+    %% ============================================================================
+    %% ZONA 2: SIRKULASI & JADWAL — MODUL PENGEPUL (GROUPING & KONSOLIDASI)
+    %% N22–N30 | 9 Nodes
+    %% ============================================================================
+    subgraph ZONA_2["📦 ZONA 2: SIRKULASI & JADWAL — MODUL PENGEPUL (GROUPING & KONSOLIDASI)"]
+        direction TB
+        N22["Dashboard Pengepul: Menerima Data Penawaran Petani"]:::stepOperasional
+        N23["Pengelompokan Terurut per Jenis Biomassa (Langsung Diambil vs Lelang)"]:::stepOperasional
+        N24[/"Bursa Lelang: Analisis Netback Margin & Kirim Bidding Harga/kg"/]:::inputData
+        N25["Finalisasi Kesepakatan Transaksi & Penerbitan Dokumen Panen"]:::stepOperasional
+        N26["Perencanaan Rute Penjemputan Multi-Stop (VRP Solver)"]:::stepOperasional
+        N27{"Ada Request Biochar dari Petani di Rute Tersebut?"}:::decisionNode
+        N28["Siapkan Rute Backhaul: Bawa Biochar + Jemput Biomassa Sekaligus (Hemat Cost)"]:::stepKhusus
+        N29["Rute Reguler: Penjemputan Biomassa Langsung"]:::stepOperasional
+        %% KOREKSI: N30 → Step Umum (bukan Input — dispatch notifikasi, bukan data entry)
+        N30["Kirim Rencana Jadwal Jemput ke Petani untuk Konfirmasi"]:::stepOperasional
+
+        %% Relasi Internal Zona 2
+        N22 --> N23
+        N23 -->|"Kategori Lelang"| N24
+        N24 --> N25
+        N23 -->|"Kategori Langsung"| N25
+        N25 --> N26
+        N26 --> N27
+        N27 -->|"Ya (Ada Request)"| N28
+        N27 -->|"Tidak Ada"| N29
+        N28 --> N30
+        N29 --> N30
+    end
+
+    %% ============================================================================
+    %% ZONA 3: EKSEKUSI QC LAPANGAN & PEMBAYARAN PENGEPUL KE PETANI
+    %% N31–N44 | 14 Nodes
+    %% ============================================================================
+    subgraph ZONA_3["⚖️ ZONA 3: EKSEKUSI QC LAPANGAN & PEMBAYARAN PENGEPUL KE PETANI"]
+        direction TB
+        N31["Armada Tiba di Lokasi Petani (atau Petani Antar Sendiri ke Hub)"]:::stepOperasional
+        N32["Serah Terima Biochar ke Petani Sesuai Request (Jika Ada)"]:::stepKhusus
+        N33[/"Timbang Berat Riil (kg), Uji Kadar Air (% MC) & Inspeksi Mutu Lapangan"/]:::inputData
+        N34{"Lolos Pemeriksaan Mutu QC Lapangan?"}:::decisionNode
+        N35[/"Input Alasan Penolakan & Upload Foto Bukti Kerusakan"/]:::inputData
+        N36(["Batal Jemput / Lot Panen Diretur ke Petani"]):::resultMerah
+        N37["Hitung Deviasi Berat Aktual vs Estimasi & Rekonsiliasi Mutu"]:::stepOperasional
+
+        %% Skema Pembayaran Petani — KOREKSI: N39 → stepKhusus (Finansial), tanpa edge paralel
+        N38{"Pilih Skema Pembayaran ke Petani?"}:::decisionNode
+        N39["Bayar Uang Muka (DP) & Terbitkan Tanda Terima Digital"]:::stepKhusus
+        N40["Kontrol Saldo Hutang & Monitoring Pelunasan Sisa Pembayaran"]:::stepOperasional
+        N41[/"Input Pembayaran Pelunasan Akhir ke Petani"/]:::inputData
+        N42[/"Input Pembayaran Tunai / Transfer Lunas Sekaligus"/]:::inputData
+        N43(["Pembayaran Petani Lunas Terverifikasi"]):::resultHijau
+        N44["Mutasi Stok Masuk Gudang Pengepul (Grouped per Jenis Biomassa)"]:::stepOperasional
+
+        %% Relasi Internal Zona 3 (Tanpa Duplikasi Edge Paralel)
+        N31 --> N32
+        N32 --> N33
+        N33 --> N34
+        N34 -->|"Tidak Lolos (Reject)"| N35
+        N35 --> N36
+        N34 -->|"Lolos (Pass)"| N37
+        N37 -->|"Update Inventori Hub"| N44
+        N37 -->|"Proses Settlement"| N38
+
+        N38 -->|"Opsi Uang Muka (DP)"| N39
+        N39 -- "Pencairan Uang Muka Petani" --> N40
+        N40 --> N41
+        N41 -- "Pelunasan Akhir Petani" --> N43
+
+        N38 -->|"Opsi Langsung Lunas"| N42
+        N42 -- "Pelunasan Cash/Transfer Petani" --> N43
+    end
+
+    %% ============================================================================
+    %% ZONA 4: PENGAJUAN MULTI-PABRIK, MODUL DRIVER & QC GERBANG PABRIK
+    %% N45–N65 | 21 Nodes
+    %% ============================================================================
+    subgraph ZONA_4["🏭 ZONA 4: PENGAJUAN MULTI-PABRIK, MODUL DRIVER & QC GERBANG PABRIK"]
+        direction TB
+        N45[/"Pengepul Input Pengajuan Stok ke Mitra Pabrik Pilihan (Multi-Pabrik)"/]:::inputData
+        N46{"Mitra Pabrik Menyetujui Pengajuan Stok?"}:::decisionNode
+        N47(["Pengajuan Stok Ditolak Pabrik / Dibatalkan"]):::resultMerah
+        N48{"Pilihan Opsi Armada Pengiriman ke Pabrik?"}:::decisionNode
+
+        %% Armada Antar Mandiri
+        N49["Terbitkan Surat Jalan & Jadwal Pengiriman Armada Mandiri Pengepul"]:::stepOperasional
+        N50["Armada Pengepul Berangkat Mengantar Stok ke Pabrik"]:::stepOperasional
+
+        %% Armada Dijemput Pabrik — KOREKSI: N51 → stepOperasional (bukan stepKhusus)
+        N51["Otomatis Masuk Antrean Job Modul Driver Truk Pabrik"]:::stepOperasional
+        N52{"Ada Perintah Bawa Biochar Pabrik ke Pengepul?"}:::decisionNode
+        N53["Driver Pabrik Muat Biochar di Pabrik Terlebih Dahulu"]:::stepKhusus
+        N54["Driver Pabrik Berangkat Menuju Hub Pengepul"]:::stepOperasional
+        N55[/"Driver Scan QR Muat di Pengepul, Serah Terima Biochar & Upload Bukti"/]:::inputData
+        N56["Armada Truk Tiba di Gerbang Utama Pabrik"]:::stepOperasional
+
+        %% Pemeriksaan Gerbang & Timbangan Pabrik — KOREKSI: Satuan Fisika Lengkap
+        N57[/"Scan QR Tiket & Penimbangan Jembatan Timbang (Gross, Tare, Netto)"/]:::inputData
+        N58[/"Uji Laboratorium Gerbang: Analisis Kadar Air (% MC), Abu (% Ash), Kalor (kcal/kg) & Kontaminan"/]:::inputData
+        N59{"Hasil Keputusan QC Pabrik (3 Cabang Mutlak)?"}:::decisionNode
+
+        %% 3 Cabang QC Pabrik
+        N60[/"Catat Alasan Penolakan Total & Terbitkan Slip Retur Pabrik"/]:::inputData
+        N61(["Retur Total: 100% Muatan Biomassa Ditolak Pabrik"]):::resultMerah
+        N62["Hitung Refraksi Potongan Bobot/Harga & Pisahkan Tonase Ditolak"]:::stepOperasional
+        N63["Kirim Rekap Feedback Refraksi & Potongan ke Modul Pengepul"]:::stepOperasional
+        N64["Kirim Rekap Feedback Mutu Diterima Penuh (Grade A) ke Modul Pengepul"]:::stepOperasional
+        N65["Tonase Netto Lolos Diteruskan ke Loading Ramp & Billing Invoice"]:::stepOperasional
+
+        %% Relasi Internal Zona 4
+        N45 --> N46
+        N46 -->|"Ditolak Pabrik"| N47
+        N46 -->|"Disetujui Pabrik"| N48
+
+        N48 -->|"Antar Mandiri (Pengepul)"| N49
+        N49 --> N50
+        N50 --> N56
+
+        N48 -->|"Dijemput Pabrik (Armada Pabrik)"| N51
+        N51 --> N52
+        N52 -->|"Ya (Muat Biochar)"| N53
+        N52 -->|"Tidak"| N54
+        %% KOREKSI: Urutan Fisik N53 → N54 → N55 (driver muat → berangkat → scan di pengepul)
+        N53 --> N54
+        N54 --> N55
+        N55 --> N56
+        N56 --> N57
+
+        N57 --> N58
+        N58 --> N59
+
+        N59 -->|"1. Ditolak Semua (Reject 100%)"| N60
+        N60 --> N61
+
+        N59 -->|"2. Diterima Sebagian (Partial)"| N62
+        N62 -->|"Notifikasi Potongan"| N63
+        N62 -->|"Tonase Netto Partial"| N65
+
+        N59 -->|"3. Diterima Penuh (Accept 100%)"| N64
+        N64 --> N65
+    end
+
+    %% ============================================================================
+    %% ZONA 5: KEUANGAN PABRIK, LOADING RAMP, BLENDING & ALUR BALIK SIRKULAR
+    %% N66–N91 | 26 Nodes (8 Sub-A + 18 Sub-B)
+    %% ============================================================================
+    subgraph ZONA_5["⚡ ZONA 5: KEUANGAN PABRIK, LOADING RAMP, BLENDING & ALUR BALIK SIRKULAR"]
+        direction TB
+
+        subgraph ZONA_5A["💰 Sub-Alur A: Penyelesaian Pembayaran Pabrik ke Pengepul"]
+            direction TB
+            N66{"Pilih Skema Pembayaran Pabrik ke Pengepul?"}:::decisionNode
+            %% KOREKSI: N67 → stepKhusus (Finansial)
+            N67["Pencairan Dana Langsung via Kasir / Bank Transfer ke Pengepul"]:::stepKhusus
+            N68(["Invoice Pabrik Terbayar Lunas"]):::resultHijau
+
+            N69[/"Input Pembayaran DP (Jika Ada) & Tetapkan Tanggal Jatuh Tempo (TOP)"/]:::inputData
+            N70["Monitoring Status Tagihan Belum Dibayar (Grouped per Biomassa)"]:::stepOperasional
+            N71{"Tagihan Pabrik Melewati Jatuh Tempo (Overdue)?"}:::decisionNode
+            N72(["Blokir Transaksi Akun Pabrik & Bekukan Pengajuan Baru"]):::resultOranye
+            %% KOREKSI: N73 → inputData eksplisit (input bukti transfer)
+            N73[/"Input Pelunasan Tagihan & Upload Bukti Transfer Sebelum Jatuh Tempo"/]:::inputData
+
+            %% Relasi Internal Sub-Alur A (Tanpa Duplikasi Edge Paralel)
+            N66 -->|"Cash / Lunas Instan"| N67
+            N67 -- "Pencairan Cash/Bank Pabrik" --> N68
+
+            N66 -->|"DP / TOP (Terms of Payment)"| N69
+            N69 -- "Pencatatan DP & Jatuh Tempo TOP" --> N70
+            N70 --> N71
+            N71 -->|"Ya (Overdue)"| N72
+            N71 -->|"Tidak (Tepat Waktu)"| N73
+            N73 -- "Pelunasan Invoice TOP" --> N68
+        end
+
+        subgraph ZONA_5B["🔄 Sub-Alur B: Loading Ramp, Blending HiGHS & Sirkularitas Hasil Samping"]
+            direction TB
+            N74["Alokasi Biomassa ke Loading Ramp Sesuai Jenis (Sekam, Jagung, Tebu, Sengon)"]:::stepOperasional
+            %% KOREKSI: Satuan Fisika Lengkap
+            N75["Pembaruan Rekursif Mutu Agregat Loading Ramp (Weighted % MC, Kalor kcal/kg, Densitas kg/m³)"]:::stepOperasional
+            N76[/"Input Target Spek & Parameter ke Engine Optimasi Blending Antar-Ramp"/]:::inputData
+            %% KOREKSI: tCO₂e (subscript), Multi-Produk (tanpa spasi liar)
+            N77["Solver HiGHS Linear Programming: Optimasi Multi-Produk, Margin & tCO₂e"]:::stepOperasional
+            N78{"Pilih Rencana Produksi Optimal?"}:::decisionNode
+
+            %% KOREKSI: Co-Firing, Bio-Silika (tanpa spasi liar pasca tanda hubung)
+            N79["Produksi Biopellet Kalor Tinggi (Standar Ekspor / Co-Firing PLN)"]:::stepOperasional
+            N80["Produksi Biochar Pirolisis Mutu Unggul untuk Pembenah Tanah"]:::stepOperasional
+            N81["Produksi Bio-Silika Murni dari Abu Pembakaran Terkontrol"]:::stepOperasional
+            N82["Produksi Briket Biomassa Padat Energi untuk Industri"]:::stepOperasional
+
+            N83["Pencatatan Produk Utama & Hasil Samping (Abu Dasar, Biochar Kasar, Asap Cair)"]:::stepOperasional
+            N84[/"Uji Keamanan Laboratorium Hasil Samping: Analisis Logam Berat (Pb, Cd, As)"/]:::inputData
+            N85{"Hasil Uji Keamanan Lolos Ambang Batas Pertanian?"}:::decisionNode
+            N86(["Disposal Limbah Industri Aman / Penanganan B3 Non-Lahan"]):::resultMerah
+
+            %% KOREKSI: Bio-Chain (tanpa spasi liar pasca tanda hubung)
+            N87["Registrasi Batch Biochar Bersertifikat ke Modul Sirkularitas Bio-Chain"]:::stepKhusus
+            N88["Distribusi Balik Biochar dari Pabrik ke Pengepul (Backhaul Armada Pabrik)"]:::stepKhusus
+            N89["Distribusi Balik Biochar dari Pengepul ke Petani (Backhaul Armada Pengepul)"]:::stepKhusus
+            N90["Aplikasi Biochar pada Lahan Pertanian Petani & Update Dompet Karbon"]:::stepKhusus
+            N91(["Siklus Sirkular Selesai: Zero Waste & Ekosistem Tertutup Tercapai"]):::resultHijau
+
+            N74 --> N75
+            N75 --> N76
+            N76 --> N77
+            N77 --> N78
+
+            N78 -->|"Opsi 1: Biopellet"| N79
+            N78 -->|"Opsi 2: Biochar"| N80
+            N78 -->|"Opsi 3: Bio-Silika"| N81
+            N78 -->|"Opsi 4: Briket"| N82
+
+            N79 --> N83
+            N80 --> N83
+            N81 --> N83
+            N82 --> N83
+
+            N83 --> N84
+            N84 --> N85
+            N85 -->|"Tidak Lolos (B3)"| N86
+            N85 -->|"Lolos Uji (Aman)"| N87
+
+            N87 --> N88
+            N88 --> N89
+            N89 --> N90
+            N90 --> N91
+        end
+    end
+
+    %% ============================================================================
+    %% INTERKONEKSI LINTAS ZONA (CROSS-ZONE SWIMLANE CONNECTIONS)
+    %% ============================================================================
+
+    %% 1. ALUR UTAMA FISIK BIOMASSA & OPERASIONAL
+    N05 -->|"Order Masuk Langsung"| N22
+    N06 -->|"Order Masuk Mandiri"| N22
+    N12 -->|"Kontrak Lelang Jemput"| N22
+    N13 -->|"Kontrak Lelang Antar"| N22
+    N08 -->|"Publish Listing Bursa"| N24
+    %% KOREKSI: Bidding loop — N24 mengirim penawaran harga ke Decision Petani N09
+    N24 -. "Kirim Penawaran Bidding Harga/kg" .-> N09
+
+    N30 -->|"Notifikasi Jadwal Jemput"| N14
+    N16 -->|"Minta Atur Ulang Rute"| N26
+    N17 -->|"Eksekusi Penjemputan"| N31
+    %% KOREKSI: Label dibedakan Langsung vs Lelang
+    N06 -->|"Petani Tiba Antar Mandiri (Langsung)"| N31
+    N13 -->|"Petani Tiba Antar Mandiri (Lelang)"| N31
+
+    N44 -->|"Pengajuan Stok Gudang"| N45
+    N65 -->|"Terbitkan Invoice Tagihan"| N66
+    N65 -->|"Bongkar Muat Fisik Biomassa"| N74
+
+    %% 2. ALUR FEEDBACK KUALITAS QC, NOTIFIKASI & EVALUASI (Garis Putus-putus)
+    N37 -. "Feedback Selisih Timbang & Mutu Lapangan" .-> N19
+    N36 -. "Feedback Alasan Reject Lapangan" .-> N19
+    N43 -. "Data Kecepatan Pembayaran Pengepul" .-> N20
+
+    N61 -. "Feedback Mutu: 100% Ditolak Pabrik" .-> N22
+    N63 -. "Feedback Mutu: Potongan Refraksi Pabrik" .-> N22
+    N64 -. "Feedback Mutu: Grade A Diterima Penuh" .-> N22
+
+    %% 3. ALUR BALIK SIRKULAR (BIOCHAR DARI PABRIK → PENGEPUL → PETANI)
+    %% KOREKSI: Menggunakan arah non-ranking agar N53 tidak jatuh ke dasar kanvas
+    N88 -. "Backhaul Armada Pabrik Bawa Biochar" .-> N53
+    N55 -. "Drop Biochar ke Gudang Pengepul" .-> N28
+    N28 -. "Armada Pengepul Bawa Biochar ke Rute Petani" .-> N32
+    N32 -. "Serah Terima Biochar ke Petani" .-> N90
+    N90 -. "Kredit Karbon & Rekam Kesuburan Tanah" .-> N21

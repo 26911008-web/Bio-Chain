@@ -7,7 +7,7 @@ saat serah-terima barulah ledger `redemption` (negatif) ditulis. Permintaan yang
 
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, CheckConstraint, Column, DateTime, Double, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, JSON, CheckConstraint, Column, DateTime, Double, ForeignKey, Integer, String, Text
 
 from ..database import Base
 
@@ -75,3 +75,91 @@ class EfficiencyAction(Base):
     verified_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+
+
+class BiocharRequest(Base):
+    """Permintaan biochar oleh petani yang disinkronkan dengan rute penjemputan armada pengepul (Reverse Logistics)."""
+    __tablename__ = "biochar_requests"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    request_code = Column(String(36), unique=True, nullable=False)
+    farmer_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    collector_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    harvest_id = Column(Integer, ForeignKey("harvests.id"), nullable=True)
+    route_id = Column(Integer, ForeignKey("routes.id"), nullable=True)
+    requested_kg = Column(Double, nullable=False)
+    allocated_kg = Column(Double, nullable=False, default=0.0)
+    status = Column(String(20), nullable=False, default="REQUESTED", index=True)  # REQUESTED | ALLOCATED | LOADED_BACKHAUL | DELIVERED | CANCELLED
+    delivery_point = Column(String(150), nullable=True)
+    partition_safeguard_verified = Column(Boolean, nullable=False, default=True)  # bebas kontaminasi
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+    delivered_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class BiocharDistribution(Base):
+    """Distribusi muatan balik biochar dari pabrik ke gudang pengepul/armada."""
+    __tablename__ = "biochar_distributions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    dispatch_code = Column(String(36), unique=True, nullable=False)
+    factory_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    collector_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    driver_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    route_id = Column(Integer, ForeignKey("routes.id"), nullable=True)
+    vehicle_plate = Column(String(20), nullable=True)
+    total_bags = Column(Integer, default=0)
+    total_weight_kg = Column(Double, nullable=False)
+    volume_m3 = Column(Double, nullable=False)
+    loading_instructions = Column(Text, nullable=True)
+    qr_dispatch_token = Column(String(64), unique=True, nullable=False)
+    status = Column(String(25), nullable=False, default="DISPATCHED", index=True) # DISPATCHED | RECEIVED_BY_COLLECTOR | DELIVERED_TO_FARMER
+    weighed_by_driver_kg = Column(Double, nullable=True)
+    slip_url = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class BiocharQualityEvaluation(Base):
+    """Formulir ulasan/rating kualitas biochar yang diterima petani dari pengepul/pabrik.
+    Parameter evaluasi: ukuran butir/mesh, kematangan pirolisis/karbonisasi, kelembapan, dampak tanah.
+    """
+    __tablename__ = "biochar_quality_evaluations"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    farmer_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    biochar_request_id = Column(Integer, ForeignKey("biochar_requests.id"), nullable=True, index=True)
+    collector_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    batch_code = Column(String(50), nullable=True, index=True)
+    grain_size_mesh_rating = Column(Integer, nullable=False, default=5)     # 1-5 (butir/mesh)
+    pyrolysis_maturity_rating = Column(Integer, nullable=False, default=5)  # 1-5 (kematangan pirolisis)
+    moisture_rating = Column(Integer, nullable=False, default=5)            # 1-5 (kelembapan)
+    soil_impact_rating = Column(Integer, nullable=False, default=5)         # 1-5 (dampak tanah/kesuburan)
+    overall_score = Column(Double, nullable=False, default=5.0)
+    review_notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+
+
+class BiocharCircularRequest(Base):
+    """Permintaan biochar sirkular petani (Closed-loop supply chain)."""
+    __tablename__ = "biochar_circular_requests"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    request_code = Column(String(40), unique=True, nullable=False)
+    farmer_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    collector_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    listing_id = Column(Integer, ForeignKey("stock_listings.id"), nullable=True)
+    harvest_id = Column(Integer, ForeignKey("harvests.id"), nullable=True)
+    route_id = Column(Integer, ForeignKey("routes.id"), nullable=True)
+    requested_kg = Column(Double, nullable=False)
+    allocated_kg = Column(Double, nullable=False, default=0.0)
+    land_area_ha = Column(Double, nullable=True)
+    delivery_point = Column(String(200), nullable=False, default="Lahan Petani")
+    status = Column(String(30), nullable=False, default="REQUESTED", index=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=_now)
+
+
+

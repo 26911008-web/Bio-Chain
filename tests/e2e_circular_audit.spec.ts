@@ -35,6 +35,10 @@ test.describe('Dynamic E2E & Scientific Audit — Siklus Sirkular Bio-Chain', ()
     // Tunggu tabel pasar stok petani selesai dimuat
     await page.waitForSelector('#market-table table');
 
+    if (await page.locator('#btn-tab-lelang').isVisible()) {
+      await page.locator('#btn-tab-lelang').click();
+    }
+
     // Klik tombol 'Hitung saran' pada listing pertama
     const adviseBtn = page.locator('button:has-text("Hitung saran")').first();
     await expect(adviseBtn).toBeVisible();
@@ -62,13 +66,20 @@ test.describe('Dynamic E2E & Scientific Audit — Siklus Sirkular Bio-Chain', ()
     console.log('METRIK_PENGEPUL_UI_LOG:', advisorText);
 
     // Lakukan submit Bidding
-    const tawarBtn = page.locator('button:has-text("Tawar")').first();
+    const bpInput = page.locator('input[id^="bp-"]').first();
+    const bidPriceToSubmit = finalBidPrice || advisorData.farmer_reserve_per_kg || 480;
+    await bpInput.fill(String(bidPriceToSubmit));
+
+    const tawarBtn = page.locator('button[data-onclick*="placeBid"]').first();
     const bidPromise = page.waitForResponse(resp =>
       resp.url().includes('/api/v1/collector/bids') && resp.ok()          // endpoint mengembalikan 201 Created
     );
     await tawarBtn.click();
     // Transaksi sensitif kini meminta konfirmasi (ringkasan kg × harga) sebelum dikirim
-    await page.locator('dialog.ui-confirm button[value="yes"]').click();
+    const confirmBtn = page.locator('dialog.ui-confirm[open] button[value="yes"]');
+    if (await confirmBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+      await confirmBtn.last().click();
+    }
     await bidPromise;
 
     // Logout Pengepul

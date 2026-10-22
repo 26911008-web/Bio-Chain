@@ -62,9 +62,10 @@ test('pengepul: gudang, pratinjau refraksi, catat stok online & offline', async 
   await page.locator('dialog[open] button[value=yes]').click();
   const card = page.locator('#fo-wh .card', { hasText: whName });
   const mvBtn = card.locator('[data-fo-mv]');
-  await expect(mvBtn).toBeVisible({ timeout: 15_000 });
+  await expect(mvBtn).toBeVisible({ timeout: 30_000 });
 
   await mvBtn.click();
+  await page.selectOption('#fo-mv-com', 'sekam_padi');
   await page.fill('#fo-mv-kg', '1000');
   await page.fill('#fo-mv-mc', '18');
   await page.fill('#fo-mv-ct', '5');

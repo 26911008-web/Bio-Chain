@@ -67,6 +67,26 @@ class StockListing(Base):
     status = Column(_enum(ListingStatus), nullable=False, default=ListingStatus.OPEN, index=True)
     expires_at = Column(DateTime(timezone=True), nullable=True)
     version = Column(Integer, nullable=False, default=1)
+    
+    # 022 Omni Extensions
+    transaction_mode = Column(String(16), nullable=False, default="DIRECT")  # 'DIRECT' | 'BIDDING'
+    auction_status = Column(String(16), nullable=False, default="OPEN")      # 'OPEN' | 'ACCEPTED' | 'EXPIRED' | 'CANCELLED'
+    auction_expiry = Column(DateTime(timezone=True), nullable=True)
+    floor_price = Column(Double, nullable=True)
+    logistics_mode = Column(String(16), nullable=False, default="PICKUP")    # 'PICKUP' | 'DELIVER_SELF'
+    payment_status = Column(String(16), nullable=False, default="UNPAID")    # 'UNPAID' | 'DP' | 'SETTLED'
+    farmer_claimed_qty = Column(Double, nullable=True)
+    actual_weighed_qty = Column(Double, nullable=True)
+    deviation_kg = Column(Double, nullable=True)
+    deviation_pct = Column(Double, nullable=True)
+    qc_status = Column(String(16), default="PENDING")                        # 'PENDING' | 'PASS' | 'REJECT'
+    qc_rejection_reason = Column(Text, nullable=True)
+    # Stock Locking (mencegah double-booking / ghost inventory antar pabrik)
+    is_locked = Column(Boolean, nullable=False, default=False, server_default=text("0"))
+    locked_by_mill_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    locked_at = Column(DateTime(timezone=True), nullable=True)
+    origin_qr_code = Column(String(100), nullable=True)
+
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
@@ -94,6 +114,14 @@ class Bid(Base):
     est_logistic_cost_per_kg = Column(Double, nullable=True)
     note = Column(Text, nullable=True)
     status = Column(_enum(BidStatus), nullable=False, default=BidStatus.ACTIVE, index=True)
+    
+    # 022 Omni Extensions
+    logistics_mode = Column(String(16), default="PICKUP")
+    payment_term = Column(String(16), default="COD")
+    pickup_schedule_proposed = Column(DateTime(timezone=True), nullable=True)
+    farmer_schedule_status = Column(String(16), default="PENDING")   # 'PENDING' | 'APPROVED' | 'RESCHEDULE_REQUESTED'
+    farmer_schedule_note = Column(Text, nullable=True)
+
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     decided_at = Column(DateTime(timezone=True), nullable=True)
 
@@ -108,3 +136,37 @@ class TrxSequence(Base):
     receiver_code = Column(String(12), nullable=False)
     yymm = Column(String(4), nullable=False)
     last_seq = Column(Integer, nullable=False, default=0)
+
+
+class CollectorPaymentReputation(Base):
+    """Scorecard reputasi pembayaran pengepul (tempo bayar, piutang tertunda, rating)."""
+    __tablename__ = "collector_payment_reputations"
+
+    collector_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
+    total_transactions = Column(Integer, nullable=False, default=0)
+    on_time_dp_count = Column(Integer, nullable=False, default=0)
+    on_time_settlement_count = Column(Integer, nullable=False, default=0)
+    avg_dp_delay_hours = Column(Double, nullable=False, default=0.0)
+    avg_settlement_delay_days = Column(Double, nullable=False, default=0.0)
+    punctuality_score = Column(Double, nullable=False, default=100.0)
+    outstanding_debt_rp = Column(Double, nullable=False, default=0.0)
+    settled_amount_rp = Column(Double, nullable=False, default=0.0)
+    rating_tier = Column(String(16), nullable=False, default="EXCELLENT") # EXCELLENT | GOOD | FAIR | POOR
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class CollectorRating(Base):
+    """Evaluasi performa pengepul oleh petani (rating ketepatan waktu & pembayaran)."""
+    __tablename__ = "collector_ratings"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    farmer_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    collector_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    harvest_id = Column(Integer, ForeignKey("harvests.id"), nullable=True)
+    punctuality_rating = Column(Integer, nullable=False, default=5)          # 1 - 5
+    payment_rating = Column(Integer, nullable=False, default=5)              # 1 - 5
+    overall_rating = Column(Double, nullable=False, default=5.0)
+    review_text = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+

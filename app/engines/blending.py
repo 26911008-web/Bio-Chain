@@ -5,7 +5,7 @@ properti campuran = rata-rata berbobot massa (blending linear).
 """
 
 import numpy as np
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from scipy.optimize import linprog
 
 from ..params import P
@@ -24,16 +24,10 @@ class Feedstock(BaseModel):
 
 
 class ProductSpec(BaseModel):
+    model_config = ConfigDict(extra="ignore")
     moisture_max: float | None = None
     ash_max: float | None = None
     fixed_carbon_min: float | None = None
-
-
-class BlendRequest(BaseModel):
-    feedstocks: list[Feedstock]
-    spec: ProductSpec
-    target_ton: float = Field(..., gt=0)
-    pyrolysis_temp_c: float = Field(500, ge=300, le=700)
 
 
 def default_feedstocks() -> list[Feedstock]:
@@ -52,6 +46,38 @@ def product_specs() -> dict:
                                                      ash_max=P("blending.qlc_ash_max"),
                                                      fixed_carbon_min=P("blending.qlc_fc_min"))},
     }
+
+
+class BlendRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    feedstocks: list[Feedstock] = Field(default_factory=default_feedstocks)
+    spec: ProductSpec | None = None
+    target_ton: float = Field(10.0, gt=0)
+    pyrolysis_temp_c: float = Field(500, ge=300, le=700)
+
+    @model_validator(mode="before")
+    @classmethod
+    def resolve_spec_and_feeds(cls, data: any):
+        if isinstance(data, dict):
+            # Feedstocks resolution
+            if not data.get("feedstocks"):
+                data["feedstocks"] = [f.model_dump() for f in default_feedstocks()]
+            # Spec resolution: can be string preset like "biochar_tanah", None, or ProductSpec dict
+            s = data.get("spec")
+            specs_map = product_specs()
+            if isinstance(s, str):
+                if s in specs_map:
+                    data["spec"] = specs_map[s]["spec"].model_dump()
+                else:
+                    data["spec"] = specs_map["biochar_tanah"]["spec"].model_dump()
+            elif s is None:
+                data["spec"] = specs_map["biochar_tanah"]["spec"].model_dump()
+            elif isinstance(s, dict):
+                pass
+            if not data.get("target_ton"):
+                data["target_ton"] = 10.0
+        return data
 
 
 def _constraints(fs: list[Feedstock], spec: ProductSpec, target: float, skip: str | None = None):
