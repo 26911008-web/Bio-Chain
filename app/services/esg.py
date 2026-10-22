@@ -124,9 +124,9 @@ async def esg_report(db: AsyncSession, start: datetime, end: datetime, label: st
                                 .where(*_between(CarbonCredit.created_at, start, end)))).scalar() or 0
 
     env = [
-        _kpi("E1", "Sekam diterima", _r(received_t), "t", "Σ timbang pabrik (harvest diterima + QC lolos)",
+        _kpi("E1", "Biomassa diterima", _r(received_t), "t", "Σ timbang pabrik (harvest diterima + QC lolos)",
              "POJK 51 Lamp. II; GRI 301-1", "harvests.received_kg, inbound_qc.net_kg"),
-        _kpi("E2", "Sekam diolah", _r(husk_t), "t", "Σ input batch", "GRI 301-1", "manufacturing_batches.input_kg"),
+        _kpi("E2", "Biomassa diolah", _r(husk_t), "t", "Σ input batch", "GRI 301-1", "manufacturing_batches.input_kg"),
         _kpi("E3", "Rendemen produk (valorisasi massa)", sc["circularity"]["mass_valorization_pct"], "%",
              "Σ output ÷ Σ input batch", "GRI 301-1; Puro §6.1", "batch_outputs / batch_inputs"),
         _kpi("E4", "Listrik proses", _r(kwh, 1), "kWh", "Σ kWh biaya batch", "GRI 302-1", "batch_costs (driver kWh)"),
@@ -136,8 +136,8 @@ async def esg_report(db: AsyncSession, start: datetime, end: datetime, label: st
              "parameter karbon.grid_ef_kg_co2_per_kwh"),
         _kpi("E7", "Emisi Scope 3 kat.4 (angkut masuk)", _r(scope3, 3), "tCO₂e", "Σ CO₂e WTW rute selesai (ISO 14083)",
              "GHG Protocol Scope 3 kat.4; GRI 305-3", "routes.co2e_wtw_kg"),
-        _kpi("E8", "Intensitas emisi per t sekam", _r((scope2 + scope3) * 1000 / husk_t, 1) if husk_t else None,
-             "kgCO₂e/t sekam", "(E6+E7) ÷ E2", "GRI 305-4", "turunan"),
+        _kpi("E8", "Intensitas emisi per t biomassa", _r((scope2 + scope3) * 1000 / husk_t, 1) if husk_t else None,
+             "kgCO₂e/t biomassa", "(E6+E7) ÷ E2", "GRI 305-4", "turunan"),
         _kpi("E9", "Karbon tersimpan bruto — POTENSI (seluruh biochar kering)", _r(gross_c, 3), "tCO₂e",
              "t biochar × (1 − kadar air) × F_C × 44/12",
              "Puro Biochar Methodology 2025 Eq.5.1", "batch_outputs; karbon.biochar_c_org_fraction, biochar_moisture_pct",
@@ -157,7 +157,7 @@ async def esg_report(db: AsyncSession, start: datetime, end: datetime, label: st
         _kpi("E13", "Emisi dihindari tercatat (kredit internal)", _r(credits, 3), "tCO₂e", "Σ carbon_credits",
              "GRI 305-5", "carbon_credits", "Status: estimasi internal, belum terdaftar SRN-PPI."),
         _kpi("E14", "Residu & susut proses", _r(waste_t, 3), "t", "Σ batch_losses", "GRI 306-3", "batch_losses"),
-        _kpi("E15", "Laju retur sekam", sc["circularity"]["return_rate_pct"], "%", "retur ÷ (diterima + retur)",
+        _kpi("E15", "Laju retur biomassa", sc["circularity"]["return_rate_pct"], "%", "retur ÷ (diterima + retur)",
              "GRI 306 (proxy)", "return_cases"),
         _kpi("E16", "Biochar kembali ke lahan petani", sc["circularity"]["biochar_returned_to_farmers_pct"], "% biochar",
              "alokasi petani ÷ biochar diproduksi", "Ellen MacArthur MCI (proxy)", "finished_goods_movements"),

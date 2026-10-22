@@ -232,7 +232,7 @@
                <select id="fo-pr-com" name="commodity">${await commodityOptions()}</select></div>
              <div class="form-group"><label for="fo-pr-qty">Jumlah (kg)</label>
                <input id="fo-pr-qty" name="qty" type="number" min="50" max="50000" step="50" value="1000" required></div>
-             <div class="form-group"><label for="fo-pr-mill">Lokasi penggilingan</label>
+             <div class="form-group"><label for="fo-pr-mill">Lokasi titik pemasok / penggilingan</label>
                <select id="fo-pr-mill" name="mill_id"><option value="">—</option>${mills}</select></div>
              ${QUALITY_FIELDS("fo-pr")}
              <p class="kpi-lbl">Isian sama dengan laporan petani sendiri. Nota QR setelah ini diberikan/difoto untuk petani.</p>`,

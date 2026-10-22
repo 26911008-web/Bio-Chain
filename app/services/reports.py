@@ -102,7 +102,7 @@ SPEC = {
         M("conversion.product_yield_pct", "Total produk / input", "%", "Konversi biomassa", True),
         M("conversion.closure_error_pct", "Galat penutupan mass balance (rata-rata)", "%", "Konversi biomassa"),
         M("conversion.biochar_to_farmers_kg", "Biochar ke dompet petani", "kg", "Konversi biomassa"),
-        M("cost.raw_material_rp", "Pembelian sekam", "Rp", "Efisiensi biaya"),
+        M("cost.raw_material_rp", "Pembelian biomassa", "Rp", "Efisiensi biaya"),
         M("cost.cash_paid_to_collectors_rp", "Kas dibayar ke pengepul (basis kas)", "Rp", "Efisiensi biaya"),
         M("cost.avg_purchase_price_per_kg", "Harga beli rata-rata", "Rp/kg", "Efisiensi biaya"),
         M("cost.unpriced_kg", "Diterima tanpa harga", "kg", "Efisiensi biaya"),
@@ -139,7 +139,7 @@ SPEC = {
     ],
     "driver": [
         M("supply.stops_completed", "Titik dijemput", "stop", "Volume pasokan", True),
-        M("supply.picked_kg", "Sekam diangkut", "kg", "Volume pasokan", True),
+        M("supply.picked_kg", "Biomassa diangkut", "kg", "Volume pasokan", True),
         M("supply.routes_completed", "Rute selesai", "rute", "Volume pasokan"),
         M("cost.route_km", "Jarak rute selesai", "km", "Efisiensi biaya"),
         M("cost.kg_per_km", "Muatan per km", "kg/km", "Efisiensi biaya"),

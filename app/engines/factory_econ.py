@@ -30,7 +30,7 @@ from ..params import P
 from .quality import biochar_yield_db
 
 PRODUCTS = ("bio_pellet", "biochar", "bio_silika")
-PRODUCT_LABEL = {"bio_pellet": "Bio-pellet", "biochar": "Biochar", "bio_silika": "Bio-silika"}
+PRODUCT_LABEL = {"bio_pellet": "Bio-pellet / Briket", "biochar": "Biochar", "bio_silika": "Bio-silika"}
 # bio_oil = kondensat/tar pirolisis (bisa dijual sebagai asap cair) — dicatat di neraca massa agar BOM lengkap
 LOSS_KINDS = ("air", "volatil_syngas", "gas_pembakaran", "bio_oil", "residu_ekstraksi", "susut_proses")
 SILICA_ROUTES = ("biochar", "abu_pembakaran", "sekam_langsung")

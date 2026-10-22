@@ -39,8 +39,8 @@
       <div id="fx-bm"><p class="muted">Memuat…</p></div></section>
 
     ${canWrite() ? `<section class="card" aria-labelledby="fx-fb-title">
-      <div class="card-header"><div><h3 class="card-title" id="fx-fb-title">⚗️ Prototipe 1 — Blend Bahan Bakar Biaya Terendah &amp; Risiko Terak</h3>
-        <p class="card-sub">LP HiGHS: campuran termurah yang memenuhi kalori, abu, klorin dan indeks alkali (anti-slagging boiler). Geser slider untuk uji campuran manual.</p></div></div>
+      <div class="card-header"><div><h3 class="card-title" id="fx-fb-title">⚗️ Prototipe 1 — Blend Bahan Bakar &amp; Briket Biaya Terendah &amp; Risiko Terak</h3>
+        <p class="card-sub">LP HiGHS: campuran termurah (pellet / briket / co-firing) yang memenuhi kalori, abu, klorin dan indeks alkali (anti-slagging boiler). Geser slider untuk uji campuran manual.</p></div></div>
       <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:8px;">
         <div class="form-group"><label for="fx-fb-preset">Spesifikasi produk</label><select id="fx-fb-preset"></select></div>
         <div class="form-group"><label for="fx-fb-target">Target produk (kg)</label><input id="fx-fb-target" type="number" min="1" step="100" value="10000"></div>
@@ -54,8 +54,8 @@
     </section>` : ""}
 
     <section class="card" aria-labelledby="fx-cv-title">
-      <div class="card-header"><div><h3 class="card-title" id="fx-cv-title">⚡ Prototipe 2 — Energi Riil &amp; Rute Konversi</h3>
-        <p class="card-sub">Nilai kalor basis kadar air lapangan (ISO 18125), potensi listrik η 22/28/36 %, CO₂ dihindari (grid JAMALI) dan pohon keputusan teknologi.</p></div></div>
+      <div class="card-header"><div><h3 class="card-title" id="fx-cv-title">⚡ Prototipe 2 — Energi Riil &amp; Rute Konversi Multi-Biomassa</h3>
+        <p class="card-sub">Nilai kalor basis kadar air lapangan (ISO 18125), potensi listrik η 22/28/36 %, CO₂ dihindari (grid JAMALI) dan pohon keputusan teknologi (pellet, briket, biochar, bio-silika, daya termal).</p></div></div>
       <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:8px;">
         <div class="form-group"><label for="fx-cv-com">Komoditas</label><select id="fx-cv-com"></select></div>
         <div class="form-group"><label for="fx-cv-t">Tonase / bulan (as received)</label><input id="fx-cv-t" type="number" min="1" step="10" value="500"></div>

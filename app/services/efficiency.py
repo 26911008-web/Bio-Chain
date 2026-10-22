@@ -85,8 +85,8 @@ async def efficiency_overview(db: AsyncSession, start: datetime, end: datetime) 
                               "— karbon dicatat proyek pabrik, jangan dijual ganda"})
 
     # ---- 3. Pembakaran terbuka dihindari — TEREALISASI (dampak lingkungan)
-    realized.append({"code": "R3", "process": "produksi", "title": "Sekam diolah, tidak dibakar terbuka",
-                     "quantity": round(husk_t, 2), "unit": "t sekam", "saving_rp": 0,
+    realized.append({"code": "R3", "process": "produksi", "title": "Biomassa diolah, tidak dibakar terbuka",
+                     "quantity": round(husk_t, 2), "unit": "t biomassa", "saving_rp": 0,
                      "saving_co2e_kg": round(sc["carbon_tco2e"]["avoided_open_burning"] * 1000, 1),
                      "basis": "IPCC 2006 Vol.4 — CH₄ & N₂O pembakaran residu (dilaporkan terpisah dari emisi bruto)"})
 
@@ -103,7 +103,7 @@ async def efficiency_overview(db: AsyncSession, start: datetime, end: datetime) 
                           "saving_rp": round(km_pot * cost_km), "saving_co2e_kg": round(km_pot * l_km * wtw, 1),
                           "status": "baik" if gap == 0 else "perhatian",
                           "recommendation": "Gabungkan jemputan per klaster desa & tunda lot kecil sampai bak ≥ target; "
-                                            "padatkan/press sekam (bulk density naik) agar trip berkurang."})
+                                            "padatkan/press biomassa (bulk density naik) agar trip berkurang."})
 
     # ---- P2: deviasi GPS (jarak nyata > rencana)
     dev = [(r.actual_km - r.total_km) for r in routes if r.actual_km and r.total_km and r.actual_km > r.total_km * 1.1]
@@ -140,7 +140,7 @@ async def efficiency_overview(db: AsyncSession, start: datetime, end: datetime) 
     hauled_kg = sum(h.verified_kg or h.quantity_kg or 0 for h in hauled)
     assessed = (await db.execute(select(func.count(Harvest.id)).where(Harvest.verified_at >= start, Harvest.verified_at < end))).scalar() or 0
     rate = len(rej) / (assessed + len(rej)) * 100 if (assessed + len(rej)) else 0
-    potential.append({"code": "P4", "process": "uji_mutu", "kpi": "Lot sekam ditolak",
+    potential.append({"code": "P4", "process": "uji_mutu", "kpi": "Lot biomassa ditolak",
                       "actual": round(rate, 1), "target": P("evaluasi.reject_max_pct"), "unit": "% lot",
                       "saving_rp": round(rej_kg * P("harga_mutu.base_price_per_kg")),
                       "saving_co2e_kg": round(hauled_kg / 1000 * t_per_t, 1),
@@ -165,7 +165,7 @@ async def efficiency_overview(db: AsyncSession, start: datetime, end: datetime) 
     if husk_t > 0 and kwh > 0:
         sec = kwh / husk_t
         ex = max(0.0, sec - target_sec) * husk_t
-        potential.append({"code": "P6", "process": "energi", "kpi": "Listrik per ton sekam (SEC)", "actual": round(sec, 1),
+        potential.append({"code": "P6", "process": "energi", "kpi": "Listrik per ton biomassa (SEC)", "actual": round(sec, 1),
                           "target": target_sec, "unit": "kWh/t", "saving_rp": round(ex * P("energi.tariff_rp_per_kwh")),
                           "saving_co2e_kg": round(ex * P("karbon.grid_ef_kg_co2_per_kwh"), 1),
                           "status": "baik" if ex == 0 else "perhatian",

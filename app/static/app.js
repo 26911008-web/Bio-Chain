@@ -1904,7 +1904,7 @@ async function renderPersonaDashboard(role) {
               <input type="number" id="f-qty" class="btn btn-secondary" style="width:100%; text-align:left;" value="2500" min="50" max="50000" step="50" required>
             </div>
             <div class="form-group">
-              <label for="f-mill">Lokasi penggilingan</label>
+              <label for="f-mill">Lokasi penggilingan / titik pasok</label>
               <select id="f-mill" class="btn btn-secondary" style="width:100%; text-align:left;"></select>
             </div>
             <details class="demo-hint-box" id="f-quality-box">
@@ -2064,7 +2064,7 @@ async function renderPersonaDashboard(role) {
           <div class="card-header">
             <div>
               <h3 class="card-title">📦 Antrian Biomassa Masuk</h3>
-              <p class="card-sub">Pilih batch untuk diverifikasi dengan hasil uji proksimat</p>
+              <p class="card-sub">Pilih batch multi-biomassa untuk diverifikasi dengan hasil uji proksimat</p>
             </div>
           </div>
           <div style="overflow-x:auto;">
@@ -2136,7 +2136,7 @@ async function renderPersonaDashboard(role) {
           <div class="card-header">
             <div>
               <h3 class="card-title">🚛 Titik Penjemputan Biomassa</h3>
-              <p class="card-sub">Scan QR petani di setiap penggilingan</p>
+              <p class="card-sub">Scan QR petani / produsen di setiap titik penjemputan biomassa</p>
             </div>
           </div>
           <div id="driver-stops-list">Memuat daftar stop...</div>
@@ -2156,9 +2156,9 @@ async function renderPersonaDashboard(role) {
     container.innerHTML = `
       <div class="kpi-row">
         <div class="kpi-tile"><div class="kpi-lbl">Emisi Karbon Dihindari</div><div class="kpi-val" id="f-co2">–</div><div class="kpi-lbl">tCO₂e (IPCC Tier 2)</div></div>
-        <div class="kpi-tile kpi-amber"><div class="kpi-lbl">Output Biochar</div><div class="kpi-val" id="f-biochar">–</div><div class="kpi-lbl">Ton Biochar Terverifikasi</div></div>
+        <div class="kpi-tile kpi-amber"><div class="kpi-lbl">Output Biochar / Terkarbonisasi</div><div class="kpi-val" id="f-biochar">–</div><div class="kpi-lbl">Ton Biochar Terverifikasi</div></div>
         <div class="kpi-tile kpi-blue"><div class="kpi-lbl">Potensi Biosilika SiO₂</div><div class="kpi-val" id="f-sio2">–</div><div class="kpi-lbl">Ton · estimasi dari kadar abu</div></div>
-        <div class="kpi-tile kpi-purple"><div class="kpi-lbl">Status Sertifikasi</div><div class="kpi-val" style="font-size:var(--fs-lg);">Pra-verifikasi</div><div class="kpi-lbl">Belum terdaftar SRN-PPI · Perpres 110/2025</div></div>
+        <div class="kpi-tile kpi-purple"><div class="kpi-lbl">Produk Sirkular Pabrik</div><div class="kpi-val" style="font-size:var(--fs-sm);">Pellet, Briket, Biochar &amp; Silika</div><div class="kpi-lbl">Multi-Downstream Biomassa</div></div>
       </div>
 
       ${renderAIEvaluationCard("pabrik")}
@@ -2180,7 +2180,7 @@ async function renderPersonaDashboard(role) {
           <div class="card-header">
             <div>
               <h3 class="card-title">🌿 Kalkulator Pengurangan Emisi Karbon</h3>
-              <p class="card-sub">Metodologi IPCC 2006 Tier 2 untuk pirolisis biochar</p>
+              <p class="card-sub">Metodologi IPCC 2006 Tier 2 untuk pemanfaatan multi-biomassa &amp; biochar</p>
             </div>
           </div>
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
@@ -2228,7 +2228,7 @@ async function renderPersonaDashboard(role) {
     container.innerHTML = `
       <div class="kpi-row" id="admin-summary-kpis">
         <div class="kpi-tile"><div class="kpi-lbl">Total Pengguna</div><div class="kpi-val" id="a-tot-users">–</div><div class="kpi-lbl">Akun terdaftar</div></div>
-        <div class="kpi-tile kpi-amber"><div class="kpi-lbl">Penggilingan Padi</div><div class="kpi-val" id="a-tot-mills">–</div><div class="kpi-lbl">Sleman &amp; Klaten</div></div>
+        <div class="kpi-tile kpi-amber"><div class="kpi-lbl">Titik Pemasok / Produsen</div><div class="kpi-val" id="a-tot-mills">–</div><div class="kpi-lbl">Sleman &amp; Klaten</div></div>
         <div class="kpi-tile kpi-blue"><div class="kpi-lbl">Laporan Biomassa</div><div class="kpi-val" id="a-tot-harvests">–</div><div class="kpi-lbl">Batch Transaksi</div></div>
         <div class="kpi-tile kpi-purple"><div class="kpi-lbl">Armada Logistik</div><div class="kpi-val" id="a-tot-routes">–</div><div class="kpi-lbl">Rute Penjemputan</div></div>
       </div>
@@ -2405,7 +2405,7 @@ async function cancelListing(listingId) {
 const PENGEPUL_MARKET_HTML = `
   <div class="card" style="margin-top:16px;">
     <div class="card-header"><div>
-      <h3 class="card-title">🛒 Pasar Stok Petani</h3>
+      <h3 class="card-title">🛒 Pasar Stok Biomassa Petani</h3>
       <p class="card-sub">Urut jarak dari gudang Anda. Saran tawaran = harga jual − biaya logistik marginal (rute CVRP) − margin.</p>
     </div>
     <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;"><label class="kpi-lbl" for="mk-resale">Harga jual ke pabrik (Rp/kg)</label>
@@ -2490,7 +2490,7 @@ async function planPickup(btn) {
           </div>
           <p class="kpi-lbl" style="margin:4px 0;">Muatan: <b>${num(r.summary.total_ton, 2)} ton</b> · Biaya: <b>${rp(r.summary.total_cost)}</b> (${rp(r.summary.cost_per_kg)}/kg) · Algoritma: ${esc(r.summary.algorithm)}</p>
           <table class="data-table" style="margin-top:8px;">
-            <thead><tr><th>Trip</th><th>Urutan Penjemputan Petani</th><th class="num">Muatan (m³)</th><th class="num">Ton</th><th class="num">Jarak</th></tr></thead>
+            <thead><tr><th>Trip</th><th>Urutan Penjemputan Petani / Produsen Biomassa</th><th class="num">Muatan (m³)</th><th class="num">Ton</th><th class="num">Jarak</th></tr></thead>
             <tbody>
               ${r.routes.map((rt, idx) => `
                 <tr>
@@ -2510,7 +2510,7 @@ async function planPickup(btn) {
 // ==============================================================
 // PABRIK — Procurement B2B, QC masuk, batch manufaktur sirkular, pricing engine
 // ==============================================================
-const PRODUCT_NAMES = { bio_pellet: "Bio-pellet", biochar: "Biochar", bio_silika: "Bio-silika" };
+const PRODUCT_NAMES = { bio_pellet: "Bio-pellet / Briket", biochar: "Biochar", bio_silika: "Bio-silika" };
 const LOSS_NAMES = { air: "Air diuapkan", volatil_syngas: "Volatil / syngas", gas_pembakaran: "Gas pembakaran/kalsinasi",
                      bio_oil: "Bio-oil / tar (asap cair)",
                      residu_ekstraksi: "Residu ekstraksi", susut_proses: "Susut proses" };
@@ -2520,13 +2520,13 @@ const DR_STATUS = { submitted: "badge-amber", countered: "badge-blue", accepted:
 const FACTORY_OPS_HTML = `
   <div class="grid-2" style="margin-top:16px;">
     <div class="card">
-      <div class="card-header"><div><h3 class="card-title">🧮 Rekomendasi Harga Beli Biomassa</h3>
-        <p class="card-sub">Netback 3 produk − biaya variabel − biaya tetap − margin (angka dari menu Parameter)</p></div></div>
+      <div class="card-header"><div><h3 class="card-title">🧮 Rekomendasi Harga Beli Multi-Biomassa</h3>
+        <p class="card-sub">Netback multi-produk (bio-pellet, briket, biochar, bio-silika) − biaya variabel − biaya tetap − margin (angka dari menu Parameter)</p></div></div>
       <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px;">
         <div><label class="kpi-lbl">Kadar air (%)</label><input id="pr-m" type="number" class="btn btn-secondary" style="width:100%;" value="11" step="0.5"></div>
         <div><label class="kpi-lbl">Abu (% bk)</label><input id="pr-a" type="number" class="btn btn-secondary" style="width:100%;" value="18" step="0.5"></div>
         <div><label class="kpi-lbl">Kontaminan (%)</label><input id="pr-c" type="number" class="btn btn-secondary" style="width:100%;" value="0" step="0.5"></div>
-        <div><label class="kpi-lbl">Harga bio-pellet (Rp/kg) *</label><input id="pr-pp" type="number" class="btn btn-secondary" style="width:100%;" min="0" placeholder="wajib"></div>
+        <div><label class="kpi-lbl">Harga bio-pellet / briket (Rp/kg) *</label><input id="pr-pp" type="number" class="btn btn-secondary" style="width:100%;" min="0" placeholder="wajib"></div>
         <div><label class="kpi-lbl">Harga biochar (Rp/kg) *</label><input id="pr-pb" type="number" class="btn btn-secondary" style="width:100%;" min="0" placeholder="wajib"></div>
         <div><label class="kpi-lbl">Harga bio-silika (Rp/kg) *</label><input id="pr-ps" type="number" class="btn btn-secondary" style="width:100%;" min="0" placeholder="wajib"></div>
         <div style="grid-column:span 2;"><label class="kpi-lbl">Jalur bio-silika</label><select id="pr-route" class="btn btn-secondary" style="width:100%;">
@@ -2556,8 +2556,8 @@ const FACTORY_OPS_HTML = `
     <div id="st-list" style="overflow-x:auto;"><p class="muted">Memuat…</p></div>
   </div>
   <div class="card" style="margin-top:16px;">
-    <div class="card-header"><div><h3 class="card-title">🏭 Batch Produksi Sirkular (1 input → 3 output + loss)</h3>
-      <p class="card-sub">Pilih lot hasil QC, isi timbangan output & loss, biaya → mass balance & biaya per ton produk</p></div>
+    <div class="card-header"><div><h3 class="card-title">🏭 Batch Produksi Multi-Produk (Biomassa → Pellet/Briket, Biochar, Biosilika)</h3>
+      <p class="card-sub">Pilih lot hasil QC, isi timbangan output (bio-pellet / briket, biochar, bio-silika) &amp; loss, biaya → mass balance &amp; biaya per ton produk</p></div>
       <button class="btn btn-secondary btn-sm" id="btn-batch-model">Isi dari model</button></div>
     <div class="grid-2">
       <div>
@@ -2578,7 +2578,7 @@ const FACTORY_OPS_HTML = `
         </div>
       </div>
       <div>
-        <h4 style="margin:0 0 4px;">Output (kg)</h4>
+        <h4 style="margin:0 0 4px;">Output Multi-Produk (kg)</h4>
         <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px;">${Object.entries(PRODUCT_NAMES).map(([k, v]) =>
           `<div><label class="kpi-lbl">${v}</label><input id="bt-o-${k}" type="number" class="btn btn-secondary" style="width:100%;" value="0" min="0"></div>`).join("")}</div>
         <h4 style="margin:12px 0 4px;">Loss terukur (kg)</h4>
@@ -2875,7 +2875,7 @@ const PENGEPUL_DR_HTML = `
       <div><label class="kpi-lbl">Harga diajukan (Rp/kg)</label><input id="dr-price" type="number" class="btn btn-secondary" style="width:100%;"></div>
     </div>
     <p class="kpi-lbl" id="dr-reco"></p>
-    <details style="margin:8px 0;"><summary class="kpi-lbl" style="cursor:pointer;">🌾 Lampirkan biomassa petani (agar biochar masuk ke dompet mereka)</summary>
+    <details style="margin:8px 0;"><summary class="kpi-lbl" style="cursor:pointer;">🌾 Lampirkan lot biomassa petani (agar alokasi produk sirkular / biochar masuk ke dompet mereka)</summary>
       <div id="dr-harvests" style="margin-top:8px;"></div></details>
     <button class="btn btn-primary" id="btn-dr">Ajukan ➔</button>
     <div id="dr-mine" style="margin-top:12px; overflow-x:auto;"></div>
@@ -3065,7 +3065,7 @@ function submitVerify(e) {
 let driverMap, driverLayer;
 const FAIL_REASONS = [["stok_tidak_ada", "Biomassa tidak ada / sudah dijual"], ["dibatalkan_pengepul", "Dibatalkan pengepul"],
   ["mutu_buruk", "Basah / berjamur"], ["akses_jalan", "Jalan tidak bisa dilalui"],
-  ["penggilingan_tutup", "Penggilingan tutup"], ["truk_penuh", "Bak truk penuh"], ["lainnya", "Lainnya"]];
+  ["penggilingan_tutup", "Lokasi / titik tutup"], ["truk_penuh", "Bak truk penuh"], ["lainnya", "Lainnya"]];
 const STOP_BADGE = { picked_up: ["badge-green", "DIJEMPUT"], failed: ["badge-red", "GAGAL"],
                      cancelled: ["badge-gray", "DIBATALKAN"] };
 
@@ -3116,7 +3116,7 @@ async function loadDriverData() {
       <div style="background:var(--surface-1); border:1px solid var(--border); border-radius:var(--radius-md); padding:12px; margin-bottom:12px;">
         <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
           <div>
-            <strong>Stop #${s.order}: ${esc(s.mill ? s.mill.name : `Penggilingan #${s.mill_id}`)}</strong>
+            <strong>Stop #${s.order}: ${esc(s.mill ? s.mill.name : `Titik Pemasok #${s.mill_id}`)}</strong>
             <div style="font-size:var(--fs-xs); color:var(--ink-muted); margin-top:2px;">
               ${s.planned_ton} Ton${s.fail_reason ? ` · ${esc(s.fail_reason)}` : ""}</div>
           </div>
@@ -3333,7 +3333,7 @@ async function loadAdminPanel() {
     if (statsRow) {
       statsRow.innerHTML = `
         <div class="kpi-tile"><div class="kpi-lbl">Total Pengguna</div><div class="kpi-val">${stats.total_users}</div><div class="kpi-lbl">User Terdaftar</div></div>
-        <div class="kpi-tile kpi-amber"><div class="kpi-lbl">Total Penggilingan</div><div class="kpi-val">${stats.total_mills}</div><div class="kpi-lbl">Titik Pemasok</div></div>
+        <div class="kpi-tile kpi-amber"><div class="kpi-lbl">Total Titik Pemasok</div><div class="kpi-val">${stats.total_mills}</div><div class="kpi-lbl">Titik Pemasok Biomassa</div></div>
         <div class="kpi-tile kpi-blue"><div class="kpi-lbl">Total Laporan Panen</div><div class="kpi-val">${stats.total_harvests}</div><div class="kpi-lbl">Transaksi Biomassa</div></div>
         <div class="kpi-tile kpi-purple"><div class="kpi-lbl">Rute Armada</div><div class="kpi-val">${stats.total_routes}</div><div class="kpi-lbl">Rute Pengiriman</div></div>
       `;
