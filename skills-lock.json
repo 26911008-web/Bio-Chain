@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "skills": {
+    "clean-code-refactoring": {
+      "source": "blunotech-dev/agents",
+      "sourceType": "github",
+      "skillPath": "refactor/clean-code-refactoring/SKILL.md",
+      "computedHash": "c4e4ee2fcf1e759a1a3445706d200f5253422e81f83b53aca85d4d266036352c"
+    },
+    "component-split": {
+      "source": "blunotech-dev/agents",
+      "sourceType": "github",
+      "skillPath": "frontend/component-split/SKILL.md",
+      "computedHash": "10b52986b22f1ca0670e6c3fb4e5c0275f2323d8dd71fcf65e339de0335a6c81"
+    },
+    "knip": {
+      "source": "brianlovin/agent-config",
+      "sourceType": "github",
+      "skillPath": "skills/knip/SKILL.md",
+      "computedHash": "96e70565ccfa71cb56bbb2a25241b9c7c25b83ebe691709c00da6cd9dab537b8"
+    },
+    "refactor-clean": {
+      "source": "julianromli/ai-skills",
+      "sourceType": "github",
+      "skillPath": "skills/refactor-clean/SKILL.md",
+      "computedHash": "177c25a160ad1289c79cf38cd837e6f6b967607dfe3a4d7c3cb6f824a9975b9c"
+    }
+  }
+}
