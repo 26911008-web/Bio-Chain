@@ -3,7 +3,10 @@
 Membaca dari .env file atau environment variables.
 """
 
-from pydantic import model_validator
+import os
+from pathlib import Path
+
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -23,6 +26,8 @@ class Settings(BaseSettings):
     DB_POOL_WARMUP: int = 20                # buka N koneksi (≤ pool) saat start: p95 serbuan awal 1,7 s → ±1,0 s (docs/21)
     AUTO_MIGRATE: bool = True               # False di produksi: skema via migrations/*.sql oleh DBA (peran app tanpa DDL)
     PGBOUNCER: bool = False                 # True → nonaktifkan prepared-statement cache asyncpg
+    # Folder foto bukti. Kosong = app/static/uploads; di Vercel (disk read-only) otomatis /tmp (sementara!)
+    UPLOADS_DIR: str = ""
 
     # Redis
     REDIS_URL: str = "redis://localhost:6381/0"
@@ -85,6 +90,20 @@ class Settings(BaseSettings):
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
+    @field_validator("DATABASE_URL")
+    @classmethod
+    def _normalize_db_url(cls, v: str) -> str:
+        """Terima string koneksi apa adanya dari Supabase/Vercel (postgres://…?sslmode=require):
+        ubah ke driver asyncpg; sslmode → ssl (tetap wajib TLS), parameter lain yang tak dikenal asyncpg dibuang."""
+        if v.startswith(("postgres://", "postgresql://")):
+            v = "postgresql+asyncpg://" + v.split("://", 1)[1]
+        if v.startswith("postgresql+asyncpg://") and "?" in v:
+            base, query = v.split("?", 1)
+            ssl = next((val for key, _, val in (p.partition("=") for p in query.split("&"))
+                        if key in ("sslmode", "ssl") and val), None)
+            v = f"{base}?ssl={ssl}" if ssl else base
+        return v
+
     @model_validator(mode="after")
     def _validate_secrets(self):
         if not self.DEBUG:
@@ -105,6 +124,14 @@ class Settings(BaseSettings):
             if any(o.startswith("http://") and "localhost" not in o and "127.0.0.1" not in o for o in origins):
                 raise ValueError("CORS_ORIGINS produksi harus https:// (kamera QR, GPS & crypto.randomUUID butuh HTTPS).")
         return self
+
+    @property
+    def uploads_path(self) -> Path:
+        if self.UPLOADS_DIR:
+            return Path(self.UPLOADS_DIR)
+        if os.getenv("VERCEL"):
+            return Path("/tmp/biochain-uploads")
+        return Path(__file__).parent / "static" / "uploads"
 
     @property
     def cors_origins(self) -> list[str]:

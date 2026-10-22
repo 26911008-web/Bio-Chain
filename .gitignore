@@ -62,3 +62,8 @@ videos/
 # Dokumen & Manual Heavy
 *.pdf
 *.docx
+# Vercel
+.vercel/
+
+.vercel
+.env*

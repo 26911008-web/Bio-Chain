@@ -5,13 +5,13 @@ import hashlib
 import anyio.to_thread
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 
+from ..config import settings
 from ..dependencies import get_current_user
 from ..models.user import User
 
 router = APIRouter()
 
-STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
-UPLOADS_DIR = STATIC_DIR / "uploads"
+UPLOADS_DIR = settings.uploads_path
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".pdf"}

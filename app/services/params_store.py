@@ -73,7 +73,7 @@ async def start_pg_listener(database_url: str):
     import asyncio
     if not database_url.startswith("postgresql"):
         return
-    url = database_url.replace("postgresql+asyncpg://", "postgresql://")
+    url = database_url.replace("postgresql+asyncpg://", "postgresql://").replace("?ssl=", "?sslmode=")
     while True:
         try:
             import asyncpg

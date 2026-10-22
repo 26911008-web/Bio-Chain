@@ -5,6 +5,7 @@ per RATE_LIMIT_WINDOW_SECONDS. Health check & docs dikecualikan.
 Fail-open: jika Redis down, request tetap diizinkan.
 """
 
+import os
 import socket
 import time
 from urllib.parse import urlparse
@@ -18,6 +19,7 @@ from ..config import settings
 EXEMPT_PATHS = {"/health", "/ready", "/docs", "/openapi.json", "/redoc"}
 LOGIN_PATH = "/api/v1/auth/login"
 TRUSTED_PROXIES = {ip.strip() for ip in settings.TRUSTED_PROXIES.split(",") if ip.strip()}
+ON_VERCEL = bool(os.getenv("VERCEL"))
 
 
 def client_ip(request: Request) -> str:
@@ -25,6 +27,9 @@ def client_ip(request: Request) -> str:
     diambil entri paling kanan yang bukan proxy (entri kiri bisa dipalsukan klien)."""
     peer = request.client.host if request.client else "unknown"
     xff = request.headers.get("x-forwarded-for")
+    if ON_VERCEL and xff:
+        # Edge Vercel menimpa X-Forwarded-For dengan IP klien asli (tidak bisa dipalsukan klien)
+        return xff.split(",")[0].strip()
     if peer not in TRUSTED_PROXIES or not xff:
         return peer
     for hop in reversed([h.strip() for h in xff.split(",") if h.strip()]):

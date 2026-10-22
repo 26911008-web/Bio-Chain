@@ -63,12 +63,12 @@ async def lifespan(app: FastAPI):
         print("✅ Local SQLite database tables ready (biochain.db)")
 
     # 2. Auto-seed demo data if empty
+    from .services.params_store import load as load_params, start_pg_listener
     try:
         from .seed import seed_if_empty
         if settings.DEMO_MODE:                     # produksi: DB kosong tetap kosong (admin dibuat lewat CLI)
             async with db_module.async_session() as session:
                 await seed_if_empty(session)
-        from .services.params_store import load as load_params, start_pg_listener
         async with db_module.async_session() as session:
             await load_params(session)
     except Exception as e:
@@ -210,7 +210,7 @@ async def _zero_div(_: Request, exc: ZeroDivisionError):
 
 # Static files & uploads
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
-UPLOADS_DIR = STATIC / "uploads"
+UPLOADS_DIR = settings.uploads_path
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR), name="uploads")
 

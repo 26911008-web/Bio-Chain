@@ -1,0 +1,11 @@
+videos/
+docs/
+loadtest/
+test-results/
+node_modules/
+scratch/
+*.docx
+*.db
+*.db-shm
+*.db-wal
+.env
