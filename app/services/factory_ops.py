@@ -18,9 +18,10 @@ from .custody import allocate_grams, shrinkage_fields, transition
 from ..engines.quality import FeedstockSample, score_sample
 from ..models.factory_ops import (BatchCost, BatchInput, BatchLoss, BatchOutput, CollectorSettlement, DeliveryRequest,
                                   InboundQC, ManufacturingBatch, NegotiationEvent, QCDecision, RequestStatus,
-                                  SettlementStatus)
+                                  SettlementEvent, SettlementStatus)
 from ..models.user import User, UserRole
 from ..params import P
+from ..models.route import Route, RouteStatus, RouteStop
 from .custody import TransitionConflict
 from .trx_code import new_verification_code
 
@@ -74,14 +75,24 @@ async def submit_request(db: AsyncSession, collector: User, data: dict) -> Deliv
     await db.flush()
     ids = sorted(set(data.get("harvest_ids") or []))
     if ids:
-        # Hanya harvest yang SUDAH ditimbang pengepul ini & belum terlampir di ajuan lain (CAS per baris)
+        # Hanya harvest yang SUDAH ditimbang pengepul ini, belum terlampir di ajuan lain,
+        # dan tidak sedang dalam rute aktif (PLANNED atau IN_PROGRESS) (CAS per baris)
+        active_route_harvests = (
+            select(RouteStop.harvest_id)
+            .join(Route, RouteStop.route_id == Route.id)
+            .where(
+                RouteStop.harvest_id.is_not(None),
+                Route.status.in_([RouteStatus.PLANNED, RouteStatus.IN_PROGRESS]),
+            )
+        )
         res = await db.execute(update(Harvest).where(
             Harvest.id.in_(ids), Harvest.collector_id == collector.id, Harvest.status == HarvestStatus.VERIFIED,
-            Harvest.delivery_request_id.is_(None)).values(delivery_request_id=r.id)
+            Harvest.delivery_request_id.is_(None),
+            ~Harvest.id.in_(active_route_harvests)).values(delivery_request_id=r.id)
             .execution_options(synchronize_session=False))
         if res.rowcount != len(ids):
-            raise TransitionConflict("Sebagian harvest bukan milik Anda, belum ditimbang (verified), atau sudah "
-                                     "terlampir di ajuan lain.")
+            raise TransitionConflict("Sebagian harvest bukan milik Anda, belum ditimbang (verified), sedang dalam rute aktif, "
+                                     "atau sudah terlampir di ajuan lain.")
     await _event(db, r.id, collector, "submit", r.proposed_price_per_kg, r.proposed_date,
                  (data.get("note") or "") + (f" | harvest {ids}" if ids else ""))
     await db.flush()
@@ -357,6 +368,11 @@ async def settle_qc(db: AsyncSession, qc: InboundQC, collector_id: int, actor: U
                             priced_at=datetime.now(timezone.utc))
     db.add(s)
     await db.flush()
+    ev = SettlementEvent(settlement_id=s.id, action="dibuat", old_price=None, new_price=qc.final_price_per_kg,
+                         old_amount=None, new_amount=qc.total_payment_rp,
+                         reason="Jalur QC: harga kontrak disetarakan mutu inbound", actor_id=actor.id)
+    db.add(ev)
+    await db.flush()
     return s
 
 
@@ -367,25 +383,37 @@ async def settle_route(db: AsyncSession, harvest: Harvest, actor: User, price_ov
         return None
     kg = harvest.received_kg * (1 - (harvest.contamination or 0) / 100)
     now = datetime.now(timezone.utc)
+    used_moisture = harvest.moisture if harvest.moisture is not None else P("pabrik.reference_moisture_pct")
+    is_ref_moisture = harvest.moisture is None
+    used_ash = harvest.ash if harvest.ash is not None else P("rendemen.ref_ash")
+    ref_suffix = " (kadar air referensi)" if is_ref_moisture else ""
     if price_override is not None:
         price, basis = price_override, "harga diisi pabrik saat timbang terima"
     else:
         from ..engines.factory_econ import PriceMissing
         try:
-            r = recommend_price(PricingRequest(
-                moisture=harvest.moisture if harvest.moisture is not None else P("pabrik.reference_moisture_pct"),
-                ash=harvest.ash if harvest.ash is not None else P("rendemen.ref_ash"), sensitivity=False))
-            price = r["target_per_kg"] if r["accept"] else 0.0
-            basis = (f"rekomendasi netback (target) untuk kadar air {harvest.moisture}% — menu Parameter"
-                     if r["accept"] else "di atas batas tolak mutu: tidak dibayar")
+            r = recommend_price(PricingRequest(moisture=used_moisture, ash=used_ash, sensitivity=False))
+            if r["accept"]:
+                price = r["target_per_kg"]
+                basis = f"rekomendasi netback (target) untuk kadar air {used_moisture}%{ref_suffix} — menu Parameter"
+            else:
+                price = None
+                basis = f"di luar batas mutu (kadar air {used_moisture}%{ref_suffix}) — perlu keputusan harga manual"
         except PriceMissing:
             price, basis = None, "menunggu harga: harga jual produk belum diisi di menu Parameter"
+
+    status = SettlementStatus.PENDING_PRICE if price is None else SettlementStatus.PAYABLE
+    amount_rp = None if price is None else round(kg * price)
     s = CollectorSettlement(
         collector_id=harvest.collector_id, source="rute", harvest_id=harvest.id, payable_kg=kg,
-        moisture=harvest.moisture, price_per_kg=price, amount_rp=None if price is None else round(kg * price),
-        price_basis=basis, status=SettlementStatus.PENDING_PRICE if price is None else SettlementStatus.PAYABLE,
+        moisture=used_moisture, price_per_kg=price, amount_rp=amount_rp,
+        price_basis=basis, status=status,
         created_by_id=actor.id, priced_at=None if price is None else now)
     db.add(s)
+    await db.flush()
+    ev = SettlementEvent(settlement_id=s.id, action="dibuat", old_price=None, new_price=price,
+                         old_amount=None, new_amount=amount_rp, reason=basis, actor_id=actor.id)
+    db.add(ev)
     await db.flush()
     return s
 
@@ -395,19 +423,29 @@ async def set_settlement_price(db: AsyncSession, settlement_id: int, price: floa
     s = await db.get(CollectorSettlement, settlement_id)
     if s is None:
         raise LookupError("Catatan pembayaran tidak ditemukan")
+    old_price = s.price_per_kg
+    old_amount = s.amount_rp
+    new_amount = round(s.payable_kg * price)
     res = await db.execute(update(CollectorSettlement)
                            .where(CollectorSettlement.id == settlement_id,
                                   CollectorSettlement.status.in_([SettlementStatus.PENDING_PRICE, SettlementStatus.PAYABLE]))
-                           .values(price_per_kg=price, amount_rp=round(s.payable_kg * price),
+                           .values(price_per_kg=price, amount_rp=new_amount,
                                    status=SettlementStatus.PAYABLE, priced_at=datetime.now(timezone.utc),
                                    price_basis=f"ditetapkan {actor.full_name}: {reason}")
                            .execution_options(synchronize_session=False))
     if res.rowcount != 1:
         raise TransitionConflict("Pembayaran sudah lunas — harga tidak dapat diubah.")
+    ev = SettlementEvent(settlement_id=settlement_id, action="harga", old_price=old_price, new_price=price,
+                         old_amount=old_amount, new_amount=new_amount, reason=reason, actor_id=actor.id)
+    db.add(ev)
+    await db.flush()
     return await db.get(CollectorSettlement, settlement_id, populate_existing=True)
 
 
-async def mark_settlement_paid(db: AsyncSession, settlement_id: int, reference: str):
+async def mark_settlement_paid(db: AsyncSession, settlement_id: int, reference: str, actor: User | None = None):
+    s = await db.get(CollectorSettlement, settlement_id)
+    if s is None:
+        raise LookupError("Catatan pembayaran tidak ditemukan")
     res = await db.execute(update(CollectorSettlement)
                            .where(CollectorSettlement.id == settlement_id,
                                   CollectorSettlement.status == SettlementStatus.PAYABLE)
@@ -417,4 +455,30 @@ async def mark_settlement_paid(db: AsyncSession, settlement_id: int, reference: 
     if res.rowcount != 1:
         raise TransitionConflict("Hanya pembayaran berstatus 'terutang' yang dapat ditandai lunas "
                                  "(harga harus ditetapkan dulu; tidak bisa dibayar dua kali).")
+    actor_id = actor.id if actor else s.created_by_id
+    ev = SettlementEvent(settlement_id=settlement_id, action="dibayar", old_price=s.price_per_kg,
+                         new_price=s.price_per_kg, old_amount=s.amount_rp, new_amount=s.amount_rp,
+                         reason=f"Lunas transfer ref: {reference}", actor_id=actor_id)
+    db.add(ev)
+    await db.flush()
     return await db.get(CollectorSettlement, settlement_id, populate_existing=True)
+
+
+def settlement_event_dict(e: SettlementEvent, actor_name: str | None = None) -> dict:
+    return {
+        "id": e.id, "settlement_id": e.settlement_id, "action": e.action,
+        "old_price": e.old_price, "new_price": e.new_price,
+        "old_amount": e.old_amount, "new_amount": e.new_amount,
+        "reason": e.reason, "actor_id": e.actor_id, "actor_name": actor_name,
+        "created_at": e.created_at.isoformat() if e.created_at else None,
+    }
+
+
+async def settlement_history(db: AsyncSession, settlement_id: int) -> list[dict]:
+    q = (select(SettlementEvent, User.full_name)
+         .outerjoin(User, User.id == SettlementEvent.actor_id)
+         .where(SettlementEvent.settlement_id == settlement_id)
+         .order_by(SettlementEvent.id.asc()))
+    rows = (await db.execute(q)).all()
+    return [settlement_event_dict(ev, actor_name=name) for ev, name in rows]
+

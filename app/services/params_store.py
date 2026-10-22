@@ -19,6 +19,16 @@ async def maybe_refresh(db: AsyncSession) -> None:
         await load(db)
 
 
+async def _notify_param_change(db: AsyncSession) -> None:
+    try:
+        bind = db.get_bind()
+        if bind and bind.dialect.name == "postgresql":
+            from sqlalchemy import text
+            await db.execute(text("NOTIFY biochain_params_channel, 'reload'"))
+    except Exception:
+        pass
+
+
 async def set_value(db: AsyncSession, key: str, value, user: User, reason: str) -> dict:
     d = params.REGISTRY.get(key)
     if d is None:
@@ -36,6 +46,7 @@ async def set_value(db: AsyncSession, key: str, value, user: User, reason: str) 
                            changed_by_role=user.role.value if hasattr(user.role, "value") else str(user.role),
                            reason=reason))
     await db.flush()
+    await _notify_param_change(db)
     params._values[key] = clean
     return params.describe(key)
 
@@ -52,5 +63,30 @@ async def reset_value(db: AsyncSession, key: str, user: User, reason: str) -> di
                            changed_by_role=user.role.value if hasattr(user.role, "value") else str(user.role),
                            reason=reason))
     await db.flush()
+    await _notify_param_change(db)
     params._values.pop(key, None)
     return params.describe(key)
+
+
+async def start_pg_listener(database_url: str):
+    """Background task mendengarkan NOTIFY biochain_params_channel pada PostgreSQL (instant invalidation)."""
+    import asyncio
+    if not database_url.startswith("postgresql"):
+        return
+    url = database_url.replace("postgresql+asyncpg://", "postgresql://")
+    while True:
+        try:
+            import asyncpg
+            conn = await asyncpg.connect(url)
+            def on_notify(connection, pid, channel, payload):
+                params.mark_stale()
+            await conn.add_listener("biochain_params_channel", on_notify)
+            try:
+                while True:
+                    await asyncio.sleep(3600)
+            finally:
+                await conn.close()
+        except asyncio.CancelledError:
+            break
+        except Exception:
+            await asyncio.sleep(5)

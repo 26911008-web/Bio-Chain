@@ -23,7 +23,7 @@ async def monthly(
     user: Annotated[User, Depends(get_current_user)],
     start: str | None = Query(None, alias="from", pattern=MONTH, description="YYYY-MM (default: 11 bulan sebelum 'to')"),
     end: str | None = Query(None, alias="to", pattern=MONTH, description="YYYY-MM (default: bulan ini, WIB)"),
-    format: str = Query("json", pattern="^(json|csv)$"),
+    format: str = Query("json", pattern="^(json|csv|xlsx)$"),
 ):
     """Volume pasokan, % konversi biomassa, efisiensi biaya per bulan. Petani/pengepul/supir: data sendiri;
     pabrik/admin/auditor: seluruh pabrik."""
@@ -33,6 +33,32 @@ async def monthly(
         raise HTTPException(422, str(e)) from e
     if format == "json":
         return rep
+    if format == "xlsx":
+        import openpyxl
+        wb = openpyxl.Workbook()
+        ws_data = wb.active
+        ws_data.title = "Ringkasan Laporan"
+        cols = rep["columns"]
+        ws_data.append(["Bulan"] + [f"{c['label']} ({c['unit']})" for c in cols])
+        for row in rep["months"]:
+            ws_data.append([row["month"]] + [row.get(c["key"].split(".")[0], {}).get(c["key"].split(".", 1)[1]) for c in cols])
+
+        ws_meta = wb.create_sheet(title="Info & Cakupan")
+        ws_meta.append(["Parameter", "Nilai"])
+        ws_meta.append(["Peran Pengguna", rep["scope"]["label"]])
+        ws_meta.append(["Cakupan Data", rep["scope"]["kind"]])
+        ws_meta.append(["Periode Dari", rep["period"]["from"]])
+        ws_meta.append(["Periode Sampai", rep["period"]["to"]])
+
+        out_buf = io.BytesIO()
+        wb.save(out_buf)
+        out_buf.seek(0)
+        fname = f"laporan_{rep['scope']['kind']}_{rep['period']['from']}_{rep['period']['to']}.xlsx"
+        return StreamingResponse(
+            out_buf,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{fname}"'}
+        )
     buf = io.StringIO()
     w = csv.writer(buf)
     cols = rep["columns"]

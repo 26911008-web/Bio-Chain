@@ -5,14 +5,19 @@ Smart rice-husk supply chain untuk feedstock pirolisis biochar.
 
 ## 🚀 Quick Start
 
-### 1. Jalankan Aplikasi (Cukup Dobel Klik atau Jalankan Command)
-Aplikasi mendukung mode offline tanpa Docker (otomatis menggunakan SQLite `biochain.db` dan auto-seeding data contoh):
+### 1. Jalankan Aplikasi (1-Klik atau Perintah Terminal)
+Aplikasi mendukung mode offline tanpa Docker (otomatis menggunakan SQLite `biochain.db` dan auto-seeding data contoh), atau dengan PostgreSQL lokal di port 5433:
 
 ```bash
-# Opsi A: Dobel klik file jalankan.bat
-jalankan.bat
+# Windows (1-Klik)
+jalankan.bat        # Mode SQLite lokal standalone (otomatis pasang dependensi & buka browser)
+jalankan.bat pg     # Mode PostgreSQL (menjalankan Docker port 5433 + setup skema otomatis)
 
-# Opsi B: Jalankan via terminal
+# Linux / macOS / Git Bash
+./jalankan.sh       # Mode SQLite lokal standalone
+./jalankan.sh pg    # Mode PostgreSQL (Docker port 5433 + setup skema otomatis)
+
+# Opsi manual via terminal
 py -m uvicorn app.main:app --port 8000
 ```
 

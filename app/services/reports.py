@@ -103,6 +103,7 @@ SPEC = {
         M("conversion.closure_error_pct", "Galat penutupan mass balance (rata-rata)", "%", "Konversi biomassa"),
         M("conversion.biochar_to_farmers_kg", "Biochar ke dompet petani", "kg", "Konversi biomassa"),
         M("cost.raw_material_rp", "Pembelian sekam", "Rp", "Efisiensi biaya"),
+        M("cost.cash_paid_to_collectors_rp", "Kas dibayar ke pengepul (basis kas)", "Rp", "Efisiensi biaya"),
         M("cost.avg_purchase_price_per_kg", "Harga beli rata-rata", "Rp/kg", "Efisiensi biaya"),
         M("cost.unpriced_kg", "Diterima tanpa harga", "kg", "Efisiensi biaya"),
         M("cost.cost_per_ton_input_rp", "Biaya per ton input", "Rp/t", "Efisiensi biaya", True),
@@ -120,6 +121,7 @@ SPEC = {
         M("supply.auction_won_kg", "Menang lelang", "kg", "Volume pasokan"),
         M("cost.paid_to_farmers_rp", "Dibayar ke petani", "Rp", "Efisiensi biaya"),
         M("cost.received_from_factory_rp", "Tagihan ke pabrik", "Rp", "Efisiensi biaya"),
+        M("cost.cash_received_from_factory_rp", "Kas diterima dari pabrik (basis kas)", "Rp", "Efisiensi biaya"),
         M("cost.outstanding_rp", "Tagihan belum dibayar", "Rp", "Efisiensi biaya"),
         M("cost.unpriced_kg", "Diterima tanpa harga", "kg", "Efisiensi biaya"),
         M("cost.gross_margin_rp", "Margin kotor", "Rp", "Efisiensi biaya", True),
@@ -217,6 +219,16 @@ async def monthly_report(db: AsyncSession, user: User, start: str | None = None,
             add(m, "_paid_kg" if kind == "plant" else "_sold_paid_kg", st.payable_kg)
             if kind == "pengepul" and _v(st.status) != "dibayar":
                 add(m, "cost.outstanding_rp", st.amount_rp)
+        # Uang pabrik → pengepul: basis kas (berdasarkan tanggal pelunasan paid_at)
+        q_cash = select(CollectorSettlement).where(CollectorSettlement.paid_at.is_not(None),
+                                                   between(CollectorSettlement.paid_at))
+        if kind == "pengepul":
+            q_cash = q_cash.where(CollectorSettlement.collector_id == user.id)
+        for st in (await db.execute(q_cash)).scalars().all():
+            pm = month_of(st.paid_at)
+            if st.amount_rp is not None:
+                add(pm, "cost.cash_paid_to_collectors_rp" if kind == "plant" else "cost.cash_received_from_factory_rp",
+                    st.amount_rp)
         if kind == "pengepul":   # jalur rute: berat diterima pabrik untuk harvest milik pengepul ini
             rows = (await db.execute(select(Harvest).where(Harvest.collector_id == user.id,
                                                            Harvest.delivery_request_id.is_(None),

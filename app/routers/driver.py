@@ -16,6 +16,8 @@ from ..models.harvest import Harvest, HarvestStatus
 from ..models.ledger import CustodyStage
 from ..services.custody import find_replay, load_harvest, transition
 
+from ..security.url import EvidenceUrl
+
 router = APIRouter()
 
 
@@ -25,7 +27,7 @@ class PickupConfirmRequest(BaseModel):
     actual_ton: float | None = Field(None, ge=0, le=50, description="Catatan supir; bukan timbangan resmi")
     lat: float | None = Field(None, ge=-90, le=90)
     lon: float | None = Field(None, ge=-180, le=180)
-    photo_url: str | None = None
+    photo_url: EvidenceUrl | None = Field(None, max_length=1000)
     client_event_id: str | None = Field(None, max_length=64, description="Kunci idempotensi antrean offline")
     client_recorded_at: datetime | None = Field(None, description="Waktu scan di perangkat (bisa saat offline)")
 

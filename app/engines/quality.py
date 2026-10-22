@@ -21,6 +21,20 @@ CONTAMINATION_REJECT = 10.0
 
 GRADE_PRICE_MULTIPLIER = {"A": 1.15, "B": 1.05, "C": 1.00, "TOLAK": 0.0}
 
+QUALITY_PARAMETERS_USED = [
+    "harga_mutu.w_moisture", "harga_mutu.w_contamination", "harga_mutu.w_ash", "harga_mutu.w_fc",
+    "harga_mutu.moisture_best", "harga_mutu.moisture_reject",
+    "harga_mutu.contamination_best", "harga_mutu.contamination_reject",
+    "harga_mutu.ash_ideal_min", "harga_mutu.ash_ideal_max",
+    "harga_mutu.fc_best", "harga_mutu.fc_worst",
+    "harga_mutu.grade_A_min", "harga_mutu.grade_B_min",
+    "rendemen.sio2_fraction_of_ash",
+]
+QUALITY_REFERENCES = [
+    "SNI 8990:2021 — Biochar untuk pembenah tanah",
+    "IBI Standardized Product Definition and Product Testing Guidelines for Biochar",
+]
+
 
 class FeedstockSample(BaseModel):
     moisture: float = Field(..., ge=0, le=60, description="Kadar air, % basis basah")
@@ -90,6 +104,29 @@ def score_sample(s: FeedstockSample) -> dict:
     y = biochar_yield_db(s.pyrolysis_temp_c, s.ash)
     ash_in_char = _clamp(s.ash / y * 100, 0, 95)
 
+    comp_details = {
+        "method": "Multi-Criteria Proximate Quality Scoring & Pyrolysis Yield Model",
+        "inputs": {
+            "moisture_pct": s.moisture,
+            "ash_pct": s.ash,
+            "volatile_matter_pct": s.volatile_matter,
+            "fixed_carbon_pct": s.fixed_carbon,
+            "contamination_pct": s.contamination,
+            "pyrolysis_temp_c": s.pyrolysis_temp_c,
+        },
+        "steps": [
+            {"step": "Skor kadar air", "formula": "linear_score(moisture, best, worst)", "value": round(components["kadar_air"], 1), "unit": "poin"},
+            {"step": "Skor kontaminasi", "formula": "linear_score(contamination, best, worst)", "value": round(components["kontaminasi"], 1), "unit": "poin"},
+            {"step": "Skor kadar abu", "formula": "clamp(100 - 10 × penalty, 0, 100)", "value": round(components["kadar_abu"], 1), "unit": "poin"},
+            {"step": "Skor fixed carbon", "formula": "linear_score(fixed_carbon, best, worst)", "value": round(components["fixed_carbon"], 1), "unit": "poin"},
+            {"step": "Rendemen biochar kering (db)", "formula": "biochar_yield_db(temp, ash)", "value": round(y, 2), "unit": "%"},
+            {"step": "Potensi biochar per ton terima", "formula": "1000 × faktor_kering × y ÷ 100", "value": round(1000 * dry_factor * y / 100, 1), "unit": "kg/ton"},
+            {"step": "Skor komposit mutu", "formula": "∑(skor_komponen × bobot)", "value": round(score, 1), "unit": "poin"},
+        ],
+        "parameters_used": QUALITY_PARAMETERS_USED,
+        "references": QUALITY_REFERENCES,
+    }
+
     return {
         "grade": grade,
         "score": round(score, 1),
@@ -101,4 +138,5 @@ def score_sample(s: FeedstockSample) -> dict:
         "pred_sio2_in_biochar_pct": round(ash_in_char * SIO2_FRACTION_OF_ASH, 1),
         "sio2_kg_per_ton_received": round(1000 * dry_factor * s.ash / 100 * SIO2_FRACTION_OF_ASH, 1),
         "warnings": warnings,
+        "computation_details": comp_details,
     }

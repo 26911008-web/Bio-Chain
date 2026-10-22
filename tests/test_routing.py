@@ -213,10 +213,11 @@ def test_api_rejects_invalid_input(client, pabrik, payload):
 
 
 # ---------------------------------------------------------------- benchmark (SLO latensi)
-def _latency_ms(n: int, cap: float, runs: int = 5) -> tuple[float, float]:
-    """(median, terburuk) dari beberapa run. SLO dinilai pada median: run terburuk tunggal di mesin
-    bersama mencerminkan noise penjadwalan OS, bukan biaya algoritma."""
+def _latency_ms(n: int, cap: float, runs: int = 7) -> tuple[float, float]:
+    """(median, terburuk) dari beberapa run setelah pemanasan. SLO dinilai pada median:
+    run terburuk tunggal di mesin bersama mencerminkan noise penjadwalan OS, bukan biaya algoritma."""
     mills, req = make_mills(n, seed=n), RouteRequest(vehicle_m3=cap)
+    plan_routes(DEPOT, mills, req)  # pemanasan (warmup)
     samples = []
     for _ in range(runs):
         t = time.perf_counter()
@@ -226,6 +227,7 @@ def _latency_ms(n: int, cap: float, runs: int = 5) -> tuple[float, float]:
     return samples[len(samples) // 2], samples[-1]
 
 
+@pytest.mark.perf
 @pytest.mark.parametrize("n,cap", [(10, 30), (12, 30), (100, 30), (500, 30), (1000, 30), (1000, 300)])
 def test_latency_slo(n, cap):
     med, worst = _latency_ms(n, cap)

@@ -4,6 +4,9 @@ import os
 
 import pytest
 
+def pytest_configure(config):
+    config.addinivalue_line("markers", "perf: Pengujian benchmark performa dan SLO latensi")
+
 # Tes tidak boleh bergantung pada Redis yang kebetulan hidup di mesin pengembang: longgarkan rate limit
 # (harus diset sebelum app.config diimpor oleh modul tes).
 os.environ.setdefault("RATE_LIMIT_REQUESTS", "1000000")

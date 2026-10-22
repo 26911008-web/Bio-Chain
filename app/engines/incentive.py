@@ -40,6 +40,7 @@ class IncentiveResult(BaseModel):
     tier: IncentiveTier
     price_multiplier: float
     bonus_notes: list[str]
+    computation_details: dict | None = None
 
 
 def calculate_incentive(event: DeliveryEvent) -> IncentiveResult:
@@ -73,12 +74,40 @@ def calculate_incentive(event: DeliveryEvent) -> IncentiveResult:
 
     tier = tier_for(new_total)
 
+    comp_details = {
+        "method": "Gamified Farmer XP & Loyalty Tier Price Multiplier Algorithm",
+        "inputs": {
+            "farmer_xp": event.farmer_xp,
+            "quantity_ton": event.quantity_ton,
+            "grade": event.grade,
+            "on_time": event.on_time,
+            "is_peak_season": event.is_peak_season,
+        },
+        "steps": [
+            {"step": "Basis XP pengiriman", "formula": "ton × pengali_grade × 10", "value": base, "unit": "XP"},
+            {"step": "Total pengali bonus", "formula": "1.0 + bonus_waktu + bonus_paceklik", "value": round(multiplier, 2), "unit": "pengali"},
+            {"step": "Total akumulasi XP baru", "formula": "xp_lama + xp_diperoleh", "value": new_total, "unit": "XP"},
+            {"step": "Pengali harga tier", "formula": "tier_price_bonus(tier)", "value": round(tier_price_bonus(tier), 2), "unit": "pengali"},
+            {"step": "XP diperoleh", "formula": "int(basis_xp × pengali)", "value": xp_earned, "unit": "XP"},
+        ],
+        "parameters_used": [
+            "insentif.xp_grade_A", "insentif.xp_grade_B", "insentif.xp_grade_C",
+            "insentif.bonus_on_time", "insentif.bonus_lean_season",
+            "insentif.tier_aktif_xp", "insentif.tier_emas_xp", "insentif.tier_platinum_xp",
+            "insentif.bonus_tier_aktif", "insentif.bonus_tier_emas", "insentif.bonus_tier_platinum",
+        ],
+        "references": [
+            "Bio-Chain Gamification & Incentive Design Architecture",
+        ],
+    }
+
     return IncentiveResult(
         xp_earned=xp_earned,
         new_total_xp=new_total,
         tier=tier,
         price_multiplier=tier_price_bonus(tier),
         bonus_notes=bonuses,
+        computation_details=comp_details,
     )
 
 

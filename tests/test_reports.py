@@ -231,3 +231,38 @@ def test_alias_and_v1_paths_equivalent(world):
     a = c.get(f"/api/reports/monthly?from={NOW}&to={NOW}", headers=H["pabrik"]).json()
     b = c.get(f"/api/v1/reports/monthly?from={NOW}&to={NOW}", headers=H["pabrik"]).json()
     assert a["months"] == b["months"] and c.get("/api/reports/monthly").status_code == 401
+
+
+def test_reports_cash_basis_tracks_paid_settlements(world):
+    c, H = world["client"], world["H"]
+    settlements = c.get("/api/v1/factory/settlements", headers=H["pabrik"]).json()
+    assert len(settlements) >= 1
+    sid = settlements[0]["id"]
+    r_pay = c.post(f"/api/v1/factory/settlements/{sid}/pay", json={"payment_reference": "TRF-CASH-001"}, headers=H["pabrik"])
+    assert r_pay.status_code == 200
+    paid_amt = r_pay.json()["amount_rp"]
+
+    # Cek laporan pabrik (basis kas mencatat kas keluar)
+    rep_plant = row(world["report"]("pabrik").json())["cost"]
+    assert rep_plant["cash_paid_to_collectors_rp"] == pytest.approx(paid_amt)
+
+    # Cek laporan pengepul (basis kas mencatat kas masuk)
+    rep_coll = row(world["report"]("pengepul").json())["cost"]
+    assert rep_coll["cash_received_from_factory_rp"] == pytest.approx(paid_amt)
+
+
+def test_xlsx_export_matches_json(world):
+    import io
+    import openpyxl
+
+    r = world["report"]("pabrik", f"?from={NOW}&to={NOW}&format=xlsx")
+    assert r.status_code == 200
+    assert "spreadsheetml.sheet" in r.headers["content-type"]
+    wb = openpyxl.load_workbook(io.BytesIO(r.content))
+    assert "Ringkasan Laporan" in wb.sheetnames
+    assert "Info & Cakupan" in wb.sheetnames
+    ws = wb["Ringkasan Laporan"]
+    headers = [cell.value for cell in ws[1]]
+    assert headers[0] == "Bulan"
+    assert len(headers) == 1 + len(world["report"]("pabrik").json()["columns"])
+    assert ws[2][0].value == NOW

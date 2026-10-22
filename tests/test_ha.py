@@ -117,3 +117,23 @@ def test_job_backend_never_auto_selects_foreign_redis():
     assert Settings.model_fields["JOB_BACKEND"].default == "local"
     from app.jobs import QUEUE_NAME
     assert QUEUE_NAME.startswith("biochain:")
+
+
+def test_liveness_and_readiness_probes(client):
+    hz = client.get("/healthz")
+    assert hz.status_code == 200
+    assert hz.json()["status"] == "ok"
+    assert hz.json()["version"] == "2.0.0"
+
+    rz = client.get("/readyz")
+    assert rz.status_code == 200
+    assert rz.json()["status"] == "ready"
+    assert rz.json()["database"] == "ok"
+
+
+def test_instant_param_invalidation_marks_stale():
+    from app import params
+    params._loaded_at = time.monotonic()
+    assert not params.needs_refresh()
+    params.mark_stale()
+    assert params.needs_refresh()

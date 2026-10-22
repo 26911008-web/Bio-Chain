@@ -135,6 +135,9 @@ DEFS: list[ParamDef] = [
     _n("pasar.default_resale_price_per_kg", "Harga jual pengepul ke pabrik (default)", 560.0, "Rp/kg", 1, 10_000),
     _n("pasar.default_margin_per_kg", "Margin pengepul (default)", 30.0, "Rp/kg", 0, 5_000),
     # ---------------- Karbon
+    ParamDef("karbon.price_per_tco2_rp", "Harga pasar karbon / NEK", None, "Rp/tCO₂e", 0, 10_000_000,
+             help="Wajib diisi; dasar penilaian nilai ekonomi karbon. Contoh IDXCarbon: Rp 69.000–300.000/tCO₂e.",
+             source="Pasar karbon / IDXCarbon", required_input=True),
     _n("karbon.coal_ef_kg_co2_per_gj", "Faktor emisi batubara", 96.1, "kgCO₂/GJ", 50, 150,
        source="IPCC 2006 Vol.2 Ch.2 (sub-bituminous)"),
     _n("karbon.husk_hhv_mj_kg", "Nilai kalor sekam (basis kering)", 13.5, "MJ/kg", 5, 25),
@@ -378,11 +381,19 @@ def cross_check(key: str, value: Any) -> None:
             raise ParamError("Jumlah bobot dalam satu kelompok harus > 0.")
 
 
+_weights_cache: dict[str, dict[str, float]] = {}
+
+
 def weights(prefix: str) -> dict[str, float]:
     """Bobot satu kelompok, dinormalisasi agar berjumlah 1."""
+    cached = _weights_cache.get(prefix)
+    if cached is not None:
+        return cached
     w = {k[len(prefix):]: float(P(k)) for k in REGISTRY if k.startswith(prefix)}
     total = sum(w.values()) or 1.0
-    return {k: v / total for k, v in w.items()}
+    res = {k: v / total for k, v in w.items()}
+    _weights_cache[prefix] = res
+    return res
 
 
 def describe(key: str) -> dict:
@@ -394,14 +405,29 @@ def describe(key: str) -> dict:
             "columns": [c.__dict__ for c in d.columns], "options": [list(o) for o in d.options]}
 
 
+_dirty: bool = False
+
+
+def mark_stale() -> None:
+    """Tandai cache parameter basi agar segera dimuat ulang dari database pada request berikutnya."""
+    global _dirty
+    _dirty = True
+    _weights_cache.clear()
+
+
 def _set_cache(values: dict[str, Any]) -> None:
-    global _loaded_at
+    global _loaded_at, _dirty
+    _dirty = False
     _values.clear()
+    _weights_cache.clear()
     _values.update({k: v for k, v in values.items() if k in REGISTRY})
     _loaded_at = time.monotonic()
 
 
 def needs_refresh() -> bool:
+    global _dirty
+    if _dirty:
+        return True
     return time.monotonic() - _loaded_at > REFRESH_S
 
 

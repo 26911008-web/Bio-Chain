@@ -35,7 +35,7 @@ def env(tmp_path):
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
         async with Session() as s:
-            for i, r in enumerate((UserRole.PABRIK, UserRole.PETANI, UserRole.AUDITOR, UserRole.ADMIN, UserRole.PENGEPUL)):
+            for i, r in enumerate((UserRole.PABRIK, UserRole.PETANI, UserRole.AUDITOR, UserRole.ADMIN, UserRole.PENGEPUL, UserRole.DRIVER)):
                 s.add(User(username=r.value, phone=f"0812{i:07d}", password_hash=HASH, full_name=r.value, role=r, is_active=True))
             await s.commit()
             return {u.username: u.id for u in (await s.execute(select(User))).scalars()}
@@ -190,3 +190,28 @@ def test_topsis_weights_from_menu_change_ranking(env):
     after = env.post("pabrik", "/api/v1/labs/feedstock/compare", body).json()
     assert after["ranking"][0]["id"] == "sekam" and first == "serbuk"
     assert after["computation_details"]["criteria"][3]["weight"] == 1.0
+
+
+def test_params_visibility_per_role(env):
+    driver_res = env.get("driver").json()
+    assert [g["id"] for g in driver_res["groups"]] == ["logistik"]
+    assert env.get("driver", "/api/v1/params?group=pabrik").status_code == 403
+    assert env.get("driver", "/api/v1/params?group=logistik").status_code == 200
+
+    farmer_res = env.get("petani").json()
+    farmer_groups = {g["id"] for g in farmer_res["groups"]}
+    assert farmer_groups == {"harga_mutu", "insentif", "pasar"}
+    assert env.get("petani", "/api/v1/params?group=pabrik").status_code == 403
+    assert env.get("petani", "/api/v1/params?group=harga_mutu").status_code == 200
+
+    collector_res = env.get("pengepul").json()
+    collector_groups = {g["id"] for g in collector_res["groups"]}
+    assert collector_groups == {"harga_mutu", "pasar", "logistik"}
+    assert env.get("pengepul", "/api/v1/params?group=pabrik").status_code == 403
+    assert env.get("pengepul", "/api/v1/params?group=pasar").status_code == 200
+
+    pabrik_res = env.get("pabrik").json()
+    assert len(pabrik_res["groups"]) == len(params.GROUPS)
+
+    auditor_res = env.get("auditor").json()
+    assert len(auditor_res["groups"]) == len(params.GROUPS)

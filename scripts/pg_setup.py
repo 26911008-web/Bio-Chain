@@ -22,7 +22,7 @@ OWNER_URL = os.getenv("BIOCHAIN_PG_OWNER_URL", "postgresql+asyncpg://biochain:bi
 MIGRATIONS = ["002_circular_mass_balance.sql", "003_concurrency_indexes.sql", "004_row_level_security.sql",
               "005_b2b_trade.sql", "006_system_parameters.sql", "007_factory_operations.sql",
               "008_silica_routes_wallet_link.sql", "009_fix_rls_recursion.sql", "010_reporting_warehouse.sql",
-              "011_collector_settlements.sql", "000_app_role.sql"]
+              "011_collector_settlements.sql", "012_settlement_events_and_constraints.sql", "000_app_role.sql"]
 
 
 def psql(sql_file: pathlib.Path | None = None, command: str | None = None) -> str:

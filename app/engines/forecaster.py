@@ -14,12 +14,6 @@ from pydantic import BaseModel, Field
 
 from ..params import P
 
-PRODUCTIVITY_TON_PER_HA = 5.3
-HUSK_RATIO = 0.20
-SEASONAL_AMPLITUDE = 0.40
-PEAK_MONTHS = [4, 9]
-
-
 class ForecastInput(BaseModel):
     harvest_area_ha: float = Field(..., gt=0, description="Luas panen total (ha)")
     month: int = Field(..., ge=1, le=12, description="Bulan target prediksi")
@@ -38,6 +32,7 @@ class ForecastResult(BaseModel):
     confidence_high: float
     is_peak_season: bool
     recommendation: str
+    computation_details: dict | None = None
 
 
 def seasonal_factor(month: int) -> float:
@@ -81,6 +76,36 @@ def forecast_supply(inp: ForecastInput) -> ForecastResult:
     else:
         rec = "🟡 Pasokan normal. Pastikan kontrak petani tetap aktif."
 
+    comp_details = {
+        "method": "Dual-Cosine Harmonic Harvest Seasonality & Agronomic Yield Model",
+        "inputs": {
+            "harvest_area_ha": inp.harvest_area_ha,
+            "month": inp.month,
+            "year": inp.year,
+            "historical_avg_ton": inp.historical_avg_ton,
+        },
+        "steps": [
+            {"step": "Potensi sekam tahunan", "formula": "luas_ha × produktivitas × rasio_sekam", "value": round(annual_husk, 2), "unit": "ton/tahun"},
+            {"step": "Basis bulanan model", "formula": "tahunan ÷ 12", "value": round(annual_husk / 12, 2), "unit": "ton/bulan"},
+            {"step": "Faktor musim", "formula": "1 + A × max(cos(2π(m-p₁)/12), cos(2π(m-p₂)/12))", "value": round(sf, 3), "unit": "indeks"},
+            {"step": "Prediksi pasokan bulanan", "formula": "basis_bulanan × faktor_musim", "value": round(predicted, 1), "unit": "ton"},
+        ],
+        "parameters_used": [
+            "proyeksi.productivity_ton_per_ha",
+            "proyeksi.husk_ratio",
+            "proyeksi.seasonal_amplitude",
+            "proyeksi.peak_month_1",
+            "proyeksi.peak_month_2",
+            "proyeksi.history_weight",
+            "proyeksi.ci_width_history",
+            "proyeksi.ci_width_model",
+        ],
+        "references": [
+            "Badan Pusat Statistik (BPS) — Statistik Tanaman Pangan Indonesia",
+            "IRRI — Rice Knowledge Bank: By-products of Rice Milling",
+        ],
+    }
+
     return ForecastResult(
         predicted_supply_ton=round(predicted, 1),
         seasonal_factor=round(sf, 3),
@@ -89,4 +114,5 @@ def forecast_supply(inp: ForecastInput) -> ForecastResult:
         confidence_high=round(predicted * (1 + ci_width), 1),
         is_peak_season=is_peak,
         recommendation=rec,
+        computation_details=comp_details,
     )

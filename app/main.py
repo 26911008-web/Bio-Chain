@@ -53,6 +53,8 @@ async def lifespan(app: FastAPI):
         print(f"✅ Database tables created/verified ({db_module.active_driver})"
               + (f" · kolom baru: {', '.join(added)}" if added else ""))
     except Exception as e:
+        if not settings.ALLOW_SQLITE_FALLBACK:
+            raise RuntimeError(f"Primary database tidak tersedia ({e}) dan ALLOW_SQLITE_FALLBACK=False.") from e
         print(f"⚠️ Primary database unavailable ({e}). Fallback to local SQLite...")
         await switch_to_sqlite()
         async with db_module.engine.begin() as conn:
@@ -65,15 +67,23 @@ async def lifespan(app: FastAPI):
         from .seed import seed_if_empty
         async with db_module.async_session() as session:
             await seed_if_empty(session)
-        from .services.params_store import load as load_params
+        from .services.params_store import load as load_params, start_pg_listener
         async with db_module.async_session() as session:
             await load_params(session)
     except Exception as e:
         print(f"⚠️ Auto-seed note: {e}")
 
+    # 3. Background tasks (e.g. PostgreSQL LISTEN for real-time parameter invalidation)
+    import asyncio
+    listener_task = None
+    if db_module.active_driver == "postgresql" and settings.DATABASE_URL.startswith("postgresql"):
+        listener_task = asyncio.create_task(start_pg_listener(settings.DATABASE_URL))
+
     yield
 
     # Shutdown
+    if listener_task:
+        listener_task.cancel()
     try:
         await db_module.engine.dispose()
     except Exception:
@@ -178,15 +188,21 @@ async def _price_missing(_: Request, exc: PriceMissing):
 async def _zero_div(_: Request, exc: ZeroDivisionError):
     return JSONResponse(status_code=422, content={"detail": f"Perhitungan tidak terdefinisi: {exc}"})
 
-# Static files
+# Static files & uploads
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
+UPLOADS_DIR = STATIC / "uploads"
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR), name="uploads")
 
 
 # ================================================================
 # v2 ROUTERS (new persona-based API)
 # ================================================================
 try:
-    from .routers import auth, farmer, collector, driver, factory, admin, auditor, assistant, params as params_router
+    from .routers import (
+        auth, farmer, collector, driver, factory, admin, auditor, assistant,
+        params as params_router, uploads as uploads_router,
+    )
 
     app.include_router(auth.router,      prefix="/api/v1/auth",      tags=["🔐 Auth"])
     app.include_router(farmer.router,    prefix="/api/v1/farmer",    tags=["🌾 Petani"])
@@ -197,6 +213,7 @@ try:
     app.include_router(auditor.router,   prefix="/api/v1/auditor",   tags=["🔍 Auditor"])
     app.include_router(assistant.router, prefix="/api/v1/assistant", tags=["🤖 Asisten AI"])
     app.include_router(params_router.router, prefix="/api/v1/params", tags=["⚙️ Parameter Asumsi"])
+    app.include_router(uploads_router.router, prefix="/api/v1/uploads", tags=["📸 Unggah Bukti"])
     from .routers import reports as reports_router
     app.include_router(reports_router.router, prefix="/api/v1/reports", tags=["📊 Laporan Bulanan"])
     app.include_router(reports_router.router, prefix="/api/reports", include_in_schema=False)
@@ -206,11 +223,35 @@ except Exception as e:
 
 
 # ================================================================
-# HEALTH & STATUS
+# HEALTH & STATUS (Liveness & Readiness Probes)
 # ================================================================
 @app.get("/health", tags=["System"])
+@app.get("/healthz", tags=["System"])
 async def health():
-    return {"status": "healthy", "version": "2.0.0", "engines": 7}
+    """Liveness probe: konfirmasi aplikasi hidup dan responsif."""
+    return {"status": "ok", "app": "bio-chain", "version": "2.0.0", "engines": 7}
+
+
+@app.get("/readyz", tags=["System"])
+async def readiness():
+    """Readiness probe: verifikasi koneksi database aktif untuk melayani trafik."""
+    import app.database as db_module
+    from sqlalchemy import text
+    try:
+        async with db_module.engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+    except Exception as e:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "not_ready", "database": "error", "detail": str(e)},
+        )
+
+    return {
+        "status": "ready",
+        "database": "ok",
+        "driver": db_module.active_driver,
+        "version": "2.0.0",
+    }
 
 
 @app.get("/api/v1/system/status", tags=["System"])

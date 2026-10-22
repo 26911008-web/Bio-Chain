@@ -1,0 +1,393 @@
+Bio-Chain Prototype — Daftar Tugas, Bug & Celah
+Serah terima untuk dikerjakan di IDE · disusun 4 Oktober 2026
+Basis kode: commit 5acf765 (branch master) · repo D:\IDE\bio-chain-prototype
+Ringkasan
+Dokumen ini mengumpulkan semua hal yang BELUM selesai dari perintah awal, ditambah temuan audit akhir. Setiap butir memuat lokasi kode, langkah pengerjaan, dan kriteria uji agar bisa dikerjakan mandiri di IDE.
+Kode
+Jenis
+Judul singkat
+Prioritas
+S0
+Celah keamanan (IDOR)
+Pengepul lain bisa menolak harvest hasil lelang milik pengepul pemenang
+Tinggi
+B1
+Bug
+Harvest terlampir Delivery Request bisa ikut rute → ajuan macet
+Tinggi
+S1
+Celah keamanan
+Supir/petani bisa membaca semua parameter (termasuk harga jual pabrik)
+Tinggi
+B2
+Bug
+.env menunjuk port 5432 (PostgreSQL lain) → aplikasi jatuh ke SQLite
+Sedang
+B3
+Bug
+Tagihan rute di atas batas tolak mutu tercatat 'terutang' Rp 0
+Sedang
+S2
+Celah integritas
+Perubahan harga tagihan menimpa data, tanpa jejak audit
+Sedang
+S3
+Celah integritas
+Constraint tabel tagihan di model ≠ migrasi 011
+Sedang
+S4
+Celah keamanan
+URL foto bukti belum divalidasi skemanya (risiko XSS)
+Sedang
+S5
+Celah data
+Harvest tanpa pengepul diterima pabrik tanpa tagihan, tanpa peringatan
+Rendah
+B4
+Bug
+Teks dasar harga menampilkan 'kadar air None%'
+Rendah
+T1
+Tugas
+Batasi API parameter per peran (perbaikan S1)
+Tinggi
+T2
+Tugas
+Harga karbon Rp 150.000/tCO₂e masih hardcoded di UI
+Tinggi
+T3
+Tugas
+Isian foto bukti serah terima (evidence_photo_url) di UI
+Sedang
+T4
+Tugas
+computation_details untuk 5 engine lama
+Sedang
+T5
+Tugas
+Generator nomor resi TRX sebagai fungsi database (PL/pgSQL)
+Sedang
+T6
+Tugas
+Skrip 1-klik: cek dependensi penuh, versi bash, opsi PostgreSQL
+Sedang
+T7
+Tugas
+Rencana rute jemput untuk tawaran yang dimenangkan pengepul
+Rendah
+T8
+Tugas
+Skrip benchmark terpisah untuk semua engine
+Rendah
+O1–O8
+Temuan operasional
+Tes latensi rentan, suite PG lambat, cache parameter, CRLF, dll.
+Rendah
+Urutan kerja yang disarankan
+S0 → B1 → S1/T1 → T2 → B2 → B3 → S2 → S3 → S4/T3 → T4 → T5 → T6 → B4/S5 → T7 → T8 → O1–O8
+Alasan: tutup dulu yang mengunci alur bisnis dan membocorkan data, lalu yang terlihat pengguna, baru kelengkapan teknis.
+Aturan proyek yang wajib dijaga
+Angka asumsi selalu lewat registry parameter: P("grup.kunci") di Python, PV("grup.kunci", fallback) di UI (app/params.py).
+Harga jual/harga pasar = input wajib (default None, required_input=True) — jangan beri angka bawaan.
+Transisi status pakai compare-and-swap (UPDATE … WHERE status=… AND version=…, cek rowcount → 409).
+Akses deny-by-default di app/security/policy.py + require_role di router + RLS di PostgreSQL.
+Setiap perubahan skema PostgreSQL = migrasi baru NNN_nama.sql + NNN_nama.rollback.sql, daftarkan di scripts/pg_setup.py (sebelum 000_app_role.sql) dan migrations/README.md.
+Tes harus lulus di SQLite DAN PostgreSQL (perintah di Lampiran).
+A. Bug (sudah diverifikasi)
+B1 · Harvest yang terlampir Delivery Request bisa ikut rute armada → ajuan macet permanen
+Prioritas: Tinggi   ·   Lokasi: app/routers/factory.py — POST /factory/dispatch (±baris 85–125); app/services/factory_ops.py — submit_request (±baris 72–80)
+Masalah
+Dispatch hanya memeriksa status 'verified', tidak memeriksa delivery_request_id. Terbukti dengan tes: harvest dilampirkan ke DR → dispatch 201 → diterima via rute (tagihan rute Rp 499.100) → QC lot DR itu selalu 409 ('berstatus delivered, bukan verified'). DR berstatus 'accepted' selamanya. Arah sebaliknya juga terbuka: harvest yang sudah masuk rute PLANNED (masih 'verified') masih bisa dilampirkan ke DR.
+Langkah pengerjaan
+Di dispatch: tolak harvest dengan delivery_request_id IS NOT NULL (409, sebutkan nomor DR).
+Di submit_request: tambahkan syarat harvest tidak ada di RouteStop pada Route berstatus PLANNED/IN_PROGRESS (NOT EXISTS subquery) di UPDATE … WHERE yang sudah ada.
+Di daftar collector/attachable-harvests: sembunyikan harvest yang sedang dijadwalkan rute.
+Tambahkan tes di tests/test_factory_ops.py untuk kedua arah.
+bad_dr = [h.id for h in harvests if h.delivery_request_id is not None]if bad_dr:    raise HTTPException(409, f"Harvest {bad_dr} sudah terlampir Delivery Request — kirim lewat QC, bukan rute.")
+Selesai bila (kriteria uji)
+Dispatch harvest terlampir DR → 409; melampirkan harvest yang sedang di rute → 409.
+Tes lama tetap hijau di SQLite & PostgreSQL.
+B2 · .env menunjuk PostgreSQL port 5432 (server lain) → aplikasi diam-diam jatuh ke SQLite
+Prioritas: Sedang   ·   Lokasi: .env baris 2–3; app/config.py baris 11–12; docker-compose.yml (port 5433:5432)
+Masalah
+Container proyek dipetakan ke port 5433, tetapi .env dan default config memakai 5432. Di mesin ini port 5432 dipakai PostgreSQL lain, sehingga login gagal ('password authentication failed for user biochain') dan aplikasi otomatis memakai SQLite. Akibatnya jalankan.bat tidak pernah memakai PostgreSQL walau container hidup.
+Langkah pengerjaan
+Ubah .env (dan .env.example) ke port 5433, atau buat variabel PG_PORT yang dipakai keduanya.
+Samakan default di app/config.py dengan .env.example.
+Pertimbangkan: bila DATABASE_URL eksplisit PostgreSQL tetapi gagal login, hentikan start (error jelas) kecuali ALLOW_SQLITE_FALLBACK=true — fallback diam-diam menyembunyikan salah konfigurasi.
+Selesai bila (kriteria uji)
+Dengan container hidup, log start menampilkan PostgreSQL aktif (badge UI tidak lagi 'SQLite Lokal Aktif').
+B3 · Tagihan rute di atas batas tolak mutu tercatat 'terutang' dengan Rp 0
+Prioritas: Sedang   ·   Lokasi: app/services/factory_ops.py — settle_route
+Masalah
+Bila recommend_price mengembalikan accept=False (mis. kadar air ≥ batas tolak), harga diset 0.0 dan status 'terutang' Rp 0. Barang secara fisik diterima tetapi tagihan nol yang 'terutang' membingungkan dan bisa ditandai 'dibayar' Rp 0.
+Langkah pengerjaan
+Pilih satu aturan bisnis: (a) receive ditolak dan harvest diarahkan ke /factory/reject, atau (b) tagihan berstatus 'menunggu_harga' dengan catatan 'di luar batas mutu — perlu keputusan harga manual'.
+Rekomendasi: (b) — pabrik tetap bisa menetapkan harga diskon lewat /settlements/{id}/price.
+Tambahkan tes: harvest kadar air 30% lewat rute → tagihan bukan 'terutang Rp 0'.
+Selesai bila (kriteria uji)
+Tidak ada tagihan berstatus 'terutang' dengan amount_rp = 0 dari harga engine.
+B4 · Teks dasar harga menampilkan 'kadar air None%'
+Prioritas: Rendah   ·   Lokasi: app/services/factory_ops.py — settle_route (string basis)
+Masalah
+Bila harvest.moisture kosong, engine memakai kadar air referensi tetapi teks basis tetap mencetak harvest.moisture (None).
+Langkah pengerjaan
+Simpan nilai moisture yang benar-benar dipakai ke variabel, gunakan di teks basis dan kolom moisture tagihan.
+Selesai bila (kriteria uji)
+Teks basis selalu berisi angka, dan menyebut 'kadar air referensi' bila memakai default.
+B. Celah keamanan & integritas data
+S0 · Pengepul lain bisa menolak harvest hasil lelang milik pemenang (IDOR)
+Prioritas: Tinggi   ·   Lokasi: app/routers/collector.py — POST /collector/reject (±baris 147–160); bandingkan dengan /collector/verify (±baris 101–102)
+Masalah
+Harvest hasil lelang dibuat berstatus 'reported' dengan collector_id = pengepul pemenang (app/services/trade.py ±baris 196). /collector/verify sudah menolak pengepul lain (403 'hasil lelang pengepul lain'), tetapi /collector/reject tidak memeriksa kepemilikan: pengepul mana pun yang tahu harvest_id bisa menolak harvest itu. Kontrak lelang batal dan collector_id ditimpa menjadi milik penyerang. transition() di app/services/custody.py juga tidak memeriksa kepemilikan. Ditemukan oleh tinjauan keamanan otomatis atas commit 5acf765, lalu dikonfirmasi lewat pembacaan kode.
+Langkah pengerjaan
+Di reject_harvest: muat harvest dulu; bila harvest.collector_id tidak kosong dan ≠ user.id → 403 (salin pola dari verify).
+Lebih kuat: pindahkan cek ke transition() untuk semua tahap pengepul, agar endpoint baru tidak bisa lupa.
+PostgreSQL: pastikan kebijakan RLS UPDATE harvests untuk peran pengepul mensyaratkan collector_id IS NULL OR collector_id = app_uid().
+Tes: pengepul2 menolak harvest lelang milik pengepul → 403; harvest tetap 'reported' dengan collector_id semula.
+harvest = await load_harvest(db, req.harvest_id)if harvest.collector_id is not None and harvest.collector_id != user.id:    raise HTTPException(403, "Harvest ini hasil lelang pengepul lain.")
+Selesai bila (kriteria uji)
+Tes IDOR lulus di SQLite & PostgreSQL; pemilik sah tetap bisa menolak.
+S1 · Supir dan petani bisa membaca semua parameter, termasuk harga jual pabrik
+Prioritas: Tinggi   ·   Lokasi: app/routers/params.py — list_params (baris 30–43); app/security/policy.py baris 33–34
+Masalah
+GET /api/v1/params terbuka untuk ANY_USER dan mengembalikan ke-14 grup. Diuji: token supir menerima pabrik.price_biochar_per_kg dan faktor karbon. Bertentangan dengan permintaan 'supir hanya bisa melihat kebutuhannya saja'.
+Langkah pengerjaan
+Kerjakan bersama T1 (rincian langkah ada di T1).
+Selesai bila (kriteria uji)
+Lihat kriteria T1.
+S2 · Perubahan harga tagihan menimpa data tanpa jejak audit
+Prioritas: Sedang   ·   Lokasi: app/services/factory_ops.py — set_settlement_price; app/models/factory_ops.py — CollectorSettlement
+Masalah
+Harga lama hilang saat ditimpa (hanya price_basis berubah). Tabel audit lain di proyek ini append-only (custody_events, parameter_changes); uang ke pengepul justru belum. UI juga mengirim alasan tetap 'ditetapkan via dasbor pabrik', bukan alasan dari pengguna.
+Langkah pengerjaan
+Buat tabel settlement_events (settlement_id, action[dibuat|harga|dibayar], old_price, new_price, old_amount, new_amount, reason, actor_id, created_at) — append-only dengan trigger forbid_mutation seperti migrasi 002/006.
+Tulis event di settle_qc, settle_route, set_settlement_price, mark_settlement_paid.
+Endpoint GET /factory/settlements/{id}/history (pabrik/admin/auditor).
+UI: minta alasan lewat input teks (min 5 karakter), jangan teks tetap.
+Migrasi 012 + rollback; RLS: operator tulis, auditor & pengepul pemilik baca.
+Selesai bila (kriteria uji)
+Setiap perubahan harga punya baris event; UPDATE/DELETE event di PostgreSQL ditolak trigger.
+Tes PG: pengepul hanya melihat event tagihannya sendiri.
+S3 · Constraint tabel tagihan di model ≠ migrasi 011
+Prioritas: Sedang   ·   Lokasi: app/models/factory_ops.py — CollectorSettlement.__table_args__; migrations/011_collector_settlements.sql
+Masalah
+Migrasi 011 punya ck_settle_status dan ck_settle_paid_ref (dibayar wajib punya nomor transfer), model tidak. Bila tabel dibuat lewat create_all (SQLite, atau PostgreSQL dengan AUTO_MIGRATE=true) dua aturan itu tidak ada, dan CREATE TABLE IF NOT EXISTS di migrasi tidak akan menambahkannya.
+Langkah pengerjaan
+Tambahkan kedua CheckConstraint ke model.
+Di migrasi 012: ALTER TABLE … ADD CONSTRAINT … NOT VALID lalu VALIDATE CONSTRAINT (aman bila tabel sudah ada).
+Buat tes yang membandingkan daftar constraint pg_constraint dengan model (mencegah drift ke depan).
+Selesai bila (kriteria uji)
+Tes drift lulus; insert 'dibayar' tanpa payment_reference ditolak di kedua DB.
+S4 · URL foto bukti belum divalidasi skemanya
+Prioritas: Sedang   ·   Lokasi: app/routers/collector.py:37, factory.py:64 & 412, farmer.py:215, driver.py (photo_url)
+Masalah
+evidence_photo_url hanya dibatasi panjang. Begitu ditampilkan sebagai tautan di UI (T3), nilai seperti 'javascript:…' menjadi XSS.
+Langkah pengerjaan
+Buat tipe bersama, mis. EvidenceUrl = Annotated[str, AfterValidator(cek)] yang hanya menerima http/https (atau path /uploads/… bila T3 memakai upload).
+Pakai di kelima model request.
+Di UI selalu render lewat esc() dan atribut rel="noopener".
+Selesai bila (kriteria uji)
+POST dengan 'javascript:alert(1)' → 422 di semua endpoint serah terima.
+S5 · Harvest tanpa pengepul diterima pabrik tanpa tagihan dan tanpa peringatan
+Prioritas: Rendah   ·   Lokasi: app/services/factory_ops.py — settle_route (return None bila collector_id kosong)
+Masalah
+Kasus petani mengirim langsung ke pabrik tidak menghasilkan kewajiban bayar ke siapa pun; respons hanya settlement: null.
+Langkah pengerjaan
+Tentukan aturan: tagihan ke petani (source 'langsung') atau tolak receive tanpa pengepul.
+Minimal: kembalikan peringatan eksplisit di respons dan tampilkan di UI.
+Selesai bila (kriteria uji)
+Tidak ada penerimaan sekam yang tidak punya pihak penerima pembayaran tanpa disadari.
+C. Tugas dari perintah awal yang belum selesai
+T1 · Batasi API parameter per peran (perbaikan S1)
+Prioritas: Tinggi   ·   Lokasi: app/routers/params.py — list_params; app/static/index.html — loadParamValues (±baris 1007)
+Masalah
+Permintaan: supir hanya melihat kebutuhannya; modul lain tidak boleh terlihat kecuali ganti persona.
+Langkah pengerjaan
+Tambahkan peta grup per peran, mis. VISIBLE_GROUPS = {driver: {'logistik'}, petani: {'harga_mutu','insentif','pasar'}, pengepul: {'harga_mutu','pasar','logistik'}}; pabrik/admin/auditor = semua.
+Filter groups di list_params; bila ?group= di luar izin → 403.
+Periksa juga konteks data asisten AI (app/ai/context.py) memakai filter yang sama.
+UI: PV() untuk peran terbatas harus punya fallback aman (sudah ada argumen fallback).
+Tes RBAC: token supir tidak menerima kunci berawalan 'pabrik.' maupun 'karbon.'.
+Selesai bila (kriteria uji)
+Respons supir hanya grup logistik; petani tidak menerima pabrik.price_*; pabrik/auditor tetap melihat semua.
+T2 · Harga karbon masih hardcoded di UI
+Prioritas: Tinggi   ·   Lokasi: app/static/index.html — calcCarbon (±baris 2868–2884); app/params.py grup 'karbon'; app/engines/carbon.py
+Masalah
+Kartu kalkulator karbon menghitung 'Potensi Nilai NEK' dengan angka tetap Rp 150.000/tCO₂e. Ini harga pasar → harus input wajib, sesuai aturan 'harga jual jangan asumsi'. Fallback || 50 dan || 45 di fungsi yang sama juga asumsi.
+Langkah pengerjaan
+Tambahkan parameter karbon.price_per_tco2_rp (kind number, default None, required_input=True, satuan Rp/tCO₂e).
+Hitung nilai di server (carbon engine) dan kembalikan carbon_value_rp atau null + pesan 'isi harga karbon di menu Parameter'.
+UI menampilkan nilai dari server; hapus angka 150000 dan fallback || 50 / || 45 (pakai nilai input atau PV).
+Bersihkan konstanta mati: carbon.py baris 17–22 dan forecaster.py baris 17–19 (nilainya sudah ditimpa P()).
+Selesai bila (kriteria uji)
+grep '150000' di app/ tidak menemukan apa pun; tanpa harga diisi UI menampilkan ajakan mengisi parameter.
+T3 · Isian foto bukti serah terima di UI
+Prioritas: Sedang   ·   Lokasi: API sudah menerima: collector/verify, driver/confirm-pickup (photo_url), factory/receive, farmer (baris 215)
+Masalah
+Kolom evidence_photo_url ada di database & API (permintaan B2B Fase 2) tetapi tidak ada isian di UI, jadi tidak pernah terisi.
+Langkah pengerjaan
+Kerjakan S4 dulu (validasi URL).
+Opsi sederhana: input teks 'URL foto bukti (opsional)' di form verifikasi pengepul, konfirmasi jemput supir, dan tabel 'Tiba via rute' pabrik.
+Opsi lengkap: endpoint upload POST /api/v1/uploads/evidence (hanya image/jpeg|png|webp, ≤ 5 MB, nama acak, simpan di folder di luar static yang di-serve terkontrol) lalu isi URL otomatis; di HP gunakan <input type=file accept=image/* capture=environment>.
+Tampilkan tautan foto di jejak custody auditor (auditor/mass-balance).
+Selesai bila (kriteria uji)
+Foto/URL bukti tersimpan di custody_events dan terlihat di jejak auditor.
+T4 · computation_details untuk 5 engine lama
+Prioritas: Sedang   ·   Lokasi: app/engines/quality.py (score_sample, baris 57–93), carbon.py (calculate_carbon_reduction, 44), forecaster.py (forecast_supply, 56), incentive.py (calculate_incentive, 45), blending.py (optimize_blend, 83–105)
+Masalah
+Protokol algoritma mewajibkan setiap respons perhitungan punya blok penjelasan langkah. Sudah ada di routing, pricing pabrik, feedstock, limbah→energi, energi/IKE, saran tawaran; belum di 5 engine ini.
+Langkah pengerjaan
+Ikuti format yang sudah dipakai app/engines/feedstock.py (±baris 176): method, references, inputs, steps, parameters_used.
+Mutu: bobot tiap komponen → skor → ambang grade → model rendemen biochar & SiO₂.
+Karbon: GJ = ton × HHV × efisiensi boiler → batubara tergantikan → emisi dihindari (EF IPCC 2006) − emisi angkut → neto.
+Prakiraan: luas × produktivitas × rasio sekam × faktor musim per hari.
+Insentif: pengali grade × bonus tier × syarat XP.
+Blending: formulasi LP (fungsi tujuan, kendala spesifikasi), status solver, kendala aktif.
+Tambahkan field computation_details: dict ke model Pydantic hasil (CarbonResult, ForecastResult, IncentiveResult).
+Tampilkan di UI lab memakai komponen penjelasan yang sudah ada di kartu routing/pricing.
+"computation_details": {    "method": "IPCC 2006 Vol.2 Ch.2 — substitusi bahan bakar",    "steps": [{"step": "Energi biomassa", "formula": "ton × HHV × η", "value": gj, "unit": "GJ"}, ...],    "parameters_used": ["karbon.husk_hhv_mj_kg", "karbon.boiler_efficiency", ...],    "references": ["IPCC (2006) Guidelines Vol. 2", ...],}
+Selesai bila (kriteria uji)
+Kelima endpoint mengembalikan computation_details dengan steps tidak kosong.
+Tes: nilai langkah terakhir = nilai hasil utama (mis. net_reduction_tco2).
+T5 · Generator nomor resi TRX sebagai fungsi database
+Prioritas: Sedang   ·   Lokasi: app/services/trx_code.py — next_seq (baris 33); migrations/005_b2b_trade.sql (tabel trx_sequences, baris 55)
+Masalah
+Protokol B2B: 'Atomic Sequence Generator di database'. Sekarang atomik lewat UPSERT … RETURNING dari aplikasi (teruji 60 transaksi serentak), tetapi bukan fungsi database.
+Langkah pengerjaan
+Migrasi 012 (atau 013): CREATE OR REPLACE FUNCTION next_trx_seq(p_sender text, p_receiver text, p_yymm text) RETURNS integer LANGUAGE sql — isi UPSERT yang sama; opsional next_verification_code(...) RETURNS text yang memformat TRX-[PENGIRIM]-[PENERIMA]-[YYMM]-[SEQ].
+GRANT EXECUTE ke biochain_app; rollback DROP FUNCTION.
+trx_code.next_seq: bila dialek postgresql → SELECT next_trx_seq(...); SQLite tetap UPSERT lama.
+Ubah test_trx_sequence_atomic_under_real_concurrency agar memanggil fungsi.
+CREATE OR REPLACE FUNCTION next_trx_seq(p_sender text, p_receiver text, p_yymm text)RETURNS integer LANGUAGE sql AS $$  INSERT INTO trx_sequences (sender_code, receiver_code, yymm, last_seq) VALUES (p_sender, p_receiver, p_yymm, 1)  ON CONFLICT (sender_code, receiver_code, yymm) DO UPDATE SET last_seq = trx_sequences.last_seq + 1  RETURNING last_seq;$$;
+Selesai bila (kriteria uji)
+60 panggilan serentak ke fungsi → 1..60 tanpa celah; format kode tidak berubah; rollback bersih.
+T6 · Skrip 1-klik: dependensi penuh, versi bash, opsi PostgreSQL
+Prioritas: Sedang   ·   Lokasi: jalankan.bat (root repo)
+Masalah
+Permintaan sesi sebelumnya: 'file bash, 1 kali klik'. Yang ada hanya .bat, dan hanya mengecek fastapi+uvicorn — paket baru (asyncpg, aiosqlite, httpx, truststore, numpy, scipy, python-docx tidak wajib) tidak dipastikan. Tidak ada pilihan menjalankan dengan PostgreSQL (lihat juga B2).
+Langkah pengerjaan
+jalankan.bat: ganti cek impor dengan 'py -m pip install -q -r requirements.txt' (cepat bila sudah terpasang).
+Argumen opsional 'pg': docker compose up -d postgres → py scripts/pg_setup.py → set DATABASE_URL ke port 5433 → start.
+Buat jalankan.sh setara (bash; deteksi 'py' di Git Bash Windows atau 'python3' di Linux/macOS; chmod +x).
+Cek port 8000 sudah dipakai → tampilkan pesan jelas.
+Dokumentasikan di README bagian 'Menjalankan'.
+Selesai bila (kriteria uji)
+Klik dua kali .bat di mesin bersih → browser terbuka dan aplikasi berjalan; './jalankan.sh pg' memakai PostgreSQL.
+T7 · Rencana rute jemput untuk tawaran yang dimenangkan pengepul
+Prioritas: Rendah   ·   Lokasi: app/services/trade.py (farmer_transport_cost_per_kg baris 110, bid_advice baris 236); app/engines/routing.py; app/schemas/routing.py; app/routers/collector.py
+Masalah
+Protokol B2B Fase 2 meminta algoritma penjemputan untuk meminimalkan biaya per kg. Biaya angkut per kg baru dipakai sebagai saran saat menawar; belum ada rencana rute untuk tawaran berskema 'jemput' yang sudah diterima petani.
+Langkah pengerjaan
+Endpoint POST /api/v1/collector/pickup-plan (khusus pengepul): ambil tawaran diterima berskema jemput yang belum dijemput.
+Depot = koordinat pengepul; titik = koordinat petani + kg diterima; kapasitas & biaya per km dari parameter grup logistik.
+Panggil engine CVRP heuristik yang sudah ada (savings Clarke-Wright + perbaikan lokal) — jangan buat ulang.
+Kembalikan urutan titik, km, total biaya, biaya per kg, dan computation_details dengan rujukan (Capacitated VRP; Clarke & Wright 1964).
+UI kartu pasar pengepul: tombol 'Rencanakan jemput' + tabel urutan.
+Selesai bila (kriteria uji)
+Semua titik dikunjungi sekali, kapasitas tidak terlampaui, biaya/kg = total biaya ÷ total kg, latensi < 500 ms untuk 200 titik.
+T8 · Skrip benchmark terpisah untuk semua engine
+Prioritas: Rendah   ·   Lokasi: scripts/ (baru: benchmark_engines.py); saat ini hanya tests/test_routing.py::test_latency_slo dan loadtest/k6_double_submit.js
+Masalah
+Protokol algoritma meminta 'skrip pengukur waktu eksekusi (benchmarking)'. Pengukuran latensi baru ada untuk routing di dalam pytest.
+Langkah pengerjaan
+scripts/benchmark_engines.py: data tiruan berukuran bertingkat (routing 50/200/1000 titik, feedstock 10/100, blending, mutu 10.000 sampel, energi 24/120 bulan).
+Ulang N kali dengan time.perf_counter, laporkan p50/p95/maks (ms) vs SLO 500 ms.
+Tulis hasil ke docs/benchmark_results.md; exit code 1 bila SLO dilanggar (bisa dipakai CI).
+Opsional mode --http lewat TestClient untuk mengukur ujung-ke-ujung.
+Selesai bila (kriteria uji)
+'py scripts/benchmark_engines.py' menghasilkan tabel p50/p95 untuk semua engine dan lulus SLO di mesin idle.
+D. Temuan operasional & catatan
+Kode
+Temuan
+Saran
+O1
+tests/test_routing.py::test_latency_slo[1000-300] gagal 851 ms (batas 500 ms) saat mesin sibuk; lulus saat dijalankan sendiri.
+Jalankan tes latensi terpisah (marker @pytest.mark.perf, dilewati di suite penuh) atau ukur median dari beberapa kali setelah pemanasan; benchmark resmi lewat T8.
+O2
+Suite penuh PostgreSQL 462 detik (sebelumnya 173 detik) dengan jumlah tes hampir sama.
+Profil dengan 'pytest --durations=25'; kemungkinan pembuatan skema per tes (isolated_engine) + NullPool. Pertimbangkan skema per modul atau transaksi-rollback per tes.
+O3
+Cache parameter per proses disegarkan tiap 30 detik → antar worker gunicorn bisa berbeda hingga 30 detik setelah perubahan harga.
+Pakai LISTEN/NOTIFY PostgreSQL atau versi parameter di Redis untuk invalidasi segera; minimal tampilkan 'berlaku ≤ 30 detik' di UI.
+O4
+Peringatan git 'CRLF will be replaced by LF' di hampir semua file.
+Tambahkan .gitattributes (* text=auto eol=lf; *.bat eol=crlf) lalu git add --renormalize .
+O5
+Pekerjaan ada di branch master, sedangkan branch utama repo adalah main.
+Buat PR master → main atau samakan nama branch sebelum kolaborasi.
+O6
+Teks lengkap protokol audit sirkular, SRE/chaos, dan asisten AI hilang dari transkrip (konteks diringkas); verifikasi ulang hanya berdasarkan ringkasan.
+Tempel ulang ketiga protokol bila ingin dicek butir per butir secara literal.
+O7
+Laporan uang memakai basis akrual (bulan barang diterima); bulan pembayaran (paid_at) tidak dilaporkan.
+Tambahkan kolom 'dibayar bulan ini' (basis kas) di laporan pengepul & pabrik bila diperlukan akuntansi.
+O8
+Daftar 'Tiba via rute' pabrik tidak menampilkan nama pengepul/petani; tabel tagihan hanya menampilkan nama pengepul.
+Join ke users di /factory/arrivals; tampilkan petani asal di tagihan jalur rute.
+Lampiran — perintah uji & migrasi
+Tes SQLite:
+DATABASE_URL="sqlite+aiosqlite:///biochain.db" py -m pytest -q -p no:cacheprovider
+Tes PostgreSQL (container biochain-postgres di port 5433):
+py scripts/pg_setup.pyDATABASE_URL="postgresql+asyncpg://biochain_app:biochain_app_dev@localhost:5433/biochain" \AUTO_MIGRATE=false \BIOCHAIN_TEST_PG_OWNER_URL="postgresql+asyncpg://biochain:biochain_dev_2026@localhost:5433/biochain" \py -m pytest -q -p no:cacheprovider
+Hasil terakhir sebelum dokumen ini: PostgreSQL 370 lulus; SQLite 356 lulus, 13 dilewati, 1 gagal (O1, tes latensi saat mesin sibuk).
+Uji rollback migrasi baru:
+docker exec -i biochain-postgres psql -U biochain -d biochain -v ON_ERROR_STOP=1 < migrations/NNN_x.rollback.sqldocker exec -i biochain-postgres psql -U biochain -d biochain -v ON_ERROR_STOP=1 < migrations/NNN_x.sql   # dua kali: harus idempoten
+Daftar centang
+✓
+Kode
+Butir
+☑
+S0
+Cek kepemilikan di /collector/reject (IDOR)
+☑
+B1
+Tolak dispatch harvest terlampir DR & lampiran harvest yang sedang di rute
+☑
+T1/S1
+Filter parameter per peran
+☑
+T2
+Harga karbon jadi parameter wajib
+☑
+B2
+Port PostgreSQL .env = 5433
+☑
+B3
+Tagihan di luar batas mutu
+☑
+S2
+Jejak audit harga tagihan
+☑
+S3
+Samakan constraint model & migrasi
+☑
+S4
+Validasi URL bukti
+☑
+T3
+Isian/unggah foto bukti di UI
+☑
+T4
+computation_details 5 engine
+☑
+T5
+Fungsi DB next_trx_seq
+☑
+T6
+jalankan.bat + jalankan.sh
+☑
+B4
+Teks 'kadar air None%'
+☑
+S5
+Penerimaan tanpa pengepul
+☑
+T7
+Rencana rute jemput pengepul
+☑
+T8
+Skrip benchmark
+☑
+O1–O8
+Temuan operasional (SLO benchmark mandiri, .gitattributes, dsb.)

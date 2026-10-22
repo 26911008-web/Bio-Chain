@@ -10,9 +10,10 @@ sqlalchemy[asyncio]>=2.0
 asyncpg>=0.29
 aiosqlite>=0.20
 
-# Scientific computing
+# Scientific computing & Reporting
 scipy>=1.11
 numpy>=1.26
+openpyxl>=3.1
 
 # Auth
 PyJWT>=2.8

@@ -99,6 +99,13 @@ async def transition(
     if UserRole(_val(actor.role)) not in allowed:
         raise CustodyForbidden(f"Role {_val(actor.role)} tidak berhak: {_val(from_status)} → {_val(to_status)}.")
 
+    if UserRole(_val(actor.role)) == UserRole.PENGEPUL:
+        existing_collector = (await db.execute(
+            select(Harvest.collector_id).where(Harvest.id == harvest_id)
+        )).scalar_one_or_none()
+        if existing_collector is not None and existing_collector != actor.id:
+            raise CustodyForbidden("Harvest ini hasil lelang pengepul lain.")
+
     res = await db.execute(
         update(Harvest)
         .where(Harvest.id == harvest_id, Harvest.status == from_status)

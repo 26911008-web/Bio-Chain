@@ -162,10 +162,7 @@ def test_trx_sequence_atomic_under_real_concurrency():
     async def one(i):
         c = await asyncpg.connect(DSN)
         try:
-            return await c.fetchval(
-                "INSERT INTO trx_sequences (sender_code, receiver_code, yymm, last_seq) VALUES ('PTN9999','PGP9999','9912',1) "
-                "ON CONFLICT (sender_code, receiver_code, yymm) DO UPDATE SET last_seq = trx_sequences.last_seq + 1 "
-                "RETURNING last_seq")
+            return await c.fetchval("SELECT next_trx_seq('PTN9999', 'PGP9999', '9912')")
         finally:
             await c.close()
 

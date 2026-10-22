@@ -17,8 +17,11 @@ from ..models.ledger import CustodyStage
 from ..engines.quality import FeedstockSample, score_sample
 from ..models.trade import Bid, BidStatus, StockListing
 from ..models.factory_ops import DeliveryRequest
+from ..models.route import Route, RouteStatus, RouteStop
 from ..services import factory_ops, trade
 from ..services.custody import find_replay, load_harvest, pct_diff, transition
+
+from ..security.url import EvidenceUrl
 
 router = APIRouter()
 
@@ -34,7 +37,7 @@ class VerifyHarvestRequest(BaseModel):
     pyrolysis_temp_c: float = Field(500, ge=300, le=700)
     client_event_id: str | None = Field(None, max_length=64, description="Kunci idempotensi antrean offline")
     client_recorded_at: datetime | None = None
-    evidence_photo_url: str | None = Field(None, max_length=1000, description="Bukti foto serah-terima (opsional)")
+    evidence_photo_url: EvidenceUrl | None = Field(None, max_length=1000, description="Bukti foto serah-terima (opsional)")
 
 
 class RejectHarvestRequest(BaseModel):
@@ -151,6 +154,9 @@ async def reject_harvest(
     user: Annotated[User, Depends(require_role(UserRole.PENGEPUL))],
 ):
     """Tolak laporan sekam sebelum diangkut (mis. basah / terkontaminasi)."""
+    harvest = await load_harvest(db, req.harvest_id)
+    if harvest.collector_id is not None and harvest.collector_id != user.id:
+        raise HTTPException(403, "Harvest ini hasil lelang pengepul lain.")
     event = await transition(
         db, req.harvest_id, HarvestStatus.REPORTED, HarvestStatus.REJECTED, user, CustodyStage.COLLECTOR_REJECT,
         client_event_id=req.client_event_id, client_recorded_at=req.client_recorded_at, note=req.reason,
@@ -354,9 +360,18 @@ async def attachable_harvests(
     user: Annotated[User, Depends(require_role(UserRole.PENGEPUL))],
 ):
     """Harvest petani yang sudah Anda timbang & belum terlampir di ajuan — bisa dikirim ke pabrik (→ dompet)."""
+    active_routes = (
+        select(RouteStop.harvest_id)
+        .join(Route, RouteStop.route_id == Route.id)
+        .where(
+            RouteStop.harvest_id.is_not(None),
+            Route.status.in_([RouteStatus.PLANNED, RouteStatus.IN_PROGRESS]),
+        )
+    )
     rows = (await db.execute(select(Harvest, User.full_name).join(User, User.id == Harvest.farmer_id)
                              .where(Harvest.collector_id == user.id, Harvest.status == HarvestStatus.VERIFIED,
-                                    Harvest.delivery_request_id.is_(None))
+                                    Harvest.delivery_request_id.is_(None),
+                                    ~Harvest.id.in_(active_routes))
                              .order_by(Harvest.id.desc()).limit(200))).all()
     return [{"id": h.id, "farmer": name, "verified_kg": h.verified_kg, "moisture": h.moisture, "grade":
              h.grade.value if hasattr(h.grade, "value") else h.grade} for h, name in rows]
@@ -369,7 +384,120 @@ async def my_settlements(
     user: Annotated[User, Depends(require_role(UserRole.PENGEPUL))],
 ):
     """Tagihan saya ke pabrik (jalur QC & jalur rute): menunggu harga / terutang / dibayar."""
+    from sqlalchemy.orm import aliased
     from ..models.factory_ops import CollectorSettlement
-    rows = (await db.execute(select(CollectorSettlement).where(CollectorSettlement.collector_id == user.id)
-                             .order_by(CollectorSettlement.id.desc()).limit(300))).scalars().all()
-    return [factory_ops.settlement_dict(s) for s in rows]
+    FarmerUser = aliased(User, name="farmer_user")
+    q = (select(CollectorSettlement, FarmerUser.full_name.label("farmer_name"))
+         .outerjoin(Harvest, Harvest.id == CollectorSettlement.harvest_id)
+         .outerjoin(FarmerUser, FarmerUser.id == Harvest.farmer_id)
+         .where(CollectorSettlement.collector_id == user.id)
+         .order_by(CollectorSettlement.id.desc()).limit(300))
+    rows = (await db.execute(q)).all()
+    return [{**factory_ops.settlement_dict(s), "farmer_name": fname} for s, fname in rows]
+
+
+@router.get("/settlements/{settlement_id}/history")
+async def my_settlement_history(
+    settlement_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(require_role(UserRole.PENGEPUL))],
+):
+    """Jejak audit tagihan milik pengepul yang sedang login."""
+    from ..models.factory_ops import CollectorSettlement
+    s = await db.get(CollectorSettlement, settlement_id)
+    if s is None or s.collector_id != user.id:
+        raise HTTPException(404, "Tagihan tidak ditemukan.")
+    return await factory_ops.settlement_history(db, settlement_id)
+
+
+class PickupPlanRequest(BaseModel):
+    bid_ids: list[int] | None = None
+    vehicle_m3: float | None = Field(None, gt=0, le=1000)
+    cost_per_km: float | None = Field(None, ge=0)
+    time_budget_ms: int = Field(500, ge=10, le=2000)
+
+
+@router.post("/pickup-plan")
+async def pickup_plan(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(require_role(UserRole.PENGEPUL))],
+    req: PickupPlanRequest | None = None,
+):
+    """Rencana rute penjemputan optimal untuk tawaran yang dimenangkan pengepul berskema jemput."""
+    from ..models.trade import Bid, BidStatus, DeliveryScheme, StockListing
+    from ..models.harvest import Harvest, HarvestStatus
+    from ..engines.routing import plan_routes
+    from ..schemas.routing import RouteRequest
+
+    depot = {
+        "id": f"PGP{user.id:04d}",
+        "name": user.full_name,
+        "lat": user.lat if user.lat is not None else -7.700,
+        "lon": user.lon if user.lon is not None else 110.350,
+    }
+
+    q = (
+        select(Bid, StockListing, User, Harvest)
+        .join(StockListing, StockListing.id == Bid.listing_id)
+        .join(User, User.id == Bid.farmer_id)
+        .outerjoin(Harvest, Harvest.bid_id == Bid.id)
+        .where(
+            Bid.collector_id == user.id,
+            Bid.status == BidStatus.ACCEPTED,
+            Bid.scheme == DeliveryScheme.JEMPUT,
+            (Harvest.id.is_(None) | (Harvest.status == HarvestStatus.REPORTED)),
+        )
+    )
+    if req and req.bid_ids:
+        q = q.where(Bid.id.in_(req.bid_ids))
+
+    rows = (await db.execute(q.order_by(Bid.id.asc()))).all()
+
+    if not rows:
+        return {
+            "routes": [],
+            "summary": {
+                "mills": 0, "total_ton": 0.0, "vehicles_trips": 0, "total_km": 0.0,
+                "total_cost": 0, "cost_per_ton": 0, "cost_per_kg": 0.0,
+                "baseline_km": 0.0, "saving_pct": 0.0,
+                "max_ton_per_trip": 0.0, "algorithm": "None",
+            },
+            "computation_details": {
+                "method": "Capacitated Vehicle Routing Problem (CVRP) — Clarke & Wright 1964",
+                "message": "Tidak ada tawaran diterima berskema jemput yang menunggu penjemputan.",
+                "steps": [],
+                "references": [
+                    "Clarke, G. & Wright, J.W. (1964). Scheduling of vehicles from a central depot to a number of delivery points.",
+                ],
+            },
+        }
+
+    mills = []
+    for bid, listing, farmer, h in rows:
+        lat = listing.lat or farmer.lat or -7.745
+        lon = listing.lon or farmer.lon or 110.362
+        qty_kg = bid.accepted_kg if bid.accepted_kg > 0 else bid.quantity_kg
+        mills.append({
+            "id": f"BID-{bid.id}",
+            "name": f"{farmer.full_name} (#{bid.id})",
+            "lat": lat,
+            "lon": lon,
+            "stock_ton": qty_kg / 1000.0,
+        })
+
+    v_m3 = (req.vehicle_m3 if req and req.vehicle_m3 else P("logistik.vehicle_m3"))
+    c_km = (req.cost_per_km if req and req.cost_per_km else P("logistik.cost_per_km"))
+    t_budget = (req.time_budget_ms if req and req.time_budget_ms else int(P("logistik.time_budget_ms")))
+
+    route_req = RouteRequest(
+        vehicle_m3=v_m3,
+        bulk_density_kg_m3=P("logistik.bulk_density_kg_m3"),
+        cost_per_km=c_km,
+        mode="auto",
+        time_budget_ms=t_budget,
+    )
+    res = plan_routes(depot=depot, mills=mills, req=route_req)
+    total_ton = res["summary"]["total_ton"]
+    total_cost = res["summary"]["total_cost"]
+    res["summary"]["cost_per_kg"] = round(total_cost / (total_ton * 1000), 2) if total_ton > 0 else 0.0
+    return res

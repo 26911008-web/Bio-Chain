@@ -202,6 +202,11 @@ def test_awarded_harvest_is_exclusive_and_priced_at_agreed_price(env):
     assert all(x["id"] != h["harvest_id"] for x in queue_other)
     assert env.call("pengepul_2", "POST", "/collector/verify",
                     {"harvest_id": h["harvest_id"], "weighed_kg": 990, **PROXIMATE}).status_code == 403
+    assert env.call("pengepul_2", "POST", "/collector/reject",
+                    {"harvest_id": h["harvest_id"], "reason": "bukan milik saya"}).status_code == 403
+    # S4 test: javascript: URL ditolak 422
+    assert env.call("pengepul_1", "POST", "/collector/verify",
+                    {"harvest_id": h["harvest_id"], "weighed_kg": 990, "evidence_photo_url": "javascript:alert(1)", **PROXIMATE}).status_code == 422
     v = env.ok("pengepul_1", "POST", "/collector/verify",
                {"harvest_id": h["harvest_id"], "weighed_kg": 990, "evidence_photo_url": "https://cdn.example/f1.jpg", **PROXIMATE})
     assert v["total_price"] == 990 * 455 and v["price_basis"] == "harga lelang"
@@ -293,3 +298,37 @@ def test_bid_advisor_marginal_cost_shrinks_when_route_already_passes_nearby(env)
                     {"listing_id": near["id"], "scheme": "jemput", "resale_price_per_kg": 520})
     assert second["computation_details"]["titik_komitmen"] == 1
     assert second["logistic_cost_per_kg"] < first["logistic_cost_per_kg"]
+
+
+def test_collector_pickup_plan_cvrp(env):
+    """T7: Rencana rute jemput CVRP untuk tawaran yang dimenangkan pengepul."""
+    # 1. Saat belum ada tawaran diterima -> rute kosong tanpa error
+    empty = env.ok("pengepul_1", "POST", "/collector/pickup-plan")
+    assert empty["routes"] == [] and empty["summary"]["total_ton"] == 0
+
+    # 2. Menangkan dua tawaran jemput
+    l1 = listing(env, who="petani_a", qty=1500)
+    l2 = listing(env, who="petani_b", qty=2000)
+    b1 = bid(env, "pengepul_1", l1["id"], scheme="jemput", price=420, qty=1500)
+    b2 = bid(env, "pengepul_1", l2["id"], scheme="jemput", price=420, qty=2000)
+    env.ok("petani_a", "POST", f"/farmer/listings/{l1['id']}/accept", {"bid_id": b1["bid_id"], "quantity_kg": 1500})
+    env.ok("petani_b", "POST", f"/farmer/listings/{l2['id']}/accept", {"bid_id": b2["bid_id"], "quantity_kg": 2000})
+
+    # 3. Hitung rencana jemput
+    plan = env.ok("pengepul_1", "POST", "/collector/pickup-plan")
+    assert len(plan["routes"]) >= 1
+    assert plan["summary"]["total_ton"] == pytest.approx(3.5, abs=0.01)
+    assert plan["summary"]["total_km"] > 0
+    assert plan["summary"]["total_cost"] > 0
+    assert plan["summary"]["cost_per_kg"] == pytest.approx(round(plan["summary"]["total_cost"] / 3500, 2), abs=0.05)
+
+    # Semua titik dikunjungi
+    visited_stops = [s["id"] for r in plan["routes"] for s in r["stops"]]
+    assert set(visited_stops) == {f"BID-{b1['bid_id']}", f"BID-{b2['bid_id']}"}
+
+    # Kapasitas per trip tidak terlampaui
+    cap = plan["computation_details"]["problem"]["vehicle_m3"]
+    assert all(r["load_m3"] <= cap + 1e-6 for r in plan["routes"])
+
+    # RBAC: petani tidak boleh memanggil
+    assert env.call("petani_a", "POST", "/collector/pickup-plan").status_code == 403

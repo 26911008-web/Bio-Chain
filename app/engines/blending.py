@@ -93,7 +93,14 @@ def optimize_blend(req: BlendRequest) -> dict:
                 "message": "Tidak ada campuran yang memenuhi spesifikasi dengan stok saat ini. "
                            + ("Longgarkan salah satu batasan di relax_one_of." if blocking
                               else "Kurangi target tonase atau tambah stok feedstock berkualitas tinggi."),
-                "relax_one_of": blocking}
+                "relax_one_of": blocking,
+                "computation_details": {
+                    "method": "Linear Programming Cost Optimization via SciPy HiGHS Solver",
+                    "solver_status": "infeasible",
+                    "steps": [
+                        {"step": "Kelayakan formulasi LP", "formula": "linprog(c, A_ub, b_ub, A_eq, b_eq, bounds)", "value": 0, "unit": "status"},
+                    ],
+                }}
 
     x = [float(v) for v in res.x]
     mix = lambda attr: float(sum(getattr(f, attr) * xi for f, xi in zip(fs, x)) / target)
@@ -101,6 +108,32 @@ def optimize_blend(req: BlendRequest) -> dict:
     blend_moisture = mix("moisture")
     y = biochar_yield_db(req.pyrolysis_temp_c, blend_ash)
     biochar_ton = target * (1 - blend_moisture / 100) * y / 100
+
+    comp_details = {
+        "method": "Linear Programming Cost Optimization via SciPy HiGHS Solver",
+        "inputs": {
+            "target_ton": target,
+            "pyrolysis_temp_c": req.pyrolysis_temp_c,
+            "feedstock_count": len(fs),
+            "spec": req.spec.model_dump(),
+        },
+        "solver_status": "optimal",
+        "steps": [
+            {"step": "Kendala neraca massa", "formula": "∑(x_i) = target", "value": round(target, 2), "unit": "ton"},
+            {"step": "Kadar air rata-rata tertimbang", "formula": "∑(moist_i × x_i) ÷ target", "value": round(blend_moisture, 2), "unit": "%"},
+            {"step": "Kadar abu rata-rata tertimbang", "formula": "∑(ash_i × x_i) ÷ target", "value": round(blend_ash, 2), "unit": "%"},
+            {"step": "Estimasi rendemen biochar", "formula": "biochar_yield_db(temp, blend_ash)", "value": round(y, 2), "unit": "%"},
+            {"step": "Estimasi output biochar", "formula": "target × (1 − moist) × y ÷ 100", "value": round(biochar_ton, 2), "unit": "ton"},
+            {"step": "Biaya rata-rata per ton", "formula": "total_cost ÷ target", "value": round(float(res.fun) / target), "unit": "Rp/ton"},
+            {"step": "Total biaya optimal campuran", "formula": "min ∑(c_i × x_i)", "value": round(float(res.fun)), "unit": "Rp"},
+        ],
+        "parameters_used": [
+            "rendemen.sio2_fraction_of_ash",
+        ],
+        "references": [
+            "Huangfu, Q. and Hall, J. A. J. (2018) Parallelizing the dual revised simplex method. Mathematical Programming Computation",
+        ],
+    }
 
     return {
         "feasible": True,
@@ -118,4 +151,5 @@ def optimize_blend(req: BlendRequest) -> dict:
         "pred_sio2_ton": round(target * (1 - blend_moisture / 100) * blend_ash / 100
                                * P("rendemen.sio2_fraction_of_ash"), 2),
         "note": "Model rendemen dikalibrasi untuk sekam; untuk campuran bersifat aproksimasi.",
+        "computation_details": comp_details,
     }

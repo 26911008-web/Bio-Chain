@@ -22,6 +22,7 @@ from ..engines.incentive import calculate_incentive, DeliveryEvent, next_tier_xp
 from ..models.trade import StockListing
 from ..services import trade
 from ..services.custody import find_replay, wallet_balance
+from ..security.url import EvidenceUrl
 
 router = APIRouter()
 
@@ -212,7 +213,7 @@ class ListingCreate(BaseModel):
     ask_price_antar: float | None = Field(None, gt=0, le=10_000, description="Rp/kg diantar ke gudang pengepul")
     mill_id: int | None = None
     expires_in_days: int = Field(7, ge=1, le=60)
-    evidence_photo_url: str | None = Field(None, max_length=1000)
+    evidence_photo_url: EvidenceUrl | None = Field(None, max_length=1000)
 
 
 class AcceptBid(BaseModel):

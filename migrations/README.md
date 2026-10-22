@@ -32,6 +32,7 @@ psql "$DATABASE_URL_SYNC" -v ON_ERROR_STOP=1 -f migrations/008_silica_routes_wal
 psql "$DATABASE_URL_SYNC" -v ON_ERROR_STOP=1 -f migrations/009_fix_rls_recursion.sql
 psql "$DATABASE_URL_SYNC" -v ON_ERROR_STOP=1 -f migrations/010_reporting_warehouse.sql
 psql "$DATABASE_URL_SYNC" -v ON_ERROR_STOP=1 -f migrations/011_collector_settlements.sql
+psql "$DATABASE_URL_SYNC" -v ON_ERROR_STOP=1 -f migrations/012_settlement_events_and_constraints.sql
 psql "$DATABASE_URL_SYNC" -v ON_ERROR_STOP=1 -v app_password="'<rahasia>'" -f migrations/000_app_role.sql
 # 2. deploy kode baru (gunicorn reload bertahap)
 ```

@@ -6,6 +6,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select, func
+from sqlalchemy.orm import aliased
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import get_db
@@ -26,6 +27,7 @@ from ..engines.factory_econ import PricingRequest, recommend_price
 from ..models.factory_ops import CollectorSettlement, DeliveryRequest, InboundQC, ManufacturingBatch
 from ..services import factory_ops
 from ..services.custody import convert_and_allocate, load_harvest, mass_balance, shrinkage_fields, transition
+from ..security.url import EvidenceUrl
 
 router = APIRouter()
 
@@ -61,7 +63,7 @@ class ReceiveRequest(BaseModel):
     received_kg: float = Field(..., gt=0, le=50000, description="Timbangan jembatan pabrik (otoritatif)")
     client_event_id: str | None = Field(None, max_length=64)
     note: str | None = None
-    evidence_photo_url: str | None = Field(None, max_length=1000)
+    evidence_photo_url: EvidenceUrl | None = Field(None, max_length=1000)
     price_per_kg: float | None = Field(None, ge=0, le=20_000,
                                        description="Harga beli ke pengepul (Rp/kg). Kosong = rekomendasi netback engine")
 
@@ -96,6 +98,9 @@ async def dispatch_route(
     bad = sorted(set(req.harvest_ids) - {h.id for h in harvests if h.status == HarvestStatus.VERIFIED})
     if bad:
         raise HTTPException(409, f"Hanya harvest berstatus 'verified' yang bisa dijadwalkan: {bad}")
+    bad_dr = [h.id for h in harvests if h.delivery_request_id is not None]
+    if bad_dr:
+        raise HTTPException(409, f"Harvest {bad_dr} sudah terlampir Delivery Request — kirim lewat QC, bukan rute.")
     busy = (await db.execute(
         select(RouteStop.harvest_id).join(Route, RouteStop.route_id == Route.id)
         .where(RouteStop.harvest_id.in_(req.harvest_ids),
@@ -140,9 +145,13 @@ async def receive_harvest(
         evidence_photo_url=req.evidence_photo_url, received_by_id=user.id, delivered_at=datetime.now(timezone.utc), **fields,
     )
     # Jalur rute: catat kewajiban bayar ke pengepul (sebelumnya tidak tercatat → margin pengepul tidak lengkap)
-    settlement = await factory_ops.settle_route(db, await load_harvest(db, req.harvest_id), user, req.price_per_kg)
+    current_harvest = await load_harvest(db, req.harvest_id)
+    settlement = await factory_ops.settle_route(db, current_harvest, user, req.price_per_kg)
+    warning = ("Penerimaan sekam tanpa pengepul: tidak ada tagihan pembayaran terbuat otomatis."
+               if settlement is None and current_harvest.collector_id is None else None)
     return {
         "settlement": factory_ops.settlement_dict(settlement) if settlement else None,
+        "warning": warning,
         "harvest_id": req.harvest_id, "status": "delivered", "reference_kg": reference,
         "received_kg": req.received_kg, "shrinkage_kg": fields["shrinkage_kg"],
         "shrinkage_pct": fields["shrinkage_pct"], "discrepancy_flag": fields["discrepancy_flag"],
@@ -409,7 +418,7 @@ class InboundQCIn(BaseModel):
     volatile_matter: float = Field(..., ge=0, le=100)
     fixed_carbon: float = Field(..., ge=0, le=100)
     contamination: float = Field(0, ge=0, le=50)
-    evidence_photo_url: str | None = Field(None, max_length=1000)
+    evidence_photo_url: EvidenceUrl | None = Field(None, max_length=1000)
     note: str | None = Field(None, max_length=500)
 
 
@@ -566,11 +575,15 @@ async def list_settlements(
     user: Annotated[User, Depends(_audit_read)],
     status: str | None = None,
 ):
-    q = select(CollectorSettlement, User.full_name).join(User, User.id == CollectorSettlement.collector_id)
+    FarmerUser = aliased(User, name="farmer_user")
+    q = (select(CollectorSettlement, User.full_name, FarmerUser.full_name.label("farmer_name"))
+         .join(User, User.id == CollectorSettlement.collector_id)
+         .outerjoin(Harvest, Harvest.id == CollectorSettlement.harvest_id)
+         .outerjoin(FarmerUser, FarmerUser.id == Harvest.farmer_id))
     if status:
         q = q.where(CollectorSettlement.status == status)
     rows = (await db.execute(q.order_by(CollectorSettlement.id.desc()).limit(300))).all()
-    return [{**factory_ops.settlement_dict(s), "collector": name} for s, name in rows]
+    return [{**factory_ops.settlement_dict(s), "collector": name, "farmer_name": fname} for s, name, fname in rows]
 
 
 @router.post("/settlements/{settlement_id}/price")
@@ -590,7 +603,20 @@ async def pay_settlement(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(_pabrik_only)],
 ):
-    return factory_ops.settlement_dict(await factory_ops.mark_settlement_paid(db, settlement_id, body.payment_reference))
+    return factory_ops.settlement_dict(await factory_ops.mark_settlement_paid(db, settlement_id, body.payment_reference, actor=user))
+
+
+@router.get("/settlements/{settlement_id}/history")
+async def settlement_history(
+    settlement_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_audit_read)],
+):
+    """Jejak audit perubahan harga dan status tagihan (pabrik/admin/auditor)."""
+    s = await db.get(CollectorSettlement, settlement_id)
+    if s is None:
+        raise HTTPException(404, "Tagihan tidak ditemukan.")
+    return await factory_ops.settlement_history(db, settlement_id)
 
 
 @router.get("/arrivals")
@@ -599,7 +625,22 @@ async def route_arrivals(
     user: Annotated[User, Depends(_pabrik_only)],
 ):
     """Sekam jalur rute yang sudah dijemput supir dan menunggu timbang terima pabrik."""
-    rows = (await db.execute(select(Harvest).where(Harvest.status == HarvestStatus.COLLECTED)
-                             .order_by(Harvest.id).limit(200))).scalars().all()
-    return [{"harvest_id": h.id, "collector_id": h.collector_id, "verified_kg": h.verified_kg, "moisture": h.moisture,
-             "ash": h.ash, "grade": h.grade} for h in rows]
+    FarmerUser = aliased(User, name="farmer_u")
+    CollectorUser = aliased(User, name="collector_u")
+    q = (select(Harvest, FarmerUser.full_name.label("farmer_name"), CollectorUser.full_name.label("collector_name"))
+         .outerjoin(FarmerUser, FarmerUser.id == Harvest.farmer_id)
+         .outerjoin(CollectorUser, CollectorUser.id == Harvest.collector_id)
+         .where(Harvest.status == HarvestStatus.COLLECTED)
+         .order_by(Harvest.id).limit(200))
+    rows = (await db.execute(q)).all()
+    return [{
+        "harvest_id": h.id,
+        "collector_id": h.collector_id,
+        "collector_name": cname,
+        "farmer_id": h.farmer_id,
+        "farmer_name": fname,
+        "verified_kg": h.verified_kg,
+        "moisture": h.moisture,
+        "ash": h.ash,
+        "grade": h.grade,
+    } for h, fname, cname in rows]

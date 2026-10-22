@@ -27,19 +27,34 @@ class ParamReset(BaseModel):
     reason: str = Field(..., min_length=5, max_length=500)
 
 
+VISIBLE_GROUPS: dict[str, set[str]] = {
+    UserRole.DRIVER.value: {"logistik"},
+    UserRole.PETANI.value: {"harga_mutu", "insentif", "pasar"},
+    UserRole.PENGEPUL.value: {"harga_mutu", "pasar", "logistik"},
+}
+
+
 @router.get("")
 async def list_params(db: Annotated[AsyncSession, Depends(get_db)],
                       user: Annotated[User, Depends(get_current_user)], group: str | None = None):
-    """Semua asumsi aktif, dikelompokkan. Terbuka untuk semua peran (transparansi harga & aturan)."""
+    """Asumsi aktif dikelompokkan sesuai izin peran pengguna."""
+    role = user.role.value if hasattr(user.role, "value") else str(user.role)
+    allowed_groups = VISIBLE_GROUPS.get(role)
+
+    if group is not None:
+        if allowed_groups is not None and group not in allowed_groups:
+            raise HTTPException(403, f"Peran '{role}' tidak berhak mengakses grup parameter '{group}'.")
+
     await params_store.load(db)
     groups = []
     for gid, glabel in params.GROUPS.items():
+        if allowed_groups is not None and gid not in allowed_groups:
+            continue
         if group and gid != group:
             continue
         items = [params.describe(d.key) for d in params.DEFS if d.group == gid]
         groups.append({"id": gid, "label": glabel, "params": items,
                        "modified": sum(i["modified"] for i in items)})
-    role = user.role.value if hasattr(user.role, "value") else str(user.role)
     return {"can_edit": role in ("pabrik", "admin"), "groups": groups}
 
 

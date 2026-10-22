@@ -698,6 +698,7 @@
             <label class="kpi-lbl" for="rp-to">s.d.</label><input id="rp-to" type="month" class="btn btn-secondary btn-sm">
             <button class="btn btn-primary btn-sm" id="btn-rp">Tampilkan</button>
             <button class="btn btn-secondary btn-sm" id="btn-rp-csv">⬇️ CSV</button>
+            <button class="btn btn-secondary btn-sm" id="btn-rp-xlsx">⬇️ Excel</button>
           </div>
         </div>
         <div class="kpi-row" id="rp-kpis"></div>
@@ -714,7 +715,7 @@
         <div class="card-header">
           <div>
             <h2 class="card-title">🎛️ Parameter Asumsi</h2>
-            <p class="card-sub">Semua angka asumsi di setiap modul. Ubah sesuai keadaan lapangan; setiap perubahan tercatat (siapa, kapan, alasan).</p>
+            <p class="card-sub">Semua angka asumsi di setiap modul. Ubah sesuai keadaan lapangan; setiap perubahan tercatat (siapa, kapan, alasan). <span class="badge badge-amber" style="font-size:11px; margin-left:6px;" title="Cache proses disinkronkan berkala dari database">⏱️ Sinkronisasi multi-worker ≤ 30 detik</span></p>
           </div>
           <span class="badge" id="pm-mode"></span>
         </div>
@@ -1205,8 +1206,20 @@ async function downloadReportCsv() {
     document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
   } catch (err) { showToast(err.message, "❌"); }
 }
+
+async function downloadReportXlsx() {
+  try {
+    const res = await fetch(`/api/reports/monthly${rpQuery("&format=xlsx")}`, { headers: { Authorization: `Bearer ${STATE.token}` } });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || `HTTP ${res.status}`);
+    const blob = await res.blob();
+    const name = (res.headers.get("Content-Disposition") || "").match(/filename="([^"]+)"/)?.[1] || "laporan.xlsx";
+    const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: name });
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
+  } catch (err) { showToast(err.message, "❌"); }
+}
 $("btn-rp") && ($("btn-rp").onclick = e => withBusy(e.currentTarget, loadReport));
 $("btn-rp-csv") && ($("btn-rp-csv").onclick = e => withBusy(e.currentTarget, downloadReportCsv));
+$("btn-rp-xlsx") && ($("btn-rp-xlsx").onclick = e => withBusy(e.currentTarget, downloadReportXlsx));
 
 // ==============================================================
 // ASISTEN AI — jawaban mengalir (streaming); konteks data dibatasi peran di server.
@@ -1869,6 +1882,7 @@ async function renderPersonaDashboard(role) {
               <div><label class="kpi-lbl">Kontaminan (%)</label><input type="number" id="v-contam" class="btn btn-secondary" style="width:100%;" value="1.2" step="0.1"></div>
               <div><label class="kpi-lbl">Suhu Pirolisis (°C)</label><input type="number" id="v-temp" class="btn btn-secondary" style="width:100%;" value="500" step="10"></div>
             </div>
+            <div style="margin-top:8px;"><label class="kpi-lbl">📷 URL Foto Bukti Serah-Terima (opsional)</label><input type="text" id="v-photo" class="btn btn-secondary" style="width:100%; text-align:left;" placeholder="https://... atau /uploads/..."></div>
             <div id="v-preview" style="background:#f8fafc; border:1px solid var(--border); border-radius:var(--radius-md); padding:10px; margin:12px 0; font-size:12px;">
               Preview Mutu: <b>Grade A</b> · Skor 91.2 · Pengali Harga: <b>×1.10</b>
             </div>
@@ -2182,8 +2196,10 @@ const PENGEPUL_MARKET_HTML = `
       <p class="card-sub">Urut jarak dari gudang Anda. Saran tawaran = harga jual − biaya logistik marginal (rute CVRP) − margin.</p>
     </div>
     <div style="display:flex; gap:6px; align-items:center;"><label class="kpi-lbl">Harga jual ke pabrik</label>
-      <input id="mk-resale" type="number" class="btn btn-secondary" style="width:100px;" value="560"></div></div>
-    <div style="overflow-x:auto;" id="market-table"><p class="muted">Memuat…</p></div>
+      <input id="mk-resale" type="number" class="btn btn-secondary" style="width:100px;" value="560">
+      <button class="btn btn-primary btn-sm" onclick="planPickup(this)">🚛 Rencanakan jemput</button></div></div>
+    <div id="pickup-plan-result"></div>
+    <div style="overflow-x:auto; margin-top:8px;" id="market-table"><p class="muted">Memuat…</p></div>
   </div>`;
 
 async function loadMarket() {
@@ -2228,6 +2244,40 @@ async function placeBid(listingId, btn) {
         price_per_kg: Number($(`bp-${listingId}`).value), quantity_kg: Number($(`bq-${listingId}`).value) } });
       showToast("Tawaran terkirim. Petani yang memutuskan.", "📨");
       loadMarket();
+    } catch (err) { showToast(err.message, "❌"); }
+  }, "⏳");
+}
+
+async function planPickup(btn) {
+  return withBusy(btn, async () => {
+    try {
+      const r = await api("/api/v1/collector/pickup-plan", { method: "POST" });
+      const box = $("pickup-plan-result");
+      if (!r.routes || !r.routes.length) {
+        box.innerHTML = `<p class="muted" style="padding:8px 0;">Tidak ada tawaran diterima berskema jemput yang menunggu penjemputan.</p>`;
+        return;
+      }
+      box.innerHTML = `
+        <div style="background:var(--bg-panel); padding:10px; border-radius:6px; margin:8px 0; border:1px solid var(--border);">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <b>🚛 Rencana Rute Penjemputan (${r.summary.vehicles_trips} trip · ${num(r.summary.total_km, 1)} km)</b>
+            <span class="badge badge-green">Hemat ${num(r.summary.saving_pct, 1)}% vs langsung</span>
+          </div>
+          <p class="kpi-lbl" style="margin:4px 0;">Muatan: <b>${num(r.summary.total_ton, 2)} ton</b> · Biaya: <b>${rp(r.summary.total_cost)}</b> (${rp(r.summary.cost_per_kg)}/kg) · Algoritma: ${esc(r.summary.algorithm)}</p>
+          <table class="data-table" style="margin-top:6px;">
+            <thead><tr><th>Trip</th><th>Urutan Penjemputan Petani</th><th class="num">Muatan (m³)</th><th class="num">Ton</th><th class="num">Jarak</th></tr></thead>
+            <tbody>
+              ${r.routes.map((rt, idx) => `
+                <tr>
+                  <td><b>Trip #${idx + 1}</b></td>
+                  <td>${rt.stops.map(s => `${esc(s.name)} (${num(s.ton, 2)} t)`).join(" ➔ ")}</td>
+                  <td class="num">${num(rt.load_m3, 1)} (${num(rt.utilization_pct, 0)}%)</td>
+                  <td class="num">${num(rt.load_ton, 2)}</td>
+                  <td class="num">${num(rt.km, 1)} km</td>
+                </tr>`).join("")}
+            </tbody>
+          </table>
+        </div>`;
     } catch (err) { showToast(err.message, "❌"); }
   }, "⏳");
 }
@@ -2334,12 +2384,15 @@ const ST_LABEL = { menunggu_harga: "menunggu harga", terutang: "terutang", dibay
 async function loadArrivals() {
   try {
     const rows = await api("/api/v1/factory/arrivals");
-    $("st-arrivals").innerHTML = rows.length ? `<table class="data-table"><thead><tr><th>Harvest</th><th class="num">Timbang pengepul</th>
-      <th>Mutu</th><th>Timbang pabrik (kg)</th><th>Harga (Rp/kg, opsional)</th><th></th></tr></thead><tbody>${rows.map(h => `<tr>
-        <td>#${h.harvest_id}</td><td class="num">${num(h.verified_kg, 0)} kg</td>
+    $("st-arrivals").innerHTML = rows.length ? `<table class="data-table"><thead><tr><th>Harvest</th><th>Pengepul / Petani</th><th class="num">Timbang pengepul</th>
+      <th>Mutu</th><th>Timbang pabrik (kg)</th><th>Harga (Rp/kg, opsional)</th><th>Foto Bukti (URL)</th><th></th></tr></thead><tbody>${rows.map(h => `<tr>
+        <td>#${h.harvest_id}</td>
+        <td>${esc(h.collector_name || (h.collector_id ? 'Pengepul #' + h.collector_id : '–'))}<br><span class="kpi-lbl">${esc(h.farmer_name || (h.farmer_id ? 'Petani #' + h.farmer_id : '–'))}</span></td>
+        <td class="num">${num(h.verified_kg, 0)} kg</td>
         <td>air ${num(h.moisture)}% · abu ${num(h.ash)}% · ${esc(h.grade || "-")}</td>
         <td><input id="rcv-kg-${h.harvest_id}" type="number" class="btn btn-secondary btn-sm" style="width:90px;" value="${Number(h.verified_kg) || 0}" min="0"></td>
         <td><input id="rcv-p-${h.harvest_id}" type="number" class="btn btn-secondary btn-sm" style="width:90px;" placeholder="netback" min="0"></td>
+        <td><input id="rcv-photo-${h.harvest_id}" type="text" class="btn btn-secondary btn-sm" style="width:110px;" placeholder="https://..."></td>
         <td><button class="btn btn-primary btn-sm" onclick="receiveArrival(${Number(h.harvest_id)}, this)">Terima</button></td></tr>`).join("")}</tbody></table>`
       : `<p class="muted">Tidak ada sekam jalur rute yang menunggu timbang terima.</p>`;
   } catch (err) { console.error("loadArrivals:", err); }
@@ -2347,11 +2400,13 @@ async function loadArrivals() {
 
 async function receiveArrival(id, btn) {
   const price = $(`rcv-p-${id}`).value;
+  const photo = $(`rcv-photo-${id}`) ? $(`rcv-photo-${id}`).value.trim() : "";
   return withBusy(btn, async () => {
     try {
       const r = await api("/api/v1/factory/receive", { body: { harvest_id: id, received_kg: Number($(`rcv-kg-${id}`).value),
-        price_per_kg: price === "" ? null : Number(price) } });
+        price_per_kg: price === "" ? null : Number(price), evidence_photo_url: photo || null } });
       const st = r.settlement;
+      if (r.warning) showToast(r.warning, "⚠️");
       showToast(st ? (st.amount_rp == null ? `Diterima. Tagihan pengepul menunggu harga (${num(st.payable_kg, 0)} kg).`
         : `Diterima. Tagihan pengepul ${num(st.payable_kg, 0)} kg × ${rp(st.price_per_kg)} = ${rp(st.amount_rp)}`) : "Diterima.", "⚖️");
       loadArrivals(); loadSettlements();
@@ -2369,7 +2424,7 @@ async function loadSettlements() {
       <table class="data-table"><thead><tr><th>#</th><th>Pengepul</th><th>Jalur</th><th class="num">kg dibayar</th><th class="num">Rp/kg</th>
       <th class="num">Jumlah</th><th>Status</th><th>Aksi</th></tr></thead><tbody>${rows.map(r => `<tr>
         <td>${r.id}</td><td>${esc(r.collector)}</td>
-        <td>${r.source === "qc" ? `QC lot #${r.qc_id}` : `rute · harvest #${r.harvest_id}`}<br><span class="kpi-lbl">${esc(r.price_basis || "")}</span></td>
+        <td>${r.source === "qc" ? `QC lot #${r.qc_id}` : `rute · harvest #${r.harvest_id}${r.farmer_name ? ` · petani: ${esc(r.farmer_name)}` : ""}`}<br><span class="kpi-lbl">${esc(r.price_basis || "")}</span></td>
         <td class="num">${num(r.payable_kg, 0)}</td><td class="num">${r.price_per_kg == null ? "–" : rp(r.price_per_kg)}</td>
         <td class="num">${r.amount_rp == null ? "–" : rp(r.amount_rp)}</td>
         <td><span class="badge ${ST_BADGE[r.status] || ""}">${esc(ST_LABEL[r.status] || r.status)}</span>${r.payment_reference ? `<br><span class="kpi-lbl">${esc(r.payment_reference)}</span>` : ""}</td>
@@ -2385,9 +2440,11 @@ async function loadSettlements() {
 async function priceSettlement(id, btn) {
   const v = $(`stp-${id}`).value;
   if (v === "") return showToast("Isi harga Rp/kg dulu.", "⚠️");
+  const reason = prompt("Alasan penetapan/perubahan harga (min 5 karakter):", "Koreksi mutu timbangan pabrik");
+  if (!reason || reason.trim().length < 5) return showToast("Alasan penetapan harga wajib diisi minimal 5 karakter.", "⚠️");
   return withBusy(btn, async () => {
     try {
-      await api(`/api/v1/factory/settlements/${id}/price`, { body: { price_per_kg: Number(v), reason: "ditetapkan via dasbor pabrik" } });
+      await api(`/api/v1/factory/settlements/${id}/price`, { body: { price_per_kg: Number(v), reason: reason.trim() } });
       loadSettlements();
     } catch (err) { showToast(err.message, "❌"); }
   }, "⏳");
@@ -2715,6 +2772,7 @@ function submitVerify(e) {
         fixed_carbon: Number($("v-fc").value),
         contamination: Number($("v-contam").value),
         pyrolysis_temp_c: Number($("v-temp").value),
+        evidence_photo_url: $("v-photo") && $("v-photo").value.trim() ? $("v-photo").value.trim() : null,
     }, `Verifikasi sekam #${id}`);
     showToast(res.queued ? "Offline: hasil uji disimpan & dikirim otomatis saat online." : res.message,
               res.queued ? "📵" : "✅");
@@ -2795,10 +2853,11 @@ async function loadDriverData() {
 async function confirmPickupStop(stopId, btn) {
   const code = (prompt("Masukkan kode QR pada karung / HP petani (format BIO-XXXXXXXX):", "") || "").trim();
   if (!code) return;
-  return withBusy(btn, () => sendPickup(stopId, code));
+  const photo = (prompt("URL foto bukti serah-terima (opsional, http/https):", "") || "").trim();
+  return withBusy(btn, () => sendPickup(stopId, code, photo || null));
 }
 
-async function sendPickup(stopId, code) {
+async function sendPickup(stopId, code, photo) {
   const recordedAt = new Date().toISOString();   // waktu scan sebenarnya, walau terkirim belakangan
   const pos = await new Promise(resolve => {
     if (!navigator.geolocation) return resolve(null);
@@ -2810,6 +2869,7 @@ async function sendPickup(stopId, code) {
     const res = await apiMutation("/api/v1/driver/confirm-pickup", {
       route_stop_id: stopId, qr_code: code, client_recorded_at: recordedAt,
       lat: pos ? pos.latitude : null, lon: pos ? pos.longitude : null,
+      photo_url: photo || null,
     }, `Pickup stop ${stopId}`);
     showToast(res.queued ? "Offline: scan disimpan & dikirim otomatis saat sinyal kembali."
                          : (res.message || "Pickup berhasil dikonfirmasi!"), res.queued ? "📵" : "🎉");
@@ -2866,14 +2926,20 @@ async function loadFactoryData() {
 }
 
 async function calcCarbon() {
-  const ton = Number($("c-ton").value) || 50;
-  const km = Number($("c-km").value) || 45;
+  const tonInput = $("c-ton").value;
+  const kmInput = $("c-km").value;
+  if (!tonInput) return showToast("Isi jumlah ton biomassa dulu.", "⚠️");
+  const ton = Number(tonInput);
+  const km = kmInput !== "" ? Number(kmInput) : 0;
   try {
     const res = await api("/api/v1/labs/carbon/calculate", {
       biomass_ton: ton,
       transport_km: km,
       feedstock_type: "rice_husk",
     });
+    const nekHtml = res.carbon_value_rp != null
+      ? `Potensi Nilai NEK: <strong>${rp(res.carbon_value_rp)}</strong> (${res.carbon_value_note || ''})`
+      : `<span style="color:var(--amber-dark);">${res.carbon_value_note || 'Isi harga pasar karbon di menu Parameter untuk melihat nilai NEK'}</span>`;
     $("carbon-res-box").innerHTML = `
       <div style="background:var(--primary-soft); border:1px solid var(--primary-border); border-radius:var(--radius-md); padding:12px; font-size:13px;">
         <div style="font-size:18px; font-weight:800; color:var(--primary-dark); margin-bottom:4px;">
@@ -2881,7 +2947,7 @@ async function calcCarbon() {
         </div>
         <div>Emisi dihindari (open burning): ${num(res.emission_avoided_tco2, 2)} tCO₂e</div>
         <div>Emisi logistik angkut: ${num(res.transport_emission_tco2, 3)} tCO₂e</div>
-        <div style="margin-top:6px; font-size:11px; color:var(--ink-muted);">Potensi Nilai NEK: ${rp(res.net_reduction_tco2 * 150000)} (Rp 150.000/tCO₂e)</div>
+        <div style="margin-top:6px; font-size:11px; color:var(--ink-muted);">${nekHtml}</div>
       </div>
     `;
   } catch (err) {

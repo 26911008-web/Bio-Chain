@@ -8,8 +8,9 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     # Database
-    DATABASE_URL: str = "postgresql+asyncpg://biochain:biochain_dev_2026@localhost:5432/biochain"
-    DATABASE_URL_SYNC: str = "postgresql://biochain:biochain_dev_2026@localhost:5432/biochain"
+    DATABASE_URL: str = "postgresql+asyncpg://biochain:biochain_dev_2026@localhost:5433/biochain"
+    DATABASE_URL_SYNC: str = "postgresql://biochain:biochain_dev_2026@localhost:5433/biochain"
+    ALLOW_SQLITE_FALLBACK: bool = True
 
     # Pool koneksi (per proses worker). Di produksi letakkan PgBouncer (transaction mode) di depan Postgres.
     DB_POOL_SIZE: int = 20
@@ -22,7 +23,7 @@ class Settings(BaseSettings):
     PGBOUNCER: bool = False                 # True → nonaktifkan prepared-statement cache asyncpg
 
     # Redis
-    REDIS_URL: str = "redis://localhost:6379/0"
+    REDIS_URL: str = "redis://localhost:6381/0"
     JOB_BACKEND: str = "local"              # local | arq. arq wajib diset eksplisit (tidak menebak dari port terbuka)
     REDIS_KEY_PREFIX: str = "biochain:"     # semua kunci Redis Bio-Chain ber-namespace (aman berbagi Redis)
 

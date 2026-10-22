@@ -7,12 +7,13 @@ import random
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
-from app import models  # noqa: F401
+from app.models.harvest import Harvest, HarvestStatus
 from app import params
+from app.params import P
 from app.database import Base, get_db
 from app.dependencies import create_access_token
 from app.engines.factory_econ import (PriceMissing, PricingRequest, allocate_joint_cost, batch_economics,
@@ -158,6 +159,7 @@ def env(tmp_path):
     class E:
         headers = h
         uid = {n: uid for n, (uid, _) in ids.items()}
+        session_factory = Session
 
         def call(self, who, method, path, json=None):
             return client.request(method, f"/api/v1{path}", json=json, headers=h[who])
@@ -387,6 +389,27 @@ def test_cannot_attach_unverified_or_foreign_harvest(env):
     assert env.call("pengepul2", "POST", "/collector/delivery-requests", {**body, "harvest_ids": [v]}).status_code == 409
 
 
+def test_dispatch_rejects_harvest_already_attached_to_delivery_request(env):
+    h = _farmer_harvest(env, 600, 600)
+    _dr_with(env, [h], 600)
+    res = env.call("pabrik", "POST", "/factory/dispatch", {"driver_id": env.uid["supir"], "harvest_ids": [h]})
+    assert res.status_code == 409
+    assert "sudah terlampir Delivery Request" in res.json()["detail"]
+
+
+def test_cannot_attach_harvest_currently_in_active_route_to_delivery_request(env):
+    h = env.ok("petani", "POST", "/farmer/harvest", {"quantity_kg": 500}, status=201)
+    env.ok("pengepul", "POST", "/collector/verify", {"harvest_id": h["id"], "weighed_kg": 500, "moisture": 11,
+                                                     "contamination": 0, **LAB})
+    env.ok("pabrik", "POST", "/factory/dispatch", {"driver_id": env.uid["supir"], "harvest_ids": [h["id"]]}, status=201)
+    attachable = env.ok("pengepul", "GET", "/collector/attachable-harvests")
+    assert all(item["id"] != h["id"] for item in attachable)
+    body = {"quantity_kg": 500, "moisture_est": 11, "proposed_date": "2026-10-20", "proposed_price_per_kg": 480,
+            "harvest_ids": [h["id"]]}
+    res = env.call("pengepul", "POST", "/collector/delivery-requests", body)
+    assert res.status_code == 409
+
+
 def test_cancelled_request_releases_harvests(env):
     h = _farmer_harvest(env, 800, 800)
     body = {"quantity_kg": 800, "moisture_est": 11, "proposed_date": "2026-10-20", "proposed_price_per_kg": 480,
@@ -416,10 +439,10 @@ def test_batch_with_ash_route_records_combustion_gas(env):
 
 
 # ---------------------------------------------------------------- pembayaran pabrik → pengepul (kedua jalur)
-def _route_receive(env, kg=1000, received=980, **extra):
+def _route_receive(env, kg=1000, received=980, verify_moisture=11, **extra):
     """Jalur armada pabrik: lapor → timbang pengepul → dispatch → jemput supir → timbang terima pabrik."""
     h = env.ok("petani", "POST", "/farmer/harvest", {"quantity_kg": kg}, status=201)
-    env.ok("pengepul", "POST", "/collector/verify", {"harvest_id": h["id"], "weighed_kg": kg, "moisture": 11,
+    env.ok("pengepul", "POST", "/collector/verify", {"harvest_id": h["id"], "weighed_kg": kg, "moisture": verify_moisture,
                                                      "contamination": 0, **LAB})
     route = env.ok("pabrik", "POST", "/factory/dispatch", {"driver_id": env.uid["supir"], "harvest_ids": [h["id"]]},
                    status=201)
@@ -448,7 +471,10 @@ def test_arrivals_list_shows_collected_then_clears_after_receive(env):
     env.ok("supir", "POST", f"/driver/start-route?route_id={route['route_id']}")
     env.ok("supir", "POST", "/driver/confirm-pickup", {"route_stop_id": route["stops"][0]["route_stop_id"],
                                                        "qr_code": h["qr_code"], "actual_ton": 0.4})
-    assert [a["harvest_id"] for a in env.ok("pabrik", "GET", "/factory/arrivals")] == [h["id"]]
+    arrivals = env.ok("pabrik", "GET", "/factory/arrivals")
+    assert [a["harvest_id"] for a in arrivals] == [h["id"]]
+    assert arrivals[0]["farmer_name"] is not None
+    assert arrivals[0]["collector_name"] is not None
     assert env.call("pengepul", "GET", "/factory/arrivals").status_code == 403
     env.ok("pabrik", "POST", "/factory/receive", {"harvest_id": h["id"], "received_kg": 395})
     assert env.ok("pabrik", "GET", "/factory/arrivals") == []
@@ -488,7 +514,9 @@ def test_qc_path_creates_payable_settlement_and_reject_creates_none(env):
 
 def test_collector_sees_only_own_settlements(env):
     _route_receive(env)
-    assert len(env.ok("pengepul", "GET", "/collector/settlements")) == 1
+    st = env.ok("pengepul", "GET", "/collector/settlements")
+    assert len(st) == 1
+    assert st[0]["farmer_name"] is not None
     assert env.ok("pengepul2", "GET", "/collector/settlements") == []
 
 
@@ -500,3 +528,127 @@ def test_collector_sees_only_own_settlements(env):
 def test_settlement_rbac(env, who, method, path, code):
     body = {"payment_reference": "X-123", "price_per_kg": 1, "reason": "uji akses"} if method == "POST" else None
     assert env.call(who, method, path, body).status_code == code
+
+
+def test_route_receive_above_moisture_limit_waits_price_not_payable_zero(env):
+    """B3: Kadar air 30% (di atas batas tolak) -> status menunggu_harga, bukan terutang Rp 0."""
+    r = _route_receive(env, verify_moisture=30)
+    s = r["settlement"]
+    assert s["status"] == "menunggu_harga"
+    assert s["price_per_kg"] is None
+    assert s["amount_rp"] is None
+    assert "di luar batas mutu" in s["price_basis"]
+    assert s["status"] != "terutang"
+
+
+def test_route_receive_moisture_none_uses_reference_moisture(env):
+    """B4: Jika harvest.moisture kosong, gunakan kadar air referensi tanpa teks 'kadar air None%'."""
+    h = env.ok("petani", "POST", "/farmer/harvest", {"quantity_kg": 1000}, status=201)
+    env.ok("pengepul", "POST", "/collector/verify", {"harvest_id": h["id"], "weighed_kg": 1000, "moisture": 11,
+                                                     "contamination": 0, **LAB})
+    route = env.ok("pabrik", "POST", "/factory/dispatch", {"driver_id": env.uid["supir"], "harvest_ids": [h["id"]]},
+                   status=201)
+    env.ok("supir", "POST", f"/driver/start-route?route_id={route['route_id']}")
+    env.ok("supir", "POST", "/driver/confirm-pickup", {"route_stop_id": route["stops"][0]["route_stop_id"],
+                                                       "qr_code": h["qr_code"], "actual_ton": 1.0})
+    env.ok("supir", "POST", f"/driver/complete-route?route_id={route['route_id']}")
+
+    # Kosongkan moisture di database untuk menguji fallback
+    async def _clear_moisture():
+        async with env.session_factory() as session:
+            await session.execute(update(Harvest).where(Harvest.id == h["id"]).values(moisture=None))
+            await session.commit()
+    asyncio.run(_clear_moisture())
+
+    res = env.ok("pabrik", "POST", "/factory/receive", {"harvest_id": h["id"], "received_kg": 980})
+    s = res["settlement"]
+    assert s["moisture"] == P("pabrik.reference_moisture_pct")
+    assert "None%" not in s["price_basis"]
+    assert "kadar air referensi" in s["price_basis"]
+
+
+def test_settlement_history_audit_trail(env):
+    """S2: Jejak audit settlement_events mencatat dibuat -> harga -> dibayar, append-only."""
+    r = _route_receive(env, price_per_kg=450)
+    sid = r["settlement"]["id"]
+
+    # 1. Jejak awal 'dibuat'
+    hist = env.ok("pabrik", "GET", f"/factory/settlements/{sid}/history")
+    assert len(hist) == 1
+    assert hist[0]["action"] == "dibuat"
+    assert hist[0]["new_price"] == 450
+    assert hist[0]["new_amount"] == 980 * 450
+
+    # 2. Perubahan harga 'harga'
+    env.ok("pabrik", "POST", f"/factory/settlements/{sid}/price", {"price_per_kg": 460, "reason": "koreksi mutu lab"})
+    hist2 = env.ok("pabrik", "GET", f"/factory/settlements/{sid}/history")
+    assert len(hist2) == 2
+    assert hist2[1]["action"] == "harga"
+    assert hist2[1]["old_price"] == 450
+    assert hist2[1]["new_price"] == 460
+    assert hist2[1]["reason"] == "koreksi mutu lab"
+
+    # 3. Pembayaran 'dibayar'
+    env.ok("pabrik", "POST", f"/factory/settlements/{sid}/pay", {"payment_reference": "TRF-TEST-999"})
+    hist3 = env.ok("pabrik", "GET", f"/factory/settlements/{sid}/history")
+    assert len(hist3) == 3
+    assert hist3[2]["action"] == "dibayar"
+    assert hist3[2]["new_price"] == 460
+    assert "TRF-TEST-999" in hist3[2]["reason"]
+
+    # 4. RBAC: pabrik dan auditor bisa baca history lewat /factory/settlements/{sid}/history
+    assert env.call("pabrik", "GET", f"/factory/settlements/{sid}/history").status_code == 200
+    assert env.call("auditor", "GET", f"/factory/settlements/{sid}/history").status_code == 200
+    assert env.call("pengepul", "GET", f"/factory/settlements/{sid}/history").status_code == 403
+
+    # Pengepul bisa membaca history miliknya lewat /collector/settlements/{sid}/history, pengepul lain 404
+    assert env.call("pengepul", "GET", f"/collector/settlements/{sid}/history").status_code == 200
+    assert env.call("pengepul2", "GET", f"/collector/settlements/{sid}/history").status_code == 404
+
+
+def test_receive_without_collector_returns_warning(env):
+    """S5: Penerimaan sekam tanpa pengepul menghasilkan peringatan eksplisit."""
+    h = env.ok("petani", "POST", "/farmer/harvest", {"quantity_kg": 500}, status=201)
+
+    async def _to_collected():
+        async with env.session_factory() as session:
+            await session.execute(update(Harvest).where(Harvest.id == h["id"]).values(status=HarvestStatus.COLLECTED))
+            await session.commit()
+    asyncio.run(_to_collected())
+
+    r = env.ok("pabrik", "POST", "/factory/receive", {"harvest_id": h["id"], "received_kg": 490})
+    assert r["settlement"] is None
+    assert r["warning"] is not None
+    assert "tanpa pengepul" in r["warning"]
+
+
+def test_settlement_paid_without_reference_violates_constraint(env):
+    """S3: Model constraint ck_settle_paid_ref menolak status 'dibayar' tanpa payment_reference."""
+    from sqlalchemy.exc import IntegrityError
+    from app.models.factory_ops import CollectorSettlement, SettlementStatus
+
+    async def _insert_bad():
+        async with env.session_factory() as session:
+            bad = CollectorSettlement(
+                collector_id=env.uid["pengepul"],
+                source="qc",
+                qc_id=9999,
+                payable_kg=100.0,
+                status=SettlementStatus.PAID,
+                payment_reference=None,
+                amount_rp=50000.0,
+                created_by_id=env.uid["pabrik"],
+            )
+            session.add(bad)
+            await session.commit()
+
+    with pytest.raises(IntegrityError):
+        asyncio.run(_insert_bad())
+
+
+def test_settlement_model_has_required_check_constraints():
+    """S3: Model CollectorSettlement memiliki seluruh check constraint selaras migrasi."""
+    from app.models.factory_ops import CollectorSettlement
+    c_names = {c.name for c in CollectorSettlement.__table__.constraints if getattr(c, "name", None)}
+    for expected in ("ck_settle_status", "ck_settle_paid_ref", "ck_settle_kg", "ck_settle_amount", "ck_settle_source", "ck_settle_priced"):
+        assert expected in c_names, f"Constraint {expected} tidak terdaftar di model CollectorSettlement"

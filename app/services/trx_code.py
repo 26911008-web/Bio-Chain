@@ -33,15 +33,18 @@ def yymm(now: datetime | None = None) -> str:
 async def next_seq(db: AsyncSession, sender: str, receiver: str, period: str) -> int:
     dialect = db.bind.dialect.name
     if dialect == "postgresql":
-        from sqlalchemy.dialects.postgresql import insert
+        from sqlalchemy import text
+        res = await db.execute(text("SELECT next_trx_seq(:sender, :receiver, :period)"),
+                               {"sender": sender, "receiver": receiver, "period": period})
+        return int(res.scalar_one())
     else:
         from sqlalchemy.dialects.sqlite import insert
-    stmt = insert(TrxSequence).values(sender_code=sender, receiver_code=receiver, yymm=period, last_seq=1)
-    stmt = stmt.on_conflict_do_update(
-        index_elements=["sender_code", "receiver_code", "yymm"],
-        set_={"last_seq": TrxSequence.last_seq + 1},
-    ).returning(TrxSequence.last_seq)
-    return int((await db.execute(stmt)).scalar_one())
+        stmt = insert(TrxSequence).values(sender_code=sender, receiver_code=receiver, yymm=period, last_seq=1)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["sender_code", "receiver_code", "yymm"],
+            set_={"last_seq": TrxSequence.last_seq + 1},
+        ).returning(TrxSequence.last_seq)
+        return int((await db.execute(stmt)).scalar_one())
 
 
 async def new_verification_code(db: AsyncSession, sender: User, receiver: User, now: datetime | None = None) -> str:

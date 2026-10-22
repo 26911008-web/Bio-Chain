@@ -13,15 +13,6 @@ from pydantic import BaseModel, Field
 
 from ..params import P
 
-# Faktor emisi IPCC
-COAL_EF_KG_CO2_PER_GJ = 96.1        # Sub-bituminous coal
-BIOMASS_EF_KG_CO2_PER_GJ = 0.0      # Biogenic carbon = net zero
-RICE_HUSK_HHV_MJ_KG = 13.5          # Higher Heating Value sekam padi
-COAL_HHV_MJ_KG = 22.0               # Sub-bituminous tipikal Indonesia
-BOILER_EFFICIENCY = 0.85             # Efisiensi pembakaran tipikal
-TRANSPORT_EF_KG_CO2_PER_TONKM = 0.062  # Truk medium, Indonesia avg
-
-
 class CarbonInput(BaseModel):
     biomass_ton: float = Field(..., gt=0, description="Massa biomassa sekam (ton)")
     transport_km: float = Field(0, ge=0, description="Jarak angkut total (km)")
@@ -39,6 +30,10 @@ class CarbonResult(BaseModel):
     carbon_credit_equivalent: float
     srn_ppi_eligible: bool
     methodology: str
+    carbon_price_per_tco2_rp: float | None = None
+    carbon_value_rp: float | None = None
+    carbon_value_note: str | None = None
+    computation_details: dict | None = None
 
 
 def calculate_carbon_reduction(inp: CarbonInput) -> CarbonResult:
@@ -72,6 +67,43 @@ def calculate_carbon_reduction(inp: CarbonInput) -> CarbonResult:
 
     net = emission_avoided - transport_emission
 
+    carbon_price = P("karbon.price_per_tco2_rp")
+    if carbon_price is not None and carbon_price > 0:
+        carbon_value_rp = round(net * carbon_price)
+        carbon_value_note = f"Harga karbon: Rp {carbon_price:,.0f}/tCO₂e (menu Parameter)"
+    else:
+        carbon_value_rp = None
+        carbon_value_note = "Isi harga pasar karbon di menu Parameter untuk melihat potensi nilai NEK"
+
+    details = {
+        "method": "IPCC 2006 Vol.2 Ch.2 — substitusi bahan bakar (Stationary Combustion)",
+        "inputs": {
+            "biomass_ton": inp.biomass_ton,
+            "transport_km": inp.transport_km,
+            "moisture_pct": inp.moisture_pct,
+            "cofiring_ratio": inp.cofiring_ratio,
+        },
+        "steps": [
+            {"step": "Energi biomassa", "formula": "ton × (1 - kadar_air%) × HHV_sekam × η", "value": round(biomass_energy_gj, 3), "unit": "GJ"},
+            {"step": "Batubara tergantikan", "formula": "Energi biomassa ÷ HHV_batubara", "value": round(coal_displaced_ton, 3), "unit": "ton"},
+            {"step": "Emisi dihindari", "formula": "Energi biomassa × EF_batubara ÷ 1000", "value": round(emission_avoided, 4), "unit": "tCO₂"},
+            {"step": "Emisi angkut", "formula": "ton × km × EF_angkut ÷ 1000", "value": round(transport_emission, 4), "unit": "tCO₂"},
+            {"step": "Pengurangan neto", "formula": "Emisi dihindari − Emisi angkut", "value": round(net, 4), "unit": "tCO₂e"},
+        ],
+        "parameters_used": [
+            "karbon.husk_hhv_mj_kg",
+            "karbon.boiler_efficiency",
+            "karbon.coal_hhv_mj_kg",
+            "karbon.coal_ef_kg_co2_per_gj",
+            "karbon.transport_ef_kg_co2_per_tkm",
+            "karbon.price_per_tco2_rp",
+        ],
+        "references": [
+            "IPCC (2006) Guidelines Vol. 2 Ch. 2: Stationary Combustion",
+            "Perpres 98/2021 & Perpres 110/2025: Nilai Ekonomi Karbon Indonesia",
+        ],
+    }
+
     return CarbonResult(
         biomass_energy_gj=round(biomass_energy_gj, 3),
         coal_displaced_ton=round(coal_displaced_ton, 3),
@@ -81,4 +113,8 @@ def calculate_carbon_reduction(inp: CarbonInput) -> CarbonResult:
         carbon_credit_equivalent=round(net, 4),
         srn_ppi_eligible=net > 0,
         methodology="IPCC 2006 Tier 2 — Stationary Combustion (biomass co-firing)",
+        carbon_price_per_tco2_rp=carbon_price,
+        carbon_value_rp=carbon_value_rp,
+        carbon_value_note=carbon_value_note,
+        computation_details=details,
     )

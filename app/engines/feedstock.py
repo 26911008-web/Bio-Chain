@@ -76,7 +76,7 @@ class FeedstockInput(BaseModel):
 
 
 class FeedstockCompareRequest(BaseModel):
-    feedstocks: list[FeedstockInput] = Field(..., min_length=2, max_length=20)
+    feedstocks: list[FeedstockInput] = Field(..., min_length=2, max_length=200)
     purpose: Purpose = "biochar"
     pyrolysis_temp_c: float = Field(500, ge=300, le=700)
     spec: ProductSpec | None = Field(None, description="Opsional: jalankan LP blending termurah")

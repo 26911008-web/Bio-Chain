@@ -1,0 +1,68 @@
+name: Bio-Chain CI
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  test-and-benchmark:
+    name: Test & Performance SLO Gate
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: biochain
+          POSTGRES_USER: biochain
+          POSTGRES_PASSWORD: biochain_dev_2026
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Setup PostgreSQL Schema & Migrations
+        env:
+          DATABASE_URL: "postgresql+asyncpg://biochain:biochain_dev_2026@localhost:5433/biochain"
+        run: |
+          python scripts/pg_setup.py
+
+      - name: Run Test Suite (SQLite & PostgreSQL)
+        env:
+          DATABASE_URL: "sqlite+aiosqlite:///biochain.db"
+          BIOCHAIN_TEST_PG_OWNER_URL: "postgresql+asyncpg://biochain:biochain_dev_2026@localhost:5433/biochain"
+          RATE_LIMIT_REQUESTS: "1000000"
+          LOGIN_RATE_LIMIT: "1000000"
+        run: |
+          pytest -q -p no:cacheprovider
+
+      - name: Run Engine Performance Benchmark (SLO <= 500ms)
+        run: |
+          python scripts/benchmark_engines.py --runs 5 --slo 500
+
+      - name: Upload Benchmark Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: docs/benchmark_results.md

@@ -191,6 +191,8 @@ class CollectorSettlement(Base):
         CheckConstraint("(source = 'qc' AND qc_id IS NOT NULL) OR (source = 'rute' AND harvest_id IS NOT NULL)",
                         name="ck_settle_source"),
         CheckConstraint("(status = 'menunggu_harga') = (amount_rp IS NULL)", name="ck_settle_priced"),
+        CheckConstraint("status IN ('menunggu_harga', 'terutang', 'dibayar')", name="ck_settle_status"),
+        CheckConstraint("status != 'dibayar' OR payment_reference IS NOT NULL", name="ck_settle_paid_ref"),
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -209,3 +211,19 @@ class CollectorSettlement(Base):
     created_at = Column(DateTime(timezone=True), default=_now)
     priced_at = Column(DateTime(timezone=True), nullable=True)
     paid_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class SettlementEvent(Base):
+    """Jejak audit perubahan harga dan status tagihan (append-only)."""
+    __tablename__ = "settlement_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    settlement_id = Column(Integer, ForeignKey("collector_settlements.id"), nullable=False, index=True)
+    action = Column(String(20), nullable=False)                      # dibuat | harga | dibayar
+    old_price = Column(Double, nullable=True)
+    new_price = Column(Double, nullable=True)
+    old_amount = Column(Double, nullable=True)
+    new_amount = Column(Double, nullable=True)
+    reason = Column(Text, nullable=True)
+    actor_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=_now)
