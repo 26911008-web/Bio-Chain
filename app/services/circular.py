@@ -8,7 +8,7 @@ belum keluar gudang. Serah-terima mengunci baris permintaan (FOR UPDATE) → tid
 from datetime import datetime, timezone
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import update, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models.circular import BiocharRedemption
@@ -81,6 +81,14 @@ async def handover(db: AsyncSession, operator: User, redemption_id: int, kg: flo
     if out_kg > await wallet_balance(db, r.farmer_id) + 1e-6:
         raise HTTPException(409, "Saldo dompet petani tidak cukup (cek penyesuaian ledger).")
     now = datetime.now(timezone.utc)
+    # Klaim status dulu (compare-and-swap): atomik juga di SQLite yang mengabaikan FOR UPDATE → dua klik "Serahkan"
+    # bersamaan tidak bisa memotong dompet petani dua kali.
+    claimed = await db.execute(update(BiocharRedemption).where(BiocharRedemption.id == r.id, BiocharRedemption.status == "diajukan")
+                               .values(status="diserahkan", handed_over_by_id=operator.id, handed_over_at=now)
+                               .execution_options(synchronize_session=False))
+    if claimed.rowcount != 1:
+        await db.rollback()
+        raise HTTPException(409, "Permintaan ini baru saja diserahkan petugas lain.")
     entry = BiocharLedgerEntry(farmer_id=r.farmer_id, entry_type="redemption", amount_kg=-out_kg,
                                note=f"Diambil untuk sawah ({r.land_area_ha or '-'} ha) · permintaan #{r.id}"
                                     + (f" · {note.strip()}" if note and note.strip() else ""),

@@ -7,7 +7,7 @@ mengirim antrean offline bersamaan tidak bisa mengeluarkan stok melebihi saldo. 
 from datetime import datetime, timezone
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -299,6 +299,19 @@ async def record_lab(db: AsyncSession, ash_id: int, d: dict) -> dict:
     return ash_dict(a)
 
 
+async def _cas(db: AsyncSession, a: IndustrialAshLedger, expect: dict, values: dict) -> None:
+    """UPDATE bersyarat (compare-and-swap): atomik di PG maupun SQLite (yang mengabaikan FOR UPDATE). Dua permintaan
+    alokasi/serah-terima bersamaan → hanya satu yang mengubah baris; yang kalah mendapat 409."""
+    res = await db.execute(update(IndustrialAshLedger)
+                           .where(IndustrialAshLedger.id == a.id,
+                                  *[getattr(IndustrialAshLedger, k) == v for k, v in expect.items()])
+                           .values(**values).execution_options(synchronize_session=False))
+    if res.rowcount != 1:
+        await db.rollback()
+        raise HTTPException(409, "Status abu baru saja diubah pengguna lain — muat ulang daftar.")
+    await db.refresh(a)
+
+
 async def allocate_ash(db: AsyncSession, ash_id: int, group_id: int, land_area_ha: float | None) -> dict:
     a = await _ash_locked(db, ash_id)
     if a.heavy_metal_status != "lulus":
@@ -308,8 +321,8 @@ async def allocate_ash(db: AsyncSession, ash_id: int, group_id: int, land_area_h
     g = await db.get(FarmerGroup, group_id)
     if g is None:
         raise HTTPException(404, "Kelompok tani tidak ditemukan.")
-    a.status, a.farmer_group_id, a.land_area_ha = "dialokasikan", g.id, land_area_ha
-    await db.flush()
+    await _cas(db, a, {"status": "tersedia", "heavy_metal_status": "lulus"},
+               {"status": "dialokasikan", "farmer_group_id": g.id, "land_area_ha": land_area_ha})
     return ash_dict(a, {g.id: g.name})
 
 
@@ -317,11 +330,11 @@ async def handover_ash(db: AsyncSession, user: User, ash_id: int, d: dict) -> di
     a = await _ash_locked(db, ash_id)
     if a.status != "dialokasikan":
         raise HTTPException(409, "Hanya abu yang sudah dialokasikan yang bisa diserahkan.")
-    a.status, a.handover_photo_url, a.land_lat, a.land_lon = "diserahkan", d["photo_url"], d["lat"], d["lon"]
+    vals = {"status": "diserahkan", "handover_photo_url": d["photo_url"], "land_lat": d["lat"], "land_lon": d["lon"],
+            "handed_over_at": datetime.now(timezone.utc), "handed_over_by_id": user.id}
     if d.get("land_area_ha"):
-        a.land_area_ha = d["land_area_ha"]
-    a.handed_over_at, a.handed_over_by_id = datetime.now(timezone.utc), user.id
-    await db.flush()
+        vals["land_area_ha"] = d["land_area_ha"]
+    await _cas(db, a, {"status": "dialokasikan"}, vals)
     g = await db.get(FarmerGroup, a.farmer_group_id)
     return ash_dict(a, {g.id: g.name} if g else None)
 
@@ -330,8 +343,7 @@ async def dispose_ash(db: AsyncSession, ash_id: int, note: str) -> dict:
     a = await _ash_locked(db, ash_id)
     if a.status != "tersedia":
         raise HTTPException(409, f"Abu sudah {a.status}.")
-    a.status, a.disposal_note = "dibuang", note.strip()
-    await db.flush()
+    await _cas(db, a, {"status": "tersedia"}, {"status": "dibuang", "disposal_note": note.strip()})
     return ash_dict(a)
 
 

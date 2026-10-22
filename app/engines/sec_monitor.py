@@ -112,6 +112,9 @@ def analyse(req: OpsAnalysisRequest) -> dict:
         sd = max(sd, base_sd)                                        # jendela tenang tidak boleh mempersempit batas
         r = float(rel[i]) if not np.isnan(rel[i]) else 0.0
         level = "aksi" if r > ma + req.sigma_action * sd else ("peringatan" if r > ma + req.sigma_warn * sd else None)
+        baseline_outlier = None
+        if i < nb and level:                       # titik acuan = pembentuk baseline: outlier EnB (ISO 50006 §5.6.5), bukan alarm
+            baseline_outlier, level = level, None
         if i >= nb:
             cusum = max(0.0, cusum + r - k)
             if level is None:
@@ -145,7 +148,7 @@ def analyse(req: OpsAnalysisRequest) -> dict:
                "moving_avg_pct": round(ma * 100, 2), "cusum": round(cusum, 4), "utilization": round(util, 3) if util is not None else None,
                "feed_moisture_pct": l.feed_moisture_pct, "wet_feed_mj": round(wet_mj, 1),
                "hammer_mill_kwh_t": round(hm_kwh_t, 2) if hm_kwh_t is not None else None,
-               "alert": level, "baseline_period": i < nb, "causes": causes}
+               "alert": level, "baseline_period": i < nb, "baseline_outlier": baseline_outlier, "causes": causes}
         rows.append(row)
         if causes and (level or any(c["code"] != "konsumsi_di_atas_baseline" for c in causes)):
             for c in causes:

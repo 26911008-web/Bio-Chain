@@ -13,7 +13,7 @@ import json
 from datetime import datetime, timezone
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -129,9 +129,14 @@ async def decide(db: AsyncSession, auditor: User, claim_id: int, decision: str, 
     chk = await integrity(db, claim)
     if decision == "diverifikasi" and not chk["ok"]:
         raise HTTPException(409, "Integritas snapshot gagal (data berubah setelah diajukan) — klaim hanya bisa ditolak.")
-    claim.status, claim.verified_by_id = decision, auditor.id
-    claim.decided_at, claim.decision_note = datetime.now(timezone.utc), note.strip()
-    await db.flush()                       # status 'ditolak' harus tersimpan dulu: RLS DELETE kunci memeriksanya (PG)
+    # compare-and-swap: dua auditor memutus bersamaan → hanya satu yang tercatat (SQLite mengabaikan FOR UPDATE)
+    res = await db.execute(update(CarbonClaim).where(CarbonClaim.id == claim.id, CarbonClaim.status == "diajukan")
+                           .values(status=decision, verified_by_id=auditor.id, decided_at=datetime.now(timezone.utc),
+                                   decision_note=note.strip()).execution_options(synchronize_session=False))
+    if res.rowcount != 1:
+        await db.rollback()
+        raise HTTPException(409, "Klaim baru saja diputus auditor lain.")
+    await db.refresh(claim)                # status 'ditolak' sudah tersimpan: RLS DELETE kunci memeriksanya (PG)
     if decision == "ditolak":
         for it in (await db.execute(select(CarbonClaimItem).where(CarbonClaimItem.claim_id == claim.id))).scalars():
             await db.delete(it)
