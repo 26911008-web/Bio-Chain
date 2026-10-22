@@ -145,6 +145,25 @@ class ChangePasswordRequest(BaseModel):
     new_password: str = Field(..., min_length=6, max_length=100)
 
 
+def _build_token_response(user: User) -> TokenResponse:
+    role_str = user.role.value if hasattr(user.role, 'value') else str(user.role)
+    token = create_access_token(user.id, role_str, user.token_version or 0)
+    tier_str = user.incentive_tier.value if hasattr(user.incentive_tier, 'value') else str(user.incentive_tier)
+    return TokenResponse(
+        access_token=token,
+        role=role_str,
+        full_name=user.full_name,
+        user_id=user.id,
+        username=user.username,
+        phone=user.phone,
+        kabupaten=user.kabupaten,
+        kecamatan=user.kecamatan,
+        xp_total=user.xp_total or 0,
+        incentive_tier=tier_str,
+        must_change_password=bool(user.must_change_password),
+    )
+
+
 @router.post("/register", response_model=TokenResponse, status_code=201)
 async def register(req: RegisterRequest, db: Annotated[AsyncSession, Depends(get_db)]):
     """Registrasi user baru."""
@@ -192,23 +211,7 @@ async def register(req: RegisterRequest, db: Annotated[AsyncSession, Depends(get
         await apply_now(db)                                # PostgreSQL RLS: catat sebagai pemilik akun baru
         await record_consents(db, user.id, req.consents)
 
-    role_str = user.role.value if hasattr(user.role, 'value') else str(user.role)
-    token = create_access_token(user.id, role_str, user.token_version or 0)
-    tier_str = user.incentive_tier.value if hasattr(user.incentive_tier, 'value') else str(user.incentive_tier)
-
-    return TokenResponse(
-        access_token=token,
-        role=role_str,
-        full_name=user.full_name,
-        user_id=user.id,
-        username=user.username,
-        phone=user.phone,
-        kabupaten=user.kabupaten,
-        kecamatan=user.kecamatan,
-        xp_total=user.xp_total or 0,
-        incentive_tier=tier_str,
-        must_change_password=bool(user.must_change_password),
-    )
+    return _build_token_response(user)
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -242,23 +245,7 @@ async def login(req: LoginRequest, db: Annotated[AsyncSession, Depends(get_db)])
         raise HTTPException(status.HTTP_403_FORBIDDEN,
                             f"Akun ini bukan akun {req.expected_role}. Silakan pilih gerbang yang sesuai.")
 
-    role_str = user.role.value if hasattr(user.role, 'value') else str(user.role)
-    token = create_access_token(user.id, role_str, user.token_version or 0)
-    tier_str = user.incentive_tier.value if hasattr(user.incentive_tier, 'value') else str(user.incentive_tier)
-
-    return TokenResponse(
-        access_token=token,
-        role=role_str,
-        full_name=user.full_name,
-        user_id=user.id,
-        username=user.username,
-        phone=user.phone,
-        kabupaten=user.kabupaten,
-        kecamatan=user.kecamatan,
-        xp_total=user.xp_total or 0,
-        incentive_tier=tier_str,
-        must_change_password=bool(user.must_change_password),
-    )
+    return _build_token_response(user)
 
 
 @router.get("/me", response_model=UserProfileResponse)

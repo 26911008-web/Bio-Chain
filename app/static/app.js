@@ -756,25 +756,7 @@ async function updateNotificationBadge() {
   if (!STATE.token) return;
   try {
     const sum = await api("/api/v1/notifications/summary");
-    const unread = sum.unread_count || 0;
-    const headerBadge = $("header-notif-badge");
-    if (headerBadge) {
-      if (unread > 0) {
-        headerBadge.innerText = unread > 99 ? "99+" : unread;
-        headerBadge.style.display = "inline-block";
-      } else {
-        headerBadge.style.display = "none";
-      }
-    }
-    const personaWidgetBadge = $("persona-unread-badge");
-    if (personaWidgetBadge) {
-      if (unread > 0) {
-        personaWidgetBadge.innerText = `${unread} Belum Dibaca`;
-        personaWidgetBadge.style.display = "inline-block";
-      } else {
-        personaWidgetBadge.style.display = "none";
-      }
-    }
+    updateNotifBadges(sum);
   } catch {}
 }
 window.updateNotificationBadge = updateNotificationBadge;

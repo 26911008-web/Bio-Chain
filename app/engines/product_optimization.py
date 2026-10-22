@@ -111,6 +111,43 @@ def _safe_lhv_ar(lhv_db: float, mc_pct: float) -> float:
     return max(0.1, lhv_db * (1.0 - mc) - LATENT * mc)
 
 
+def _format_suitability(score: float, status: str, notes: list[str], advantages: list[str], disadvantages: list[str]) -> dict:
+    status_label = (
+        "Sangat Direkomendasikan" if status == "sangat_direkomendasikan" else
+        "Layak Beroperasi" if status == "layak" else
+        "Kurang Cocok" if status == "kurang_cocok" else "Tidak Direkomendasikan"
+    )
+    return {
+        "score": round(score, 0),
+        "status": status,
+        "status_label": status_label,
+        "technical_notes": notes,
+        "advantages": advantages,
+        "disadvantages": disadvantages,
+    }
+
+
+def _format_pathway_economics(
+    price: float,
+    revenue_rp: float,
+    feedstock_cost_rp: float,
+    processing_cost_rp: float,
+    product_produced_kg: float,
+    gross_profit_rp: float,
+    breakeven_price: float,
+) -> dict:
+    return {
+        "product_price_per_kg": round(price, 0),
+        "revenue_per_ton_feed": round(revenue_rp, 0),
+        "feedstock_cost_per_ton": round(feedstock_cost_rp, 0),
+        "processing_cost_per_ton_feed": round(processing_cost_rp, 0),
+        "processing_cost_per_kg_product": round(processing_cost_rp / max(1.0, product_produced_kg), 1),
+        "gross_profit_per_ton_feed": round(gross_profit_rp, 0),
+        "gross_margin_pct": round((gross_profit_rp / max(1.0, revenue_rp)) * 100.0, 1),
+        "breakeven_price_per_kg": round(breakeven_price, 1),
+    }
+
+
 def evaluate_biopellet_pathway(f: FeedstockItem, price_rp_kg: float | None = None) -> dict:
     """Evaluasi teknis & ekonomi pengolahan 1 ton umpan ke Biopellet."""
     price = price_rp_kg if price_rp_kg is not None else PRODUCT_META["bio_pellet"]["default_price_rp_kg"]
@@ -231,31 +268,21 @@ def evaluate_biopellet_pathway(f: FeedstockItem, price_rp_kg: float | None = Non
             "net_energy_output_gj": round(total_energy_gj, 2),
             "net_energy_ratio": round((total_energy_gj * 1000.0) / max(1.0, drying_mj + (kwh_elec * 3.6)), 2),
         },
-        "economics": {
-            "product_price_per_kg": round(price, 0),
-            "revenue_per_ton_feed": round(revenue_rp, 0),
-            "feedstock_cost_per_ton": round(feedstock_cost_rp, 0),
-            "processing_cost_per_ton_feed": round(processing_cost_rp, 0),
-            "processing_cost_per_kg_product": round(processing_cost_rp / max(1.0, pellet_produced_kg), 1),
-            "gross_profit_per_ton_feed": round(gross_profit_rp, 0),
-            "gross_margin_pct": round((gross_profit_rp / max(1.0, revenue_rp)) * 100.0, 1),
-            "breakeven_price_per_kg": round(breakeven_price, 1),
-        },
+        "economics": _format_pathway_economics(
+            price=price,
+            revenue_rp=revenue_rp,
+            feedstock_cost_rp=feedstock_cost_rp,
+            processing_cost_rp=processing_cost_rp,
+            product_produced_kg=pellet_produced_kg,
+            gross_profit_rp=gross_profit_rp,
+            breakeven_price=breakeven_price,
+        ),
         "climate_metrics": {
             "process_co2e_kg_per_ton": round(proc_co2_kg, 1),
             "avoided_co2e_kg_per_ton": round(avoided_coal_co2_kg, 1),
             "net_climate_benefit_tco2e_per_ton": round(net_co2e_t, 3),
         },
-        "suitability": {
-            "score": round(score, 0),
-            "status": status,
-            "status_label": ("Sangat Direkomendasikan" if status == "sangat_direkomendasikan" else
-                             "Layak Beroperasi" if status == "layak" else
-                             "Kurang Cocok" if status == "kurang_cocok" else "Tidak Direkomendasikan"),
-            "technical_notes": notes,
-            "advantages": advantages,
-            "disadvantages": disadvantages,
-        },
+        "suitability": _format_suitability(score, status, notes, advantages, disadvantages),
     }
 
 
@@ -383,31 +410,21 @@ def evaluate_briket_pathway(f: FeedstockItem, price_rp_kg: float | None = None) 
             "net_energy_output_gj": round(total_energy_gj, 2),
             "net_energy_ratio": round((total_energy_gj * 1000.0) / max(1.0, oven_drying_mj + (kwh_elec * 3.6)), 2),
         },
-        "economics": {
-            "product_price_per_kg": round(price, 0),
-            "revenue_per_ton_feed": round(revenue_rp, 0),
-            "feedstock_cost_per_ton": round(feedstock_cost_rp, 0),
-            "processing_cost_per_ton_feed": round(processing_cost_rp, 0),
-            "processing_cost_per_kg_product": round(processing_cost_rp / max(1.0, briket_produced_kg), 1),
-            "gross_profit_per_ton_feed": round(gross_profit_rp, 0),
-            "gross_margin_pct": round((gross_profit_rp / max(1.0, revenue_rp)) * 100.0, 1),
-            "breakeven_price_per_kg": round(breakeven_price, 1),
-        },
+        "economics": _format_pathway_economics(
+            price=price,
+            revenue_rp=revenue_rp,
+            feedstock_cost_rp=feedstock_cost_rp,
+            processing_cost_rp=processing_cost_rp,
+            product_produced_kg=briket_produced_kg,
+            gross_profit_rp=gross_profit_rp,
+            breakeven_price=breakeven_price,
+        ),
         "climate_metrics": {
             "process_co2e_kg_per_ton": round(proc_co2_kg, 1),
             "avoided_co2e_kg_per_ton": round(avoided_coal_co2_kg, 1),
             "net_climate_benefit_tco2e_per_ton": round(net_co2e_t, 3),
         },
-        "suitability": {
-            "score": round(score, 0),
-            "status": status,
-            "status_label": ("Sangat Direkomendasikan" if status == "sangat_direkomendasikan" else
-                             "Layak Beroperasi" if status == "layak" else
-                             "Kurang Cocok" if status == "kurang_cocok" else "Tidak Direkomendasikan"),
-            "technical_notes": notes,
-            "advantages": advantages,
-            "disadvantages": disadvantages,
-        },
+        "suitability": _format_suitability(score, status, notes, advantages, disadvantages),
     }
 
 
@@ -509,31 +526,21 @@ def evaluate_biochar_pathway(f: FeedstockItem, price_rp_kg: float | None = None)
             "net_energy_output_gj": round((biochar_produced_kg * 16.0) / 1000.0, 2),
             "net_energy_ratio": round(((biochar_produced_kg * 16.0) / 1000.0) / max(0.1, kwh_elec * 3.6 / 1000.0), 2),
         },
-        "economics": {
-            "product_price_per_kg": round(price, 0),
-            "revenue_per_ton_feed": round(revenue_rp, 0),
-            "feedstock_cost_per_ton": round(feedstock_cost_rp, 0),
-            "processing_cost_per_ton_feed": round(processing_cost_rp, 0),
-            "processing_cost_per_kg_product": round(processing_cost_rp / max(1.0, biochar_produced_kg), 1),
-            "gross_profit_per_ton_feed": round(gross_profit_rp, 0),
-            "gross_margin_pct": round((gross_profit_rp / max(1.0, revenue_rp)) * 100.0, 1),
-            "breakeven_price_per_kg": round(breakeven_price, 1),
-        },
+        "economics": _format_pathway_economics(
+            price=price,
+            revenue_rp=revenue_rp,
+            feedstock_cost_rp=feedstock_cost_rp,
+            processing_cost_rp=processing_cost_rp,
+            product_produced_kg=biochar_produced_kg,
+            gross_profit_rp=gross_profit_rp,
+            breakeven_price=breakeven_price,
+        ),
         "climate_metrics": {
             "process_co2e_kg_per_ton": round(proc_co2_kg, 1),
             "carbon_removal_co2e_kg_per_ton": round(carbon_removal_t * 1000.0, 1),
             "net_climate_benefit_tco2e_per_ton": round(net_co2e_t, 3),
         },
-        "suitability": {
-            "score": round(score, 0),
-            "status": status,
-            "status_label": ("Sangat Direkomendasikan" if status == "sangat_direkomendasikan" else
-                             "Layak Beroperasi" if status == "layak" else
-                             "Kurang Cocok" if status == "kurang_cocok" else "Tidak Direkomendasikan"),
-            "technical_notes": notes,
-            "advantages": advantages,
-            "disadvantages": disadvantages,
-        },
+        "suitability": _format_suitability(score, status, notes, advantages, disadvantages),
     }
 
 
@@ -625,31 +632,21 @@ def evaluate_biosilika_pathway(f: FeedstockItem, price_rp_kg: float | None = Non
             "net_energy_output_gj": 0.0,  # bukan produk energi
             "net_energy_ratio": 0.0,
         },
-        "economics": {
-            "product_price_per_kg": round(price, 0),
-            "revenue_per_ton_feed": round(revenue_rp, 0),
-            "feedstock_cost_per_ton": round(feedstock_cost_rp, 0),
-            "processing_cost_per_ton_feed": round(processing_cost_rp, 0),
-            "processing_cost_per_kg_product": round(processing_cost_rp / max(1.0, silica_produced_kg), 1),
-            "gross_profit_per_ton_feed": round(gross_profit_rp, 0),
-            "gross_margin_pct": round((gross_profit_rp / max(1.0, revenue_rp)) * 100.0, 1),
-            "breakeven_price_per_kg": round(breakeven_price, 1),
-        },
+        "economics": _format_pathway_economics(
+            price=price,
+            revenue_rp=revenue_rp,
+            feedstock_cost_rp=feedstock_cost_rp,
+            processing_cost_rp=processing_cost_rp,
+            product_produced_kg=silica_produced_kg,
+            gross_profit_rp=gross_profit_rp,
+            breakeven_price=breakeven_price,
+        ),
         "climate_metrics": {
             "process_co2e_kg_per_ton": round(proc_co2_kg, 1),
             "avoided_co2e_kg_per_ton": round(avoided_co2_kg, 1),
             "net_climate_benefit_tco2e_per_ton": round(net_co2e_t, 3),
         },
-        "suitability": {
-            "score": round(score, 0),
-            "status": status,
-            "status_label": ("Sangat Direkomendasikan" if status == "sangat_direkomendasikan" else
-                             "Layak Beroperasi" if status == "layak" else
-                             "Kurang Cocok" if status == "kurang_cocok" else "Tidak Direkomendasikan"),
-            "technical_notes": notes,
-            "advantages": advantages,
-            "disadvantages": disadvantages,
-        },
+        "suitability": _format_suitability(score, status, notes, advantages, disadvantages),
     }
 
 

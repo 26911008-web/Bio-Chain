@@ -69,15 +69,15 @@
 - [x] Clean up `package.json` entry point hint (`"main": "index.js"` pointing to missing root file).
 
 ### 3.3 [DEDUPLICATION] Duplicated Utilities & Logic to Consolidate
-- [ ] Deduplicate multi-output conversion calculations and response formatting in `app/engines/product_optimization.py` (lines 239-262, 391-414, 524-540, 640-656).
-- [ ] Deduplicate token generation and user response structuring in `app/routers/auth.py` (lines 193-214 vs 243-264).
-- [ ] Consolidate shared circular notification / audit event helpers between `app/routers/collector.py` and `app/routers/factory.py`.
-- [ ] Consolidate duplicate table row formatting and currency formatters across `app/static/app.js` and `app/static/factory-ops.js`.
+- [x] Deduplicate multi-output conversion calculations and response formatting in `app/engines/product_optimization.py` (lines 239-262, 391-414, 524-540, 640-656).
+- [x] Deduplicate token generation and user response structuring in `app/routers/auth.py` (lines 193-214 vs 243-264).
+- [x] Consolidate shared circular notification / audit event helpers between `app/routers/collector.py` and `app/routers/factory.py`.
+- [x] Consolidate duplicate table row formatting and currency formatters across `app/static/app.js` and `app/static/factory-ops.js`.
 
 ### 3.4 [CONTRACTS] Type Safety & API Client Centralization
-- [ ] Enforce standard `api(path, options)` wrapper for all outbound HTTP requests in `app/static/` (eliminate raw scattered `fetch` calls).
-- [ ] Ensure standardized error handling with user-facing toast feedback and offline queue intercept.
-- [ ] Audit TypeScript test specs (`tests/*.spec.ts`) for un-typed `: any` casts and standardize payload contracts.
+- [x] Enforce standard `api(path, options)` wrapper for all outbound HTTP requests in `app/static/` (eliminate raw scattered `fetch` calls).
+- [x] Ensure standardized error handling with user-facing toast feedback and offline queue intercept.
+- [x] Audit TypeScript test specs (`tests/*.spec.ts`) for un-typed `: any` casts and standardize payload contracts (`tests/types.ts`).
 
 ### 3.5 [MODULARIZATION] Top 5 God Files Decomposition Plan
 - [ ] **God File 1: `app/static/app.js` (7,092 lines)**
