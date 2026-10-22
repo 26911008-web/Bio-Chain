@@ -51,10 +51,10 @@
 ## 3. Actionable Backlog
 
 ### 3.1 [CRITICAL] Security & Env Leaks
-- [ ] Ensure `JWT_SECRET` has no fallback in production mode (`DEBUG=False` validation strict check).
-- [ ] Audit `.env.example` to ensure all config parameters (`CLIENT_CLOCK_MAX_PAST_HOURS`, `DEMO_MODE`, `AUTO_MIGRATE`, `CSP_ENABLED`) are documented with clear production instructions.
-- [ ] Guard against hardcoded `http://localhost` fallback in production runtime.
-- [ ] Verify sensitive user attributes (passwords, salts) are stripped from all API outputs.
+- [x] Ensure `JWT_SECRET` has no fallback in production mode (`DEBUG=False` validation strict check).
+- [x] Audit `.env.example` to ensure all config parameters (`CLIENT_CLOCK_MAX_PAST_HOURS`, `DEMO_MODE`, `AUTO_MIGRATE`, `CSP_ENABLED`) are documented with clear production instructions.
+- [x] Guard against hardcoded `http://localhost` fallback in production runtime.
+- [x] Verify sensitive user attributes (passwords, salts) are stripped from all API outputs.
 
 ### 3.2 [SAFE PURGE] Verified Dead Files & Unused Dependencies
 - [ ] Remove obsolete ad-hoc runner scripts superseded by Playwright specs:
