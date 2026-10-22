@@ -159,8 +159,8 @@ async def esg_report(db: AsyncSession, start: datetime, end: datetime, label: st
         _kpi("E14", "Residu & susut proses", _r(waste_t, 3), "t", "Σ batch_losses", "GRI 306-3", "batch_losses"),
         _kpi("E15", "Laju retur biomassa", sc["circularity"]["return_rate_pct"], "%", "retur ÷ (diterima + retur)",
              "GRI 306 (proxy)", "return_cases"),
-        _kpi("E16", "Biochar kembali ke lahan petani", sc["circularity"]["biochar_returned_to_farmers_pct"], "% biochar",
-             "alokasi petani ÷ biochar diproduksi", "Ellen MacArthur MCI (proxy)", "finished_goods_movements"),
+        _kpi("E16", "Abu bottom ash kembali ke lahan petani", sc["circularity"]["biochar_returned_to_farmers_pct"], "% abu",
+             "alokasi petani ÷ produk samping diproduksi", "Ellen MacArthur MCI (proxy)", "finished_goods_movements"),
     ]
 
     # ---------------- Sosial
@@ -198,7 +198,7 @@ async def esg_report(db: AsyncSession, start: datetime, end: datetime, label: st
              "Penyebab: " + (", ".join(f"{k} {v}" for k, v in sorted(by_cat.items(), key=lambda x: -x[1])) or "–")),
         _kpi("S6", "Susut timbang pengepul→pabrik", _r(sum(h.shrinkage_kg for h in shr) / sum(h.verified_kg for h in shr) * 100, 2)
              if shr else None, "%", "Σ susut ÷ Σ timbang pengepul", "integritas rantai pasok", "harvests.shrinkage_kg"),
-        _kpi("S7", "Biochar diserahkan ke sawah petani", _r(redeemed, 1), "kg", "Σ pengambilan diserahkan",
+        _kpi("S7", "Abu bottom ash diserahkan ke sawah petani", _r(redeemed, 1), "kg", "Σ pengambilan diserahkan",
              "ekonomi sirkular (komunitas, GRI 413 proxy)", "biochar_redemptions"),
     ]
 

@@ -27,14 +27,14 @@
 
   const HTML = () => `
     ${canWrite() ? `<section class="card" aria-labelledby="fx-br-title">
-      <div class="card-header"><div><h3 class="card-title" id="fx-br-title">♻️ Serah-terima Biochar ke Petani</h3>
-        <p class="card-sub">Pengajuan petani untuk sawah. Dompet petani baru berkurang saat karung diserahkan.</p></div></div>
+      <div class="card-header"><div><h3 class="card-title" id="fx-br-title">♻️ Serah-terima Abu Bottom Ash ke Petani</h3>
+        <p class="card-sub">Pengajuan abu bottom ash petani untuk sawah. Dompet abu petani baru berkurang saat karung diserahkan.</p></div></div>
       <div id="fx-br"><p class="muted">Memuat…</p></div></section>
 
     <section class="card" aria-labelledby="fx-bd-title">
-      <div class="card-header"><div><h3 class="card-title" id="fx-bd-title">🚚 Surat Jalan Muatan Balik Biochar (Pabrik ➔ Pengepul / Driver)</h3>
-        <p class="card-sub">Pabrik menerbitkan surat jalan biochar muatan balik agar armada tidak pulang kosong. Pengangkutan terlacak via QR checkpoint supir.</p></div>
-        <button type="button" class="btn btn-primary btn-sm" id="btn-fx-dispatch-biochar">➕ Terbitkan Surat Jalan Biochar</button>
+      <div class="card-header"><div><h3 class="card-title" id="fx-bd-title">🚚 Surat Jalan Muatan Balik Abu Bottom Ash (Pabrik ➔ Pengepul / Driver)</h3>
+        <p class="card-sub">Pabrik menerbitkan surat jalan abu bottom ash muatan balik agar armada tidak pulang kosong. Pengangkutan terlacak via QR checkpoint supir.</p></div>
+        <button type="button" class="btn btn-primary btn-sm" id="btn-fx-dispatch-biochar">➕ Terbitkan Surat Jalan Abu Bottom Ash</button>
       </div>
       <div id="fx-bd-list"><p class="muted">Memuat riwayat surat jalan…</p></div></section>` : ""}
 
@@ -204,7 +204,7 @@
           <td style="white-space:nowrap;"><input type="number" class="btn btn-secondary btn-sm" id="fx-br-kg-${r.id}" value="${Number(r.kg)}" min="0.1" max="${Number(r.kg)}" step="0.1" style="width:90px;" aria-label="kg diserahkan permintaan #${r.id}">
             <button type="button" class="btn btn-primary btn-sm" data-fx-handover="${Number(r.id)}">Serahkan</button></td></tr>`).join("")}
           </tbody></table></div>`
-        : emptyState("♻️", "Tidak ada pengajuan", "Pengajuan biochar dari petani muncul di sini.");
+        : emptyState("♻️", "Tidak ada pengajuan", "Pengajuan abu bottom ash dari petani muncul di sini.");
     } catch (e) { box.innerHTML = `<div class="banner banner-error" role="alert">⚠️ ${H(e.message)}</div>`; }
   }
 
@@ -214,7 +214,7 @@
     try {
       const rows = await api("/api/v1/factory/biochar-dispatches");
       if (!rows.length) {
-        box.innerHTML = emptyState("🚚", "Belum ada surat jalan biochar", "Pabrik dapat menerbitkan muatan balik biochar untuk diantar armada ke sawah petani.");
+        box.innerHTML = emptyState("🚚", "Belum ada surat jalan abu bottom ash", "Pabrik dapat menerbitkan muatan balik abu bottom ash untuk diantar armada ke sawah petani.");
         return;
       }
       const groups = {};
@@ -801,7 +801,7 @@
   // ---------------------------------------------------------------- Prototipe 4: Optimasi Multi-Biomassa ke Produk Akhir
   let optConfig = null;
   const GRADE_BADGE = { S: "badge-green", A: "badge-green", B: "badge-blue", C: "badge-amber", D: "badge-red" };
-  const PROD_ICONS = { bio_pellet: "🪵", briket: "⬛", biochar: "🪴", bio_silika: "🧪" };
+  const PROD_ICONS = { bio_pellet: "🪵", briket: "⬛", biochar: "🔋", bio_silika: "🧪" };
 
   async function initProductOptimization() {
     if (!$("fx-opt-card")) return;

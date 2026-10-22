@@ -37,7 +37,7 @@ def default_feedstocks() -> list[Feedstock]:
 
 def product_specs() -> dict:
     return {
-        "biochar_tanah": {"label": "Biochar pembenah tanah",
+        "biochar_tanah": {"label": "Biochar & prekursor material baterai",
                           "spec": ProductSpec(moisture_max=P("blending.biochar_tanah_moisture_max"),
                                               ash_max=P("blending.biochar_tanah_ash_max"),
                                               fixed_carbon_min=P("blending.biochar_tanah_fc_min"))},

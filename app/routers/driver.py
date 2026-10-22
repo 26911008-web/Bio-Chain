@@ -415,7 +415,7 @@ async def checkpoint_scan(
 ):
     """Verifikasi QR Code checkpoint di titik jemput, gerbang pabrik, atau serah terima muatan balik.
 
-    Mendukung validasi dua arah: token biomassa masuk (Harvest) dan token muatan balik biochar (BiocharDistribution).
+    Mendukung validasi dua arah: token biomassa masuk (Harvest) dan token muatan balik abu bottom ash (BiocharDistribution).
     """
     token = req.qr_token.strip()
     now = datetime.now(timezone.utc)
@@ -453,7 +453,7 @@ async def checkpoint_scan(
             "message": f"✅ Checkpoint {req.checkpoint_type} biomassa terverifikasi.",
         }
 
-    # 2. Coba cocokkan dengan token muatan balik biochar
+    # 2. Coba cocokkan dengan token muatan balik abu bottom ash
     distribution = (await db.execute(
         select(BiocharDistribution).where((BiocharDistribution.qr_dispatch_token == token) | (BiocharDistribution.dispatch_code == token))
     )).scalar_one_or_none()
@@ -473,7 +473,7 @@ async def checkpoint_scan(
             "total_bags": distribution.total_bags,
             "status": distribution.status,
             "checkpoint": req.checkpoint_type,
-            "message": f"✅ Checkpoint {req.checkpoint_type} muatan balik biochar terverifikasi.",
+            "message": f"✅ Checkpoint {req.checkpoint_type} muatan balik abu bottom ash terverifikasi.",
         }
 
     raise HTTPException(404, "QR token tidak valid atau tidak terdaftar di sistem.")
@@ -484,7 +484,7 @@ async def backhaul_tasks(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(require_role(UserRole.DRIVER, UserRole.PENGEPUL))],
 ):
-    """Daftar penugasan muatan balik biochar dari pabrik untuk diantar ke petani/pengepul."""
+    """Daftar penugasan muatan balik abu bottom ash dari pabrik untuk diantar ke petani/pengepul."""
     rows = (await db.execute(
         select(BiocharDistribution)
         .where((BiocharDistribution.driver_id == user.id) | (BiocharDistribution.driver_id.is_(None)))
@@ -514,10 +514,10 @@ async def confirm_backhaul_drop(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(require_role(UserRole.DRIVER))],
 ):
-    """Konfirmasi penyerahan muatan balik biochar ke sawah/lokasi petani."""
+    """Konfirmasi penyerahan muatan balik abu bottom ash ke sawah/lokasi petani."""
     dist = (await db.execute(select(BiocharDistribution).where(BiocharDistribution.id == req.distribution_id))).scalar_one_or_none()
     if not dist:
-        raise HTTPException(404, "Distribusi biochar tidak ditemukan")
+        raise HTTPException(404, "Distribusi abu bottom ash tidak ditemukan")
 
     dist.status = "DELIVERED_TO_FARMER"
     dist.completed_at = datetime.now(timezone.utc)
@@ -542,5 +542,5 @@ async def confirm_backhaul_drop(
         "distribution_id": dist.id,
         "status": dist.status,
         "delivered_kg": req.delivered_kg,
-        "message": f"✅ Muatan balik biochar {req.delivered_kg} kg berhasil diserahkan ke petani."
+        "message": f"✅ Muatan balik abu bottom ash {req.delivered_kg} kg berhasil diserahkan ke petani."
     }

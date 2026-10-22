@@ -35,7 +35,7 @@ GROUPS = {
     "pabrik": "Pabrik & Biaya Produksi",
     "evaluasi": "Target Evaluasi & Optimasi",
     "pajak": "Pajak Pembelian",
-    "biochar_sawah": "Biochar untuk Sawah (Ekonomi Sirkular)",
+    "biochar_sawah": "Abu Bottom Ash untuk Sawah (Ekonomi Sirkular)",
 }
 
 
@@ -135,7 +135,7 @@ DEFS: list[ParamDef] = [
        "%", 0, 50, "Selisih timbangan di atas ini ditandai untuk auditor."),
     _n("sirkular.estimate_tolerance_pct", "Toleransi taksiran petani vs timbangan", settings.ESTIMATE_TOLERANCE_PCT,
        "%", 0, 100),
-    _n("sirkular.farmer_return_share", "Porsi biochar dikembalikan ke petani", settings.BIOCHAR_FARMER_RETURN_SHARE,
+    _n("sirkular.farmer_return_share", "Porsi abu bottom ash dikembalikan ke petani", settings.BIOCHAR_FARMER_RETURN_SHARE,
        "fraksi", 0, 1, "Dibagi proporsional berat biomassa yang diterima pabrik."),
     # ---------------- Logistik
     _n("logistik.road_factor", "Faktor jalan (jarak jalan ÷ jarak lurus)", 1.3, "×", 1, 3,
@@ -423,7 +423,7 @@ DEFS += [
        "Default 0. Isi hanya bila pembeli ditetapkan sebagai pemungut PPh 22 atas pembelian hasil pertanian "
        "(mis. industri/eksportir tertentu) — konsultasikan dengan konsultan pajak.",
        source="UU PPh Pasal 22 & peraturan menteri keuangan pelaksananya"),
-    # ---- Biochar untuk sawah (engines/biochar_field.py). Nilai & rujukan: docs/08_RISET_BIOCHAR_SAWAH.md
+    # ---- Abu bottom ash untuk sawah (engines/biochar_field.py). Nilai & rujukan: docs/08_RISET_BIOCHAR_SAWAH.md
     _n("biochar_sawah.base_yield_t_ha", "Produktivitas padi dasar (Y0)", 5.5, "t GKP/ha/musim", 1, 12,
        "BPS 2024: Jateng ≈5,7 t GKG/ha, DIY ≈4,7 t GKG/ha. Ganti dengan data kecamatan bila ada.",
        source="BPS — Luas panen & produksi padi 2024"),
@@ -447,10 +447,10 @@ DEFS += [
     _n("biochar_sawah.urea_price_rp_kg", "Harga urea (subsidi HET)", 1_800.0, "Rp/kg", 0, 20_000,
        "Non-subsidi bisa ±Rp5.800/kg — ganti bila petani tidak mendapat alokasi subsidi.",
        source="Kepmentan 1117/2025 (HET pupuk bersubsidi, berlaku 22 Okt 2025)"),
-    _n("biochar_sawah.fert_saving_per_t", "Hemat urea per t/ha biochar (s_k)", 0.03, "fraksi per t/ha", 0, 0.5,
+    _n("biochar_sawah.fert_saving_per_t", "Hemat urea per t/ha abu (s_k)", 0.03, "fraksi per t/ha", 0, 0.5,
        source="Xu et al. 2022 — 80% N + 5 t/ha biochar, hasil +10,2%"),
     _n("biochar_sawah.fert_saving_max_frac", "Hemat urea maksimum (s_max)", 0.15, "fraksi", 0, 1, source="Xu et al. 2022"),
-    _n("biochar_sawah.spreading_cost_rp_kg", "Ongkos angkut & tebar biochar (c_s)", 100.0, "Rp/kg biochar", 0, 5_000,
+    _n("biochar_sawah.spreading_cost_rp_kg", "Ongkos angkut & tebar abu (c_s)", 100.0, "Rp/kg abu", 0, 5_000,
        "Asumsi dari upah buruh tani; isi sesuai kondisi desa."),
     _n("biochar_sawah.carbon_frac", "Karbon organik biochar (F_C)", 0.49, "fraksi", 0.1, 0.95,
        "Sekam berabu tinggi — utamakan hasil lab C-organik.", source="IPCC 2019 Refinement Vol.4 Tabel 4Ap.1"),
@@ -458,7 +458,7 @@ DEFS += [
        "0,65 (350–450 °C) · 0,80 (450–600 °C) · 0,89 (>600 °C).", source="IPCC 2019 Refinement Vol.4 Tabel 4Ap.2"),
     _n("biochar_sawah.rate_recommended_min_t_ha", "Dosis anjuran minimum", 1.0, "t/ha", 0, 50),
     _n("biochar_sawah.rate_recommended_max_t_ha", "Dosis anjuran maksimum", 2.0, "t/ha", 0, 50,
-       "Dosis kecil lebih ekonomis untuk biochar terbatas; sebarkan merata ke lebih banyak lahan/musim."),
+       "Dosis kecil lebih ekonomis untuk abu bottom ash terbatas; sebarkan merata ke lebih banyak lahan/musim."),
     _n("evaluasi.plant_capacity_min_pct", "Pemenuhan rencana input pabrik minimum", 80.0, "% rencana", 0, 200,
        "Sekam diterima per bulan dibanding parameter Pabrik → Rencana biomassa diolah per bulan."),
 ]

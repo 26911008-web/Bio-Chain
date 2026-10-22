@@ -13,7 +13,7 @@ Neraca karbon (per periode, tCO₂e):
   Bio-pellet yang dibakar BUKAN sekuestrasi (karbonnya kembali ke atmosfer) → tidak dihitung di sini; manfaat
   substitusi batu bara dilaporkan terpisah (Engine ⑦) agar tidak hitung ganda.
 
-Sirkularitas: valorisasi massa, porsi biochar kembali ke petani, laju retur & porsi retur yang dipulihkan.
+Sirkularitas: valorisasi massa, porsi abu bottom ash kembali ke petani, laju retur & porsi retur yang dipulihkan.
 Green chemistry (lini silika): E-factor padat (Sheldon) = limbah padat ÷ produk; efisiensi ekstraksi SiO₂.
 """
 
@@ -173,7 +173,7 @@ def recommendations(transport_t, husk_t, gps_routes, n_routes, silica, solid_was
     rec.append({"area": "green chemistry", "action": "Pakai syngas pirolisis untuk pengering & kalsinasi (kurangi "
                 "listrik/LPG); pertimbangkan pelindian asam sitrat (biodegradable) untuk jalur silika kemurnian tinggi."})
     if returned_pct is not None and returned_pct < 5:
-        rec.append({"area": "ekonomi sirkular", "action": "Porsi biochar kembali ke petani < 5%: naikkan "
+        rec.append({"area": "ekonomi sirkular", "action": "Porsi abu bottom ash kembali ke petani < 5%: naikkan "
                     "sirkular.farmer_return_share atau tautkan lebih banyak lot ke panen petani (ketertelusuran)."})
     if return_rate is not None and return_rate > 5:
         rec.append({"area": "ekonomi sirkular", "action": "Laju retur > 5%: subsidi terpal/karung anti-hujan & "

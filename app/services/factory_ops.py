@@ -351,11 +351,11 @@ async def create_batch(db: AsyncSession, operator: User, data: dict) -> Manufact
                          amount_rp=c["amount_rp"], product=c.get("product")))
     await db.flush()
     eco["wallet"] = await _allocate_biochar_to_wallets(db, operator, batch, lots, input_kg, outputs["biochar"])
-    if eco["wallet"]["allocated_kg"] > 0:     # biochar milik dompet petani keluar dari stok jual pabrik
+    if eco["wallet"]["allocated_kg"] > 0:     # abu bottom ash milik dompet petani keluar dari stok pabrik
         db.add(FinishedGoodsMovement(product="biochar", movement="alokasi_petani",
                                      quantity_kg=-eco["wallet"]["allocated_kg"], batch_id=batch.id,
                                      reference=batch.batch_code, actor_id=operator.id,
-                                     note="Porsi sirkular dikembalikan ke dompet biochar petani"))
+                                     note="Porsi sirkular abu bottom ash dikembalikan ke dompet abu petani"))
     batch.economics = {**eco}                      # simpan ringkasan alokasi di snapshot batch
     await db.flush()
     return batch
@@ -363,7 +363,7 @@ async def create_batch(db: AsyncSession, operator: User, data: dict) -> Manufact
 
 async def _allocate_biochar_to_wallets(db, operator: User, batch: ManufacturingBatch, lots, input_kg: float,
                                        biochar_kg: float) -> dict:
-    """Kreditkan biochar batch ke dompet petani yang sekamnya ikut diolah — proporsional berat diterima
+    """Kreditkan abu bottom ash batch ke dompet petani yang sekamnya ikut diolah — proporsional berat diterima
     pabrik per harvest, tepat sampai gram (largest remainder). Bagian dari sekam yang tidak tertelusur ke
     petani (stok pengepul sendiri) dilaporkan, tidak dibagikan."""
     share = P("sirkular.farmer_return_share")
@@ -402,7 +402,7 @@ async def _allocate_biochar_to_wallets(db, operator: User, batch: ManufacturingB
         if g > 0:
             db.add(BiocharLedgerEntry(farmer_id=h.farmer_id, batch_id=batch.id, harvest_id=h.id,
                                       entry_type="allocation", amount_kg=g / 1000, created_by_id=operator.id,
-                                      note=f"Batch {batch.batch_code}: {w:,.1f} kg sekam × {biochar_kg:g} kg biochar "
+                                      note=f"Batch {batch.batch_code}: {w:,.1f} kg sekam × {biochar_kg:g} kg abu bottom ash "
                                            f"÷ {input_kg:,.0f} kg input × porsi {share:g}"))
             per_farmer[h.farmer_id] = per_farmer.get(h.farmer_id, 0) + g
         if _v(h.status) == HarvestStatus.DELIVERED.value:          # pertama kali diolah → CONVERTED
@@ -412,7 +412,7 @@ async def _allocate_biochar_to_wallets(db, operator: User, batch: ManufacturingB
     return {"allocated_kg": round(sum(per_farmer.values()) / 1000, 3), "untraceable_kg": round(untraceable_g / 1000, 3),
             "return_share": share,
             "farmers": [{"farmer_id": f, "biochar_kg": g / 1000} for f, g in sorted(per_farmer.items())],
-            "method": "biochar × porsi petani × (kg sekam petani dalam batch ÷ kg input), largest remainder per gram"}
+            "method": "abu bottom ash × porsi petani × (kg sekam petani dalam batch ÷ kg input), largest remainder per gram"}
 
 
 def batch_dict(b: ManufacturingBatch) -> dict:

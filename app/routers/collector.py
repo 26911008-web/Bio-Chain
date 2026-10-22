@@ -531,7 +531,7 @@ class DeliveryRequestCreate(BaseModel):
     proposed_date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
     proposed_price_per_kg: float = Field(..., gt=0, le=20_000)
     harvest_ids: list[int] = Field(default_factory=list, max_length=500,
-                                   description="Harvest petani (sudah Anda timbang) yang ikut dikirim → dompet biochar")
+                                   description="Harvest petani (sudah Anda timbang) yang ikut dikirim → dompet abu bottom ash")
     mill_id: int | None = Field(None, description="Pilihan pabrik tujuan")
     biomass_type: str = Field("sekam_padi", max_length=50, description="Jenis biomassa")
     logistics_carrier: str = Field("FACTORY_FLEET", pattern="^(FACTORY_FLEET|COLLECTOR_SELF)$",

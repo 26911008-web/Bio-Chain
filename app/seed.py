@@ -102,7 +102,7 @@ DEMO_ACCOUNTS = [
         "role": UserRole.AUDITOR.value,
         "role_label": "Auditor (Read-only)",
         "icon": "🔍",
-        "description": "Audit jejak timbangan, susut, dan alokasi biochar ke petani — tanpa hak ubah",
+        "description": "Audit jejak timbangan, susut, dan alokasi abu bottom ash ke petani — tanpa hak ubah",
         "kabupaten": "Sleman",
         "kecamatan": "Depok",
         "lat": -7.770,

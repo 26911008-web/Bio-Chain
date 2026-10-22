@@ -1,4 +1,4 @@
-"""Pengambilan biochar oleh petani (sisi keluar "Dompet Biochar") untuk lahan sawah.
+"""Pengambilan abu bottom ash oleh petani (sisi keluar "Dompet Abu Bottom Ash") untuk lahan sawah.
 
 Alur fisik: petani mengajukan (kg, luas sawah, titik ambil) → pabrik menyerahkan karung di gudang/pengepul →
 saat serah-terima barulah ledger `redemption` (negatif) ditulis. Permintaan yang belum diserahkan menahan saldo
@@ -78,7 +78,7 @@ class EfficiencyAction(Base):
 
 
 class BiocharRequest(Base):
-    """Permintaan biochar oleh petani yang disinkronkan dengan rute penjemputan armada pengepul (Reverse Logistics)."""
+    """Permintaan abu bottom ash oleh petani yang disinkronkan dengan rute penjemputan armada pengepul (Reverse Logistics)."""
     __tablename__ = "biochar_requests"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -99,7 +99,7 @@ class BiocharRequest(Base):
 
 
 class BiocharDistribution(Base):
-    """Distribusi muatan balik biochar dari pabrik ke gudang pengepul/armada."""
+    """Distribusi muatan balik abu bottom ash dari pabrik ke gudang pengepul/armada."""
     __tablename__ = "biochar_distributions"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -122,7 +122,7 @@ class BiocharDistribution(Base):
 
 
 class BiocharQualityEvaluation(Base):
-    """Formulir ulasan/rating kualitas biochar yang diterima petani dari pengepul/pabrik.
+    """Formulir ulasan/rating kualitas abu bottom ash yang diterima petani dari pengepul/pabrik.
     Parameter evaluasi: ukuran butir/mesh, kematangan pirolisis/karbonisasi, kelembapan, dampak tanah.
     """
     __tablename__ = "biochar_quality_evaluations"
@@ -142,7 +142,7 @@ class BiocharQualityEvaluation(Base):
 
 
 class BiocharCircularRequest(Base):
-    """Permintaan biochar sirkular petani (Closed-loop supply chain)."""
+    """Permintaan abu bottom ash sirkular petani (Closed-loop supply chain)."""
     __tablename__ = "biochar_circular_requests"
 
     id = Column(Integer, primary_key=True, autoincrement=True)

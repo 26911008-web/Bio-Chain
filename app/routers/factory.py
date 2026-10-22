@@ -16,6 +16,7 @@ from ..dependencies import require_role
 from ..models.user import User, UserRole
 from ..models.harvest import Harvest, HarvestStatus
 from ..models.circular import BiocharDistribution, BiocharRequest
+from ..models.conversion import CarbonCredit
 from ..engines.carbon import CarbonInput, calculate_carbon_reduction
 from ..engines.forecaster import ForecastInput, forecast_supply
 from ..engines.quality import FeedstockSample, biochar_yield_db, score_sample, yield_curve
@@ -409,7 +410,7 @@ async def create_conversion(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(_pabrik_only)],
 ):
-    """Catat batch pirolisis dan kreditkan biochar ke dompet petani pemasok (proporsional berat terima)."""
+    """Catat batch pirolisis dan kreditkan abu bottom ash ke dompet petani pemasok (proporsional berat terima)."""
     share = P("sirkular.farmer_return_share") if req.farmer_return_share is None else req.farmer_return_share
     return await convert_and_allocate(db, user, req.harvest_ids, req.biochar_kg, req.batch_code, share,
                                       req.pyrolysis_temp_c)
@@ -421,7 +422,7 @@ async def get_mass_balance(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(_audit_read)],
 ):
-    """Jejak berat & serah-terima satu harvest dari petani sampai alokasi biochar."""
+    """Jejak berat & serah-terima satu harvest dari petani sampai alokasi abu bottom ash."""
     return await mass_balance(db, harvest_id)
 
 
@@ -513,7 +514,7 @@ async def biochar_redemptions(
     user: Annotated[User, Depends(_pabrik_dep)],
     status: str = "diajukan",
 ):
-    """Antrean pengambilan biochar petani untuk sawah."""
+    """Antrean pengambilan abu bottom ash petani untuk sawah."""
     from ..services.circular import list_redemptions
     return await list_redemptions(db, status)
 
@@ -530,7 +531,7 @@ async def handover_biochar(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(_pabrik_dep)],
 ):
-    """Serahkan karung biochar ke petani → ledger redemption (negatif) ditulis sekarang."""
+    """Serahkan karung abu bottom ash ke petani → ledger redemption (negatif) ditulis sekarang."""
     from ..services.circular import handover
     return await handover(db, user, redemption_id, body.kg, body.note)
 
@@ -1167,7 +1168,7 @@ async def inventory(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(_audit_read)],
 ):
-    """Saldo stok biochar / bio-silika / bio-pellet = jumlah mutasi (produksi - alokasi petani - penjualan +/- koreksi)."""
+    """Saldo stok produk (biochar material baterai, bio-silika, bio-pellet) = jumlah mutasi (produksi - alokasi sirkular petani - penjualan +/- koreksi)."""
     return {"balance_kg": await factory_ops.inventory_balance(db)}
 
 
@@ -1515,7 +1516,7 @@ async def dispatch_biochar(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(_pabrik_only)],
 ):
-    """Pabrik menerbitkan surat jalan dan muatan balik biochar untuk diangkut armada driver/pengepul."""
+    """Pabrik menerbitkan surat jalan dan muatan balik abu bottom ash / sirkular untuk diangkut armada driver/pengepul."""
     dispatch_code = f"DSP-{uuid.uuid4().hex[:8].upper()}"
     qr_token = f"QR-DSP-{uuid.uuid4().hex}"
     # Density biochar ~300 kg/m3
@@ -1545,7 +1546,7 @@ async def dispatch_biochar(
         "total_bags": dist.total_bags,
         "volume_m3": dist.volume_m3,
         "status": dist.status,
-        "message": f"✅ Surat jalan {dist.dispatch_code} berhasil diterbitkan ({dist.total_weight_kg} kg biochar)."
+        "message": f"✅ Surat jalan {dist.dispatch_code} berhasil diterbitkan ({dist.total_weight_kg} kg abu bottom ash)."
     }
 
 
@@ -1554,7 +1555,7 @@ async def list_biochar_dispatches(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(_audit_read)],
 ):
-    """Daftar riwayat surat jalan muatan balik biochar yang telah diterbitkan pabrik."""
+    """Daftar riwayat surat jalan muatan balik abu bottom ash yang telah diterbitkan pabrik."""
     rows = (await db.execute(
         select(BiocharDistribution, User)
         .outerjoin(User, User.id == BiocharDistribution.collector_id)
@@ -1908,7 +1909,7 @@ async def get_closed_loop_biochar(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(_audit_read)],
 ):
-    """Traceability sirkular biochar end-to-end: Kiln Pabrik -> Pengepul -> Armada Backhaul -> Lahan Petani."""
+    """Traceability sirkular abu bottom ash end-to-end: Kiln Pabrik -> Pengepul -> Armada Backhaul -> Lahan Petani."""
     from ..models.circular import BiocharRequest, BiocharDistribution, BiocharQualityEvaluation
     from ..models.industrial import ProductionBlend
 

@@ -100,7 +100,7 @@ Setelah login, `ui-enhance.js` menulis `data-role` dan `data-theme`. Aksen, kepa
 | Petani | field | `#4a6300` zaitun (6.8:1) | `#d6ff4d` lime | tap 52px, KPI besar | panen / sekam |
 | Pengepul | field | `#8a4b00` cokelat sekam (6.8:1) | `#eaa065` | tap 52px | gudang / grading |
 | Driver | field | `#1d4f86` biru jalan (8.4:1) | `#9fc3e6` | tap 56px, font 17px | jalan / rute |
-| Pabrik | noir | `#4a6300` | `#d6ff4d` lime | padat (tap 40px) | pirolisis / biochar |
+| Pabrik | noir | `#4a6300` | `#d6ff4d` lime | padat (tap 40px) | pirolisis / material baterai & abu |
 | Auditor | noir | `#1d4f86` | `#9fc3e6` | padat + label READ-ONLY | audit, baca saja |
 | Admin | noir | `#5b5b00` (7.1:1) | `#e4e58b` khaki | padat | kendali sistem |
 

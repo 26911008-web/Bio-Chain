@@ -639,6 +639,242 @@ table.data-table tbody tr:hover td { background: var(--surface-2); }
 table.data-table td.num, table.data-table th.num { text-align: right; }
 .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
+/* ==========================================================================
+   FREEZE FIRST COLUMN (STICKY QR / UNIQ ID) FOR ALL TABLES ACROSS ALL PERSONAS
+   ========================================================================== */
+table.data-table,
+table.table {
+  border-collapse: separate !important;
+  border-spacing: 0 !important;
+}
+
+table.data-table th:first-child,
+table.table th:first-child {
+  position: sticky !important;
+  top: 0 !important;
+  left: 0 !important;
+  z-index: 10 !important;
+  background: var(--surface-2, #1c1c1e) !important;
+  box-shadow: 3px 0 8px -2px rgba(0, 0, 0, 0.45) !important;
+  border-right: 1px solid var(--border-strong, #3b4252) !important;
+}
+
+table.data-table td:first-child,
+table.table td:first-child {
+  position: sticky !important;
+  left: 0 !important;
+  z-index: 5 !important;
+  background: var(--surface-1, #111111) !important;
+  box-shadow: 3px 0 8px -2px rgba(0, 0, 0, 0.45) !important;
+  border-right: 1px solid var(--border, #2e3440) !important;
+}
+
+table.data-table tbody tr:hover td:first-child,
+table.table tbody tr:hover td:first-child {
+  background: var(--surface-2, #1c1c1e) !important;
+}
+
+/* Light / Field theme compatibility */
+:root:not([data-theme="noir"]) table.data-table th:first-child,
+:root:not([data-theme="noir"]) table.table th:first-child,
+[data-theme="field"] table.data-table th:first-child,
+[data-theme="field"] table.table th:first-child {
+  background: var(--surface-2, #f1f5ee) !important;
+  box-shadow: 3px 0 8px -2px rgba(0, 0, 0, 0.15) !important;
+  border-right: 1px solid var(--border-strong, #cbd5e1) !important;
+}
+
+:root:not([data-theme="noir"]) table.data-table td:first-child,
+:root:not([data-theme="noir"]) table.table td:first-child,
+[data-theme="field"] table.data-table td:first-child,
+[data-theme="field"] table.table td:first-child {
+  background: var(--surface-1, #f8faf7) !important;
+  box-shadow: 3px 0 8px -2px rgba(0, 0, 0, 0.15) !important;
+  border-right: 1px solid var(--border, #e2e8f0) !important;
+}
+
+:root:not([data-theme="noir"]) table.data-table tbody tr:hover td:first-child,
+:root:not([data-theme="noir"]) table.table tbody tr:hover td:first-child,
+[data-theme="field"] table.data-table tbody tr:hover td:first-child,
+[data-theme="field"] table.table tbody tr:hover td:first-child {
+  background: var(--surface-2, #e8f0e5) !important;
+}
+
+dialog table.data-table td:first-child,
+dialog table.data-table th:first-child {
+  background: var(--surface-dialog, var(--surface-1, #111111)) !important;
+}
+
+/* ==========================================================================
+   TOP SYNCHRONIZED SCROLLBAR ("Garis Penggeser di Atas Tabel Saja")
+   ========================================================================== */
+.table-top-scrollbar {
+  overflow-x: auto;
+  overflow-y: hidden;
+  height: 14px;
+  margin: 4px 0 8px 0;
+  background: var(--surface-2, rgba(255, 255, 255, 0.06));
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  position: relative;
+  z-index: 2;
+  box-sizing: border-box;
+  scrollbar-color: var(--primary, #059669) var(--surface-2, rgba(0, 0, 0, 0.2));
+  scrollbar-width: thin;
+}
+
+.table-top-scrollbar-inner {
+  height: 1px;
+  min-height: 1px;
+  display: block;
+}
+
+.table-top-scrollbar::-webkit-scrollbar {
+  height: 12px;
+}
+
+.table-top-scrollbar::-webkit-scrollbar-track {
+  background: var(--surface-2, rgba(0, 0, 0, 0.2));
+  border-radius: 6px;
+}
+
+.table-top-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--primary, #059669);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.table-top-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #10b981;
+}
+
+/* Hide native bottom horizontal scrollbar on table containers */
+.table-scroll,
+.month-group-card > div[style*="overflow-x"],
+div[style*="overflow-x:auto"],
+div[style*="overflow-x: auto"] {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+.table-scroll::-webkit-scrollbar,
+.month-group-card > div[style*="overflow-x"]::-webkit-scrollbar,
+div[style*="overflow-x:auto"]::-webkit-scrollbar,
+div[style*="overflow-x: auto"]::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* ==========================================================================
+   TABLE PAGINATION & RAW DATA FILTER TOOLBAR (10, 20, 50, 100, Semua)
+   ========================================================================== */
+.table-pagination-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 8px 12px;
+  margin: 6px 0 6px 0;
+  background: var(--surface-2, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--ink);
+  box-sizing: border-box;
+}
+
+.table-pagination-toolbar .tpt-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.table-pagination-toolbar .tpt-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0;
+  cursor: pointer;
+}
+
+.table-pagination-toolbar .tpt-select {
+  padding: 3px 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  border-radius: 6px;
+  background: var(--surface-1, #111);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  height: 28px;
+}
+
+.table-pagination-toolbar .tpt-info {
+  font-size: 11.5px;
+  color: var(--ink-muted);
+}
+
+.table-pagination-toolbar .tpt-scroll-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface-1, rgba(0, 0, 0, 0.15));
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.table-pagination-toolbar .tpt-scroll-lbl {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-muted);
+  user-select: none;
+}
+
+.table-pagination-toolbar .tpt-paging {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.table-pagination-toolbar .tpt-page-num {
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 0 4px;
+  color: var(--ink);
+}
+
+.table-pagination-toolbar button {
+  padding: 3px 10px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  height: 26px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 5px !important;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.table-pagination-toolbar button:disabled {
+  opacity: 0.45 !important;
+  cursor: not-allowed !important;
+  pointer-events: auto !important;
+}
+
+.table-pagination-toolbar button:not(:disabled):hover {
+  background: var(--surface-3, rgba(255, 255, 255, 0.12)) !important;
+  border-color: var(--primary, #059669) !important;
+  color: var(--primary, #059669) !important;
+}
+
 /* MAP */
 #map { height: 480px; width: 100%; border-radius: var(--r-lg); border: 1px solid var(--border); }
 .leaflet-container { font-family: var(--font-ui); border-radius: var(--r-md); }
@@ -1165,6 +1401,7 @@ th[aria-sort="descending"] .th-sort-ind::after { content: "▼"; opacity: 1; }
   border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--sp-6);
   background: var(--surface-1); color: var(--ink); width: min(440px, calc(100vw - 32px)); box-shadow: var(--elev-3);
 }
+.ui-confirm.ui-confirm-wide { width: min(880px, calc(100vw - 32px)); }  /* form multi-kolom (gerbang timbang) */
 .ui-confirm::backdrop { background: var(--scrim); backdrop-filter: blur(3px); }
 .ui-confirm h3 { margin: 0 0 var(--sp-2); font-size: 1.25rem; }
 .ui-confirm-body { margin: 0 0 var(--sp-5); color: var(--ink-muted); line-height: 1.55; }

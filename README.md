@@ -1,6 +1,6 @@
 # Bio-Chain v2 — Smart Rice-Husk Supply Chain
 
-Smart rice-husk supply chain untuk feedstock pirolisis biochar.
+Smart rice-husk supply chain untuk feedstock pirolisis biochar (pengembangan material baterai anoda) & alokasi sirkular abu bottom ash untuk sawah petani.
 **ANGEL Innovation Hackathon 2026** · Track Sustainable Energy · Topik #4 Smart Bioenergy Feedstock Optimization.
 
 ## 🚀 Quick Start
@@ -38,15 +38,15 @@ Saat membuka halaman web, Anda akan disambut dengan **layar login modern** denga
 | 🌾 **Petani** | `petani_sugeng` / `081544556677` | `sekam123` | Pak Sugeng (Godean) | Lapor stok sekam siap jual, lihat bukti QR setor, pantau XP & tier insentif (Mitra Emas) |
 | 📦 **Pengepul** | `pengepul_sleman` / `081322334455` | `kud2026` | Pak Ahmad (KUD Sleman) | Antrian verifikasi mutu, uji proksimat (air, abu, VM, FC), kalkulasi grade A/B/C/Tolak & harga |
 | 🚛 **Driver** | `sopir_budi` / `081433445566` | `truk2026` | Budi Santoso (Armada 01) | Rute penjemputan sekam, peta rute interaktif, daftar stop & scan QR pickup |
-| 🏭 **Pabrik** | `pabrik_indmira` / `081298765432` | `pabrik2026` | PT Indmira Biochar Plant | Dashboard ESG karbon (IPCC Tier 2), proyeksi pasokan 30 hari, optimasi blending HiGHS |
+| 🏭 **Pabrik** | `pabrik_indmira` / `081298765432` | `pabrik2026` | PT Indmira Material Baterai & Biochar | Dashboard ESG karbon (IPCC Tier 2), proyeksi pasokan 30 hari, optimasi blending HiGHS |
 | ⚙️ **Admin** | `admin` / `081234567890` | `admin2026` | Administrator Bio-Chain | Statistik platform lengkap, daftar user terdaftar, tombol 1-klik Reset & Re-Seed Data Demo |
-| 🔍 **Auditor** | `auditor_esg` / `081677889900` | `audit2026` | Auditor Rantai Pasok & ESG | Baca-saja: jejak timbangan, susut, alokasi biochar ke dompet petani |
+| 🔍 **Auditor** | `auditor_esg` / `081677889900` | `audit2026` | Auditor Rantai Pasok & ESG | Baca-saja: jejak timbangan, susut, alokasi abu bottom ash ke dompet petani |
 
 > 🔐 **Gerbang peran**: halaman muka memiliki 5 gerbang (Petani · Pengepul · Driver · Pabrik · Auditor) + tautan Admin. Tiap gerbang menawarkan akun demo perannya (klik untuk isi otomatis). Setelah masuk, pengguna hanya melihat modul perannya; Lab 7 Engine khusus Pabrik/Admin. Ganti persona lewat menu di header.
 >
 > 🤖 **Asisten AI**: tombol "Asisten" di kanan bawah — tanya jawab & saran optimasi berbasis data peran Anda. Provider: Gemini, Mistral, Groq, OpenRouter (tier gratis) atau AI lokal Ollama. Isi kunci di `.env` (lihat `.env.example`).
 >
-> 🎛️ **Parameter Asumsi** (tab khusus Pabrik/Admin; Auditor baca-saja): ±100 angka asumsi di 13 kelompok — harga & grade, ambang mutu, model rendemen, toleransi susut, porsi biochar petani, biaya angkut, faktor jalan, emisi IPCC, produktivitas panen, tier insentif, efisiensi konversi, tarif listrik & kriteria IKE, bobot TOPSIS, spesifikasi produk, preset biomassa (tabel). Perubahan berlaku langsung di semua modul, tervalidasi (rentang + konsistensi antar-parameter) dan tercatat (siapa/kapan/alasan). Konstanta fisika & parameter teknis algoritma sengaja tidak diekspos. Registry: `app/params.py`.
+> 🎛️ **Parameter Asumsi** (tab khusus Pabrik/Admin; Auditor baca-saja): ±100 angka asumsi di 13 kelompok — harga & grade, ambang mutu, model rendemen, toleransi susut, porsi abu bottom ash petani, biaya angkut, faktor jalan, emisi IPCC, produktivitas panen, tier insentif, efisiensi konversi, tarif listrik & kriteria IKE, bobot TOPSIS, spesifikasi produk, preset biomassa (tabel). Perubahan berlaku langsung di semua modul, tervalidasi (rentang + konsistensi antar-parameter) dan tercatat (siapa/kapan/alasan). Konstanta fisika & parameter teknis algoritma sengaja tidak diekspos. Registry: `app/params.py`.
 >
 > 🔄 **Reset Data Demo** (header) hanya tampil & diizinkan untuk Admin — ganti persona ke Admin untuk mengembalikan data contoh.
 

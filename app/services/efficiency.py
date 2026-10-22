@@ -1,8 +1,8 @@
-"""Optimasi & efisiensi tiap proses rantai pasok sekam → biochar, dengan penghematan Rp & dampak lingkungan (kgCO₂e).
+"""Optimasi & efisiensi tiap proses rantai pasok sekam → produk bernilai tinggi & abu sirkular, dengan penghematan Rp & dampak lingkungan (kgCO₂e).
 
 Tiga lapis, sengaja dipisah agar tidak terhitung ganda:
   1. TEREALISASI OTOMATIS — dihitung dari data operasional (bukan klaim): km dihemat optimasi rute vs baseline,
-     biochar yang sudah diserahkan ke sawah, pembakaran terbuka yang dihindari.
+     abu bottom ash yang sudah diserahkan ke sawah, pembakaran terbuka yang dihindari.
   2. TERCATAT — aksi perbaikan yang dicatat manusia di register `efficiency_actions` (dengan bukti & verifikasi).
   3. POTENSI — selisih KPI aktual vs target (parameter) per proses, dikonversi ke Rp & kgCO₂e, plus rekomendasi.
 Semua faktor dari menu Parameter (logistik.*, karbon.*, energi.*, harga_mutu.*, pasar.*, evaluasi.*, pabrik.*).
@@ -25,7 +25,7 @@ from ..params import P
 PROCESS_LABEL = {
     "lapor_stok": "Lapor stok petani", "uji_mutu": "Uji mutu & timbang pengepul", "jemput_rute": "Jemput & rute truk",
     "angkut": "Angkut ke pabrik", "terima_pabrik": "Terima & QC pabrik", "produksi": "Produksi pirolisis",
-    "energi": "Energi pabrik", "pembayaran": "Pembayaran petani", "biochar_sawah": "Biochar kembali ke sawah",
+    "energi": "Energi pabrik", "pembayaran": "Pembayaran petani", "biochar_sawah": "Abu bottom ash kembali ke sawah",
     "lainnya": "Lainnya",
 }
 
@@ -78,8 +78,8 @@ async def efficiency_overview(db: AsyncSession, start: datetime, end: datetime) 
     red_kg = sum(r.kg for r in red)
     farmer_rp = sum((r.estimate or {}).get("net_benefit_rp") or 0 for r in red)
     c_kg = red_kg * P("biochar_sawah.carbon_frac") * P("biochar_sawah.stable_frac_100y") * 44 / 12
-    realized.append({"code": "R2", "process": "biochar_sawah", "title": "Biochar diserahkan ke sawah petani",
-                     "quantity": round(red_kg, 1), "unit": "kg biochar", "saving_rp": round(farmer_rp),
+    realized.append({"code": "R2", "process": "biochar_sawah", "title": "Abu bottom ash diserahkan ke sawah petani",
+                     "quantity": round(red_kg, 1), "unit": "kg abu bottom ash", "saving_rp": round(farmer_rp),
                      "saving_co2e_kg": round(c_kg, 1),
                      "basis": "manfaat bersih perkiraan petani (rumus docs/08) + karbon tersimpan F_C×F_perm×44/12 "
                               "— karbon dicatat proyek pabrik, jangan dijual ganda"})

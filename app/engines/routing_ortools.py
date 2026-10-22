@@ -20,6 +20,7 @@ import time
 
 import numpy as np
 
+from ..params import P
 from .emission import emissions_from_plan, fuel_factors
 from .routing import distance_matrix
 

@@ -438,15 +438,15 @@ window.viewOfferDetailModal = function(id, tab) {
     </div>
 
     <div style="background:var(--surface-1); border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:12px;">
-      <div style="font-weight:700; margin-bottom:6px; color:var(--primary); font-size:13.5px;">🌱 Pesanan Muatan Balik Biochar untuk Sawah (Sirkular):</div>
+      <div style="font-weight:700; margin-bottom:6px; color:var(--primary); font-size:13.5px;">🌱 Pesanan Muatan Balik Abu Bottom Ash untuk Sawah (Sirkular):</div>
       ${biocharReq ? `
         <div style="font-size:12.5px; line-height:1.6;">
-          <div>• <b>Jumlah Pesanan:</b> <span class="badge badge-green">${num(biocharReq.requested_kg, 0)} kg Biochar</span></div>
+          <div>• <b>Jumlah Pesanan:</b> <span class="badge badge-green">${num(biocharReq.requested_kg, 0)} kg Abu Bottom Ash</span></div>
           <div>• <b>Luas Lahan Aplikasi:</b> ${biocharReq.land_area_ha ? `${biocharReq.land_area_ha} ha` : 'Tidak disebutkan'}</div>
           <div>• <b>Titik Penyerahan:</b> ${esc(biocharReq.delivery_point || 'Lahan Petani')}</div>
-          <div style="color:var(--ink-muted); font-size:11px; margin-top:4px;">💡 Truk penjemput biomassa membawa muatan biochar ini dari gudang saat berangkat menjemput, memangkas biaya transportasi (zero empty miles).</div>
+          <div style="color:var(--ink-muted); font-size:11px; margin-top:4px;">💡 Truk penjemput biomassa membawa muatan abu bottom ash ini dari gudang saat berangkat menjemput, memangkas biaya transportasi (zero empty miles). Biochar bernilai tinggi difokuskan pabrik untuk material baterai.</div>
         </div>
-      ` : `<div style="font-size:12px; color:var(--ink-muted);">Petani tidak mengajukan pesanan muatan balik biochar untuk lot ini.</div>`}
+      ` : `<div style="font-size:12px; color:var(--ink-muted);">Petani tidak mengajukan pesanan muatan balik abu bottom ash untuk lot ini.</div>`}
     </div>
 
     ${it.photo_url ? `
@@ -500,9 +500,9 @@ window.showHarvestFarmerDetail = async function(harvestId) {
 
       ${h.biochar_backhaul_requested ? `
         <div style="background:var(--surface-1); border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:12px; font-size:13px;">
-          <div style="font-weight:700; color:var(--primary); margin-bottom:4px;">🌱 Pesanan Muatan Balik Biochar:</div>
-          <div>• <b>Kebutuhan Biochar:</b> <span class="badge badge-green">${num(h.biochar_backhaul_kg, 0)} kg</span></div>
-          <div style="font-size:11px; color:var(--ink-muted); margin-top:4px;">Armada pengepul akan membawakan biochar ini saat menuju lahan Anda.</div>
+          <div style="font-weight:700; color:var(--primary); margin-bottom:4px;">🌱 Pesanan Muatan Balik Abu Bottom Ash:</div>
+          <div>• <b>Kebutuhan Abu Bottom Ash:</b> <span class="badge badge-green">${num(h.biochar_backhaul_kg, 0)} kg</span></div>
+          <div style="font-size:11px; color:var(--ink-muted); margin-top:4px;">Armada pengepul akan membawakan abu bottom ash ini saat menuju lahan Anda.</div>
         </div>
       ` : ''}
 

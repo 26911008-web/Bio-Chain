@@ -1,4 +1,4 @@
-"""SQLAlchemy ORM models — Chain-of-custody & ledger biochar (ekonomi sirkular).
+"""SQLAlchemy ORM models — Chain-of-custody & ledger abu bottom ash / sirkular (ekonomi sirkular).
 
 Kedua tabel bersifat append-only: koreksi dicatat sebagai entri baru, bukan UPDATE/DELETE,
 sehingga auditor bisa merekonstruksi setiap kilogram dari petani sampai kembali ke petani.
@@ -70,7 +70,7 @@ class ConversionInput(Base):
 
 
 class BiocharLedgerEntry(Base):
-    """Dompet biochar petani: saldo = Σ amount_kg. Positif = alokasi, negatif = penebusan."""
+    """Dompet abu bottom ash petani: saldo = Σ amount_kg. Positif = alokasi, negatif = penebusan."""
     __tablename__ = "biochar_ledger"
     __table_args__ = (
         UniqueConstraint("conversion_id", "harvest_id", "entry_type", name="uq_ledger_alloc_once"),

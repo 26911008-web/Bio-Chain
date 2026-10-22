@@ -1,4 +1,4 @@
-"""Service: state machine harvest, chain-of-custody, mass balance, dan alokasi biochar ke petani.
+"""Service: state machine harvest, chain-of-custody, mass balance, dan alokasi abu bottom ash ke petani.
 
 Prinsip:
 - Setiap perubahan status adalah compare-and-swap (`UPDATE ... WHERE status IN (asal)`); bila baris
@@ -197,7 +197,7 @@ async def transition(
             await record_notification(
                 db, event_type="CONVERTED_BATCH",
                 title=f"⚗️ Konversi Produksi Selesai ({wr_code})",
-                message=f"Biomassa telah diproses menjadi produk & biochar aktif. Dompet petani dikreditkan untuk muatan balik ke sawah.",
+                message=f"Biomassa telah diproses menjadi produk & biochar aktif (baterai). Dompet petani dialokasikan abu bottom ash untuk muatan balik ke sawah.",
                 status_group="COMPLETED", target_role="petani", user_id=h_obj.farmer_id,
                 harvest_id=harvest_id, transaction_code=wr_code,
                 actor_role=_val(actor.role), actor_name=a_name,
@@ -263,7 +263,7 @@ async def convert_and_allocate(
     db: AsyncSession, actor: User, harvest_ids: list[int], biochar_kg: float, batch_code: str,
     return_share: float, pyrolysis_temp_c: float | None = None,
 ) -> dict:
-    """Satu batch pirolisis: DELIVERED → CONVERTED untuk semua harvest, lalu kreditkan biochar ke
+    """Satu batch konversi / pirolisis: DELIVERED → CONVERTED untuk semua harvest, lalu kreditkan abu bottom ash ke
     dompet petani proporsional received_kg. Atomik: gagal di titik mana pun → seluruh request di-rollback."""
     ids = sorted(set(harvest_ids))
     harvests = (await db.execute(

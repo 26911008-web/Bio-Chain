@@ -46,9 +46,9 @@ class HarvestReportRequest(BaseModel):
     transaction_mode: str | None = Field("DIRECT", description="DIRECT | BIDDING")
     logistics_mode: str | None = Field("PICKUP", description="PICKUP | DELIVER_SELF")
     floor_price: float | None = Field(None, ge=0, description="Harga dasar/minimum lelang (Rp/kg)")
-    # Opsi Kebutuhan Biochar Sirkular Petani
-    biochar_request_kg: float | None = Field(None, ge=0, description="Kebutuhan biochar sirkular petani (kg)")
-    biochar_land_area_ha: float | None = Field(None, ge=0, description="Luas lahan aplikasi biochar (ha)")
+    # Opsi Kebutuhan Abu Bottom Ash Sirkular Petani
+    biochar_request_kg: float | None = Field(None, ge=0, description="Kebutuhan abu bottom ash sirkular petani (kg)")
+    biochar_land_area_ha: float | None = Field(None, ge=0, description="Luas lahan aplikasi abu bottom ash (ha)")
     biochar_delivery_point: str | None = Field("Lahan Petani", max_length=200)
     client_event_id: str | None = Field(None, max_length=64, description="Kunci idempotensi antrean offline")
     client_recorded_at: datetime | None = Field(None, description="Waktu lapor di perangkat (bisa saat offline)")
@@ -76,7 +76,7 @@ async def report_harvest(
     user: Annotated[User, Depends(require_role(UserRole.PETANI))],
 ):
     """Laporkan stok biomassa yang siap dijual — Dual-Mode (Langsung ke Pengepul / Lelang Bebas)
-    serta integrasi pemesanan biochar sirkular untuk pembenah tanah sawah.
+    serta integrasi pemesanan abu bottom ash sirkular untuk pembenah tanah sawah.
 
     Idempoten: laporan yang dikirim ulang dari antrean offline dengan client_event_id sama
     mengembalikan harvest yang sudah dibuat, bukan membuat duplikat.
@@ -217,7 +217,7 @@ async def report_harvest(
 
     status_str = harvest.status.value if hasattr(harvest.status, 'value') else str(harvest.status)
     mode_text = "Bursa Lelang" if tx_mode == "BIDDING" else "Jalur Langsung"
-    biochar_msg = f" + Request biochar {req.biochar_request_kg} kg dicatat" if bcr_obj else ""
+    biochar_msg = f" + Request abu bottom ash {req.biochar_request_kg} kg dicatat" if bcr_obj else ""
 
     # Catat notifikasi perubahan transaksi untuk Petani & Pengepul
     await record_notification(
@@ -386,7 +386,7 @@ async def biochar_estimate(
     kg: float,
     land_area_ha: float,
 ):
-    """Perkiraan manfaat ekonomi biochar di sawah (rumus pendekatan sirkular, parameter menu Pabrik/Admin)."""
+    """Perkiraan manfaat ekonomi abu bottom ash di sawah (rumus pendekatan sirkular, parameter menu Pabrik/Admin)."""
     from ..engines.biochar_field import estimate
     if kg <= 0 or land_area_ha <= 0:
         raise HTTPException(422, "kg dan luas sawah harus > 0")
@@ -412,7 +412,7 @@ async def redeem_biochar(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(require_role(UserRole.PETANI))],
 ):
-    """Ajukan pengambilan biochar untuk sawah. Saldo ditahan; ledger berkurang saat pabrik menyerahkan karung."""
+    """Ajukan pengambilan abu bottom ash untuk sawah. Saldo ditahan; ledger berkurang saat pabrik menyerahkan karung."""
     from ..services.circular import request_redemption
     return await request_redemption(db, user, req.kg, req.land_area_ha, req.pickup_point, req.note)
 
@@ -512,7 +512,7 @@ async def biochar_wallet(
     user: Annotated[User, Depends(require_role(UserRole.PETANI))],
     limit: int = 20,
 ):
-    """Saldo biochar petani (hak dari biomassa yang sudah diolah) + riwayat ledger."""
+    """Saldo abu bottom ash petani (hak dari biomassa yang sudah diolah) + riwayat ledger."""
     entries = (await db.execute(
         select(BiocharLedgerEntry).where(BiocharLedgerEntry.farmer_id == user.id)
         .order_by(BiocharLedgerEntry.id.desc()).limit(min(max(limit, 1), 100))
@@ -522,7 +522,7 @@ async def biochar_wallet(
     balance = await wallet_balance(db, user.id)
     held = await pending_kg(db, user.id)
 
-    # Hitung biochar yang sudah diserahkan / diambil
+    # Hitung abu bottom ash yang sudah diserahkan / diambil
     taken_res = (await db.execute(
         select(func.coalesce(func.sum(BiocharRedemption.kg), 0.0))
         .where(BiocharRedemption.farmer_id == user.id, BiocharRedemption.status == "diserahkan")
@@ -819,7 +819,7 @@ async def create_biochar_request(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(require_role(UserRole.PETANI))],
 ):
-    """Petani memesan muatan balik biochar untuk diaplikasikan ke sawah saat armada menjemput biomassa."""
+    """Petani memesan muatan balik abu bottom ash untuk diaplikasikan ke sawah saat armada menjemput biomassa (biochar bernilai tinggi dialokasikan pabrik untuk material baterai)."""
     collector_id = req.collector_id
     if not collector_id and req.harvest_id:
         h = (await db.execute(select(Harvest).where(Harvest.id == req.harvest_id))).scalar_one_or_none()
@@ -865,7 +865,7 @@ async def list_biochar_requests(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(require_role(UserRole.PETANI))],
 ):
-    """Daftar riwayat dan status muatan balik biochar milik petani."""
+    """Daftar riwayat dan status muatan balik abu bottom ash milik petani."""
     rows = (await db.execute(
         select(BiocharRequest, User)
         .outerjoin(User, User.id == BiocharRequest.collector_id)
@@ -981,15 +981,15 @@ async def get_collector_reputations(
 
 
 # -----------------------------------------------------------------------------
-# Evaluasi Mutu Biochar & Performa Pengepul oleh Petani
+# Evaluasi Mutu Abu Bottom Ash & Performa Pengepul oleh Petani
 # -----------------------------------------------------------------------------
 class BiocharEvaluationCreate(BaseModel):
     biochar_request_id: int | None = None
     collector_id: int | None = None
     batch_code: str | None = Field(None, max_length=50)
     grain_size_mesh_rating: int = Field(5, ge=1, le=5, description="Kesesuaian ukuran butir/mesh (1-5)")
-    pyrolysis_maturity_rating: int = Field(5, ge=1, le=5, description="Tingkat kematangan pirolisis/karbonisasi (1-5)")
-    moisture_rating: int = Field(5, ge=1, le=5, description="Kekeringan / kelembapan biochar (1-5)")
+    pyrolysis_maturity_rating: int = Field(5, ge=1, le=5, description="Tingkat kalsinasi / kematangan (1-5)")
+    moisture_rating: int = Field(5, ge=1, le=5, description="Kekeringan / kelembapan abu (1-5)")
     soil_impact_rating: int = Field(5, ge=1, le=5, description="Dampak perbaikan struktur tanah & tanaman (1-5)")
     review_notes: str | None = Field(None, max_length=1000)
 
@@ -1000,7 +1000,7 @@ async def submit_biochar_evaluation(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(require_role(UserRole.PETANI))],
 ):
-    """Petani mengisi evaluasi kualitas biochar yang diterima (mesh, kematangan, kelembapan, dampak tanah)."""
+    """Petani mengisi evaluasi kualitas abu bottom ash yang diterima (mesh, kematangan, kelembapan, dampak tanah)."""
     overall = round((req.grain_size_mesh_rating + req.pyrolysis_maturity_rating + req.moisture_rating + req.soil_impact_rating) / 4.0, 2)
     eval_record = BiocharQualityEvaluation(
         farmer_id=user.id,
@@ -1026,7 +1026,7 @@ async def submit_biochar_evaluation(
             "batch_code": eval_record.batch_code,
             "review_notes": eval_record.review_notes,
         },
-        "message": f"✅ Evaluasi mutu biochar berhasil dicatat (Skor: {overall}/5.0). Umpan balik Anda membantu kontrol mutu pabrik & pengepul."
+        "message": f"✅ Evaluasi mutu abu bottom ash berhasil dicatat (Skor: {overall}/5.0). Umpan balik Anda membantu kontrol mutu pabrik & pembenah tanah sawah."
     }
 
 
@@ -1035,7 +1035,7 @@ async def list_biochar_evaluations(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(require_role(UserRole.PETANI))],
 ):
-    """Daftar riwayat evaluasi mutu biochar yang diajukan petani."""
+    """Daftar riwayat evaluasi mutu abu bottom ash yang diajukan petani."""
     rows = (await db.execute(
         select(BiocharQualityEvaluation)
         .where(BiocharQualityEvaluation.farmer_id == user.id)

@@ -101,7 +101,7 @@ SPEC = {
         M("conversion.bio_silika_pct", "Konversi → bio-silika", "%", "Konversi biomassa"),
         M("conversion.product_yield_pct", "Total produk / input", "%", "Konversi biomassa", True),
         M("conversion.closure_error_pct", "Galat penutupan mass balance (rata-rata)", "%", "Konversi biomassa"),
-        M("conversion.biochar_to_farmers_kg", "Biochar ke dompet petani", "kg", "Konversi biomassa"),
+        M("conversion.biochar_to_farmers_kg", "Abu bottom ash ke dompet petani", "kg", "Konversi biomassa"),
         M("cost.raw_material_rp", "Pembelian biomassa", "Rp", "Efisiensi biaya"),
         M("cost.cash_paid_to_collectors_rp", "Kas dibayar ke pengepul (basis kas)", "Rp", "Efisiensi biaya"),
         M("cost.avg_purchase_price_per_kg", "Harga beli rata-rata", "Rp/kg", "Efisiensi biaya"),

@@ -114,12 +114,12 @@ function openBiocharEstimateModal(requestedKg, landAreaHa) {
   d.innerHTML = `
     <form method="dialog" class="fo-form">
       <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:8px; margin-bottom:12px;">
-        <h3 style="margin:0; font-size:1.15rem; color:var(--primary);">🌱 Perkiraan Manfaat Bersih Biochar (4 Musim)</h3>
+        <h3 style="margin:0; font-size:1.15rem; color:var(--primary);">🌱 Perkiraan Manfaat Bersih Abu Bottom Ash (4 Musim)</h3>
         <button value="no" class="btn btn-secondary btn-sm" style="font-size:12px; padding:2px 8px;">✕</button>
       </div>
 
       <div style="background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:10px 14px; margin-bottom:12px; font-size:12.5px; line-height:1.5;">
-        <div>• <b>Permintaan Biochar:</b> <b style="color:var(--primary);">${num(kg, 0)} kg</b> untuk lahan seluas <b>${num(ha, 2)} ha</b></div>
+        <div>• <b>Permintaan Abu Bottom Ash:</b> <b style="color:var(--primary);">${num(kg, 0)} kg</b> untuk lahan seluas <b>${num(ha, 2)} ha</b></div>
         <div>• <b>Dosis Aplikasi:</b> ~${num(kg / ha, 0)} kg/ha (standar efisiensi sirkular)</div>
         <div>• <b>Mekanisme Kirim:</b> Diantar armada muatan balik <b>bersamaan saat menjemput/menerima biomassa</b>.</div>
       </div>
@@ -160,7 +160,7 @@ function openBiocharEstimateModal(requestedKg, landAreaHa) {
       </table>
 
       <div style="font-size:11px; color:var(--ink-muted); margin-bottom:12px; line-height:1.4;">
-        *Catatan: Biochar berfungsi sebagai pembenah tanah permanen di zona perakaran. Dampak peningkatan kesuburan terus berlanjut hingga musim ke-8 tanpa perlu aplikasi ulang berkali-kali.
+        *Catatan: Abu bottom ash dialokasikan gratis ke petani untuk pembenah tanah sirkular menetralkan pH &amp; silika. Biochar bernilai tinggi dikomersialkan pabrik ke off-taker industri material baterai (hard carbon anoda).
       </div>
 
       <div class="ui-confirm-actions">
@@ -538,7 +538,7 @@ function renderCircularTraceView(data) {
       detailsGridHtml = `
         <div class="circ-metrics-grid">
           <div class="circ-metric-item">
-            <span class="muted">Alokasi Biochar Sawah:</span><br>
+            <span class="muted">Alokasi Abu Bottom Ash Sawah:</span><br>
             <b style="color:#10b981; font-size:14px;">${num(cd.farmer_allocation_kg || 0, 1)} kg</b> (<b style="color:var(--primary);">${cd.total_bags_delivered || 0} Karung Sak</b>)<br>
             <span class="muted" style="font-size:11px;">Tujuan: <b>${esc(cd.destination_field || 'Lahan Sawah Petani')}</b></span>
           </div>
@@ -1929,16 +1929,16 @@ const AI_EVAL_CONFIG = {
   petani: {
     icon: "🌾",
     title: "Optimizer & Evaluator Petani",
-    sub: "Analisis kadar air, potensi margin Grade A, dan efisiensi biochar",
+    sub: "Analisis kadar air, potensi margin Grade A, dan efisiensi sirkular abu",
     focuses: [
       { id: "semua", label: "🔍 Semua Aspek Mutu & Finansial" },
       { id: "mutu", label: "💧 Optimasi Kadar Air & Grade A" },
-      { id: "biochar", label: "🌱 Pemanfaatan Hak Retur Biochar" },
+      { id: "biochar", label: "🌱 Pemanfaatan Hak Retur Abu Bottom Ash" },
       { id: "jadwal", label: "⏱️ Waktu & Volume Penyetoran Optimal" }
     ],
     chips: [
       "Bagaimana cara menaikkan mutu biomassa ke Grade A?",
-      "Berapa takaran biochar ideal per hektar sawah?",
+      "Berapa takaran abu bottom ash ideal per hektar sawah?",
       "Hitung potensi tambahan Rupiah jika kadar air ≤ 11%"
     ]
   },
@@ -2014,7 +2014,7 @@ const AI_EVAL_CONFIG = {
       { id: "semua", label: "🔍 Semua Aspek Ekosistem" },
       { id: "bottleneck", label: "🚦 Bottleneck Aliran Pasokan Lintas Persona" },
       { id: "harga", label: "💵 Evaluasi Kebijakan Parameter Harga Mutu" },
-      { id: "sirkular", label: "🔄 Kinerja Pengembalian Biochar ke Petani" }
+      { id: "sirkular", label: "🔄 Kinerja Pengembalian Abu Bottom Ash ke Petani" }
     ],
     chips: [
       "Ringkas performa rantai pasok Sleman & Klaten hari ini",
@@ -2327,8 +2327,8 @@ const PETANI_MARKET_HTML = `
     <div id="my-listings"><p class="muted">Memuat…</p></div>
   </div>
   <div class="card" id="petani-biochar-card" style="margin-top:16px;">
-    <div class="card-header"><div><h3 class="card-title">♻️ Biochar untuk Sawah</h3>
-      <p class="card-sub">Hak biochar dari biomassa Anda. Riwayat serah-terima muatan balik &amp; pengembalian kesuburan lahan.</p></div></div>
+    <div class="card-header"><div><h3 class="card-title">♻️ Abu Bottom Ash untuk Sawah</h3>
+      <p class="card-sub">Hak abu bottom ash dari biomassa Anda untuk pembenah tanah. Riwayat serah-terima muatan balik &amp; pengembalian kesuburan lahan (biochar dikomersialkan pabrik untuk material baterai).</p></div></div>
     <div id="biochar-sawah"><p class="muted">Memuat…</p></div>
   </div>`;
 
@@ -2348,7 +2348,7 @@ async function renderPersonaDashboard(role) {
         <div class="kpi-tile kpi-amber"><div class="kpi-lbl">Total Tonase Terkirim</div><div class="kpi-val" id="p-tot-ton">0</div><div class="kpi-lbl">Ton Biomassa <span id="p-tot-ton-avg" class="muted" style="font-size:0.78rem;">(rata-rata: 0.0 Ton / bln)</span></div></div>
         <div class="kpi-tile kpi-purple"><div class="kpi-lbl">XP Gamifikasi</div><div class="kpi-val" id="p-xp">0</div><div class="kpi-lbl" id="p-tier-lbl">Mitra Emas</div></div>
         <div class="kpi-tile kpi-blue">
-          <div class="kpi-lbl">Dompet Biochar</div>
+          <div class="kpi-lbl">Dompet Abu (Bottom Ash)</div>
           <div class="kpi-val" id="p-wallet">0</div>
           <div class="kpi-lbl">kg saldo aktif</div>
           <div style="font-size:0.75rem; margin-top:4px; opacity:0.9;" id="p-wallet-detail">
@@ -2443,12 +2443,12 @@ async function renderPersonaDashboard(role) {
               <div id="f-photo-status" class="kpi-lbl" style="margin-top:4px;"></div>
             </div>
 
-            <!-- Opsi Request Kebutuhan Biochar Sirkular -->
+            <!-- Opsi Request Kebutuhan Abu Bottom Ash Sirkular -->
             <details class="demo-hint-box" id="f-biochar-box" style="margin-top:10px;">
-              <summary>🌱 <b>Pesan Muatan Balik Biochar untuk Sawah</b> <span class="muted">(Dikirim Bersamaan dengan Biomassa)</span></summary>
+              <summary>🌱 <b>Pesan Muatan Balik Abu Bottom Ash untuk Sawah</b> <span class="muted">(Dikirim Bersamaan dengan Biomassa)</span></summary>
               <div style="padding-top:8px;">
                 <div class="form-group">
-                  <label class="kpi-lbl" for="f-biochar-req">Kebutuhan Biochar (kg)</label>
+                  <label class="kpi-lbl" for="f-biochar-req">Kebutuhan Abu Bottom Ash (kg)</label>
                   <input id="f-biochar-req" type="number" class="btn btn-secondary" style="width:100%;" min="0" step="any" placeholder="Contoh: 500 kg">
                 </div>
                 <div class="form-group">
@@ -2462,7 +2462,7 @@ async function renderPersonaDashboard(role) {
                 <button type="button" class="btn btn-secondary btn-sm" id="btn-popup-biochar-benefit" style="margin-top:4px; width:100%; border:1px solid var(--primary); color:var(--primary); font-weight:600;">
                   💡 Lihat Perkiraan Manfaat Bersih (4 Musim)
                 </button>
-                <p class="form-hint" style="margin-top:6px;">Armada pengangkut akan membawa biochar ini secara bersamaan saat mengangkut biomassa (hemat ongkos logistik &amp; zero empty trips).</p>
+                <p class="form-hint" style="margin-top:6px;">Armada pengangkut akan membawa abu bottom ash ini secara bersamaan saat mengangkut biomassa (hemat ongkos logistik &amp; zero empty trips). Biochar dialokasikan pabrik untuk material baterai.</p>
               </div>
             </details>
 
@@ -2772,7 +2772,7 @@ async function renderPersonaDashboard(role) {
             openModal(
               `Laporan ${comName} Berhasil!`,
               res.qr_code,
-              `${res.quantity_kg} kg · ${deliv === 'antar' ? 'Diantar Gudang' : 'Siap Dijemput'}${biocharReqKg ? ` · Pesan Biochar ${biocharReqKg} kg` : ''}`
+              `${res.quantity_kg} kg · ${deliv === 'antar' ? 'Diantar Gudang' : 'Siap Dijemput'}${biocharReqKg ? ` · Pesan Abu Bottom Ash ${biocharReqKg} kg` : ''}`
             );
           }
           loadPetaniData();
@@ -2811,54 +2811,10 @@ async function renderPersonaDashboard(role) {
       ${renderAIEvaluationCard("pengepul")}
       ${renderPersonaNotifWidgetHtml("pengepul")}
 
-      <div class="grid-2" style="margin-top:16px;">
-        <!-- Antrian Verifikasi Biomassa -->
-        <div class="card">
-          <div class="card-header">
-            <div>
-              <h3 class="card-title">📦 Antrian Biomassa Masuk</h3>
-              <p class="card-sub">Pilih batch multi-biomassa untuk diverifikasi dengan hasil uji proksimat</p>
-            </div>
-          </div>
-          <div style="overflow-x:auto;">
-            <table class="data-table" id="table-col-queue">
-              <thead><tr><th>ID</th><th>Petani</th><th class="num">kg</th><th>Aksi</th></tr></thead>
-              <tbody><tr><td colspan="4" style="text-align:center;">Memuat antrian...</td></tr></tbody>
-            </table>
-          </div>
-        </div>
-
-        <!-- Form Verifikasi Proksimat -->
-        <div class="card">
-          <div class="card-header">
-            <div>
-              <h3 class="card-title">🔬 Uji Mutu Proksimat Biomassa</h3>
-              <p class="card-sub" id="col-verify-target">Pilih biomassa dari tabel antrian di samping</p>
-            </div>
-          </div>
-          <form id="form-verify-harvest">
-            <input type="hidden" id="v-harvest-id">
-            <div style="margin-bottom:8px;"><label class="kpi-lbl">⚖️ Berat Timbangan Pengepul (kg) — dasar harga ke petani</label><input type="number" id="v-weight" class="btn btn-secondary" style="width:100%;" min="0.1" step="0.1" required></div>
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
-              <div><label class="kpi-lbl">Kadar Air (% bb) — wajib</label><input type="number" id="v-moisture" class="btn btn-secondary" style="width:100%;" step="0.1" min="0" max="60" inputmode="decimal" placeholder="baca moisture meter" required></div>
-              <div><label class="kpi-lbl">Kadar Abu (% bk)</label><input type="number" id="v-ash" class="btn btn-secondary" style="width:100%;" step="0.1" min="0" max="40" inputmode="decimal" placeholder="opsional · uji lab"></div>
-              <div><label class="kpi-lbl">Volatile Matter (%)</label><input type="number" id="v-vm" class="btn btn-secondary" style="width:100%;" step="0.1" min="0" max="100" inputmode="decimal" placeholder="opsional · uji lab"></div>
-              <div><label class="kpi-lbl">Fixed Carbon (%)</label><input type="number" id="v-fc" class="btn btn-secondary" style="width:100%;" step="0.1" min="0" max="100" inputmode="decimal" placeholder="opsional · uji lab"></div>
-              <div><label class="kpi-lbl">Kontaminan (%)</label><input type="number" id="v-contam" class="btn btn-secondary" style="width:100%;" step="0.1" min="0" max="50" inputmode="decimal" placeholder="0 bila bersih"></div>
-              <div><label class="kpi-lbl">Suhu Pirolisis (°C)</label><input type="number" id="v-temp" class="btn btn-secondary" style="width:100%;" value="500" step="10"></div>
-            </div>
-            <div style="margin-top:8px;"><label class="kpi-lbl">📷 URL Foto Bukti Serah-Terima (opsional)</label><input type="text" id="v-photo" class="btn btn-secondary" style="width:100%; text-align:left;" placeholder="https://... atau /uploads/..."></div>
-            <div id="v-preview" style="background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius-md); padding:12px; margin:12px 0; font-size:var(--fs-xs);">
-              Preview Mutu: <b>Grade A</b> · Skor 91.2 · Pengali Harga: <b>×1.10</b>
-            </div>
-            <button type="submit" class="btn btn-primary" style="width:100%;" id="btn-submit-verify" disabled>
-              Verifikasi Mutu &amp; Terbitkan Harga ➔
-            </button>
-            <button type="button" class="btn btn-secondary" style="width:100%; margin-top:8px;" id="btn-reject-lot" disabled>
-              ⛔ Tolak lot (sebutkan penyebab)
-            </button>
-          </form>
-        </div>
+      <!-- Hidden compatibility container for legacy test/API handlers -->
+      <div id="table-col-queue-wrap" style="display:none;" aria-hidden="true">
+        <table class="data-table" id="table-col-queue"><tbody></tbody></table>
+        <form id="form-verify-harvest"><input type="hidden" id="v-harvest-id"></form>
       </div>
     `;
     if ($("form-verify-harvest")) $("form-verify-harvest").onsubmit = submitVerify;
@@ -2901,8 +2857,8 @@ async function renderPersonaDashboard(role) {
         <div class="card" style="margin-top:16px;">
           <div class="card-header">
             <div>
-              <h3 class="card-title">🔄 Muatan Balik Biochar (Pabrik ➔ Petani)</h3>
-              <p class="card-sub">Distribusi sirkular biochar: scan checkpoint outbound pabrik &amp; konfirmasi serah-terima ke sawah</p>
+              <h3 class="card-title">🔄 Muatan Balik Abu Bottom Ash (Pabrik ➔ Petani)</h3>
+              <p class="card-sub">Distribusi sirkular abu bottom ash: scan checkpoint outbound pabrik &amp; konfirmasi serah-terima ke sawah (biochar dikomersialkan pabrik untuk baterai)</p>
             </div>
           </div>
           <div id="driver-backhaul-list">Memuat tugas muatan balik...</div>
@@ -2969,7 +2925,7 @@ async function renderPersonaDashboard(role) {
         <div class="kpi-tile"><div class="kpi-lbl">Timbangan Pengepul</div><div class="kpi-val" id="au-collector">0</div><div class="kpi-lbl">kg (sudah diterima pabrik)</div></div>
         <div class="kpi-tile kpi-amber"><div class="kpi-lbl">Timbangan Pabrik</div><div class="kpi-val" id="au-factory">0</div><div class="kpi-lbl">kg</div></div>
         <div class="kpi-tile kpi-purple"><div class="kpi-lbl">Total Susut</div><div class="kpi-val" id="au-shrink">0</div><div class="kpi-lbl" id="au-shrink-pct">%</div></div>
-        <div class="kpi-tile kpi-blue"><div class="kpi-lbl">Biochar Kembali ke Petani</div><div class="kpi-val" id="au-biochar">0</div><div class="kpi-lbl">kg teralokasi</div></div>
+        <div class="kpi-tile kpi-blue"><div class="kpi-lbl">Abu Bottom Ash Kembali ke Petani</div><div class="kpi-val" id="au-biochar">0</div><div class="kpi-lbl">kg teralokasi</div></div>
       </div>
 
       ${renderAIEvaluationCard("auditor")}
@@ -3473,7 +3429,7 @@ async function cancelListing(listingId) {
   catch (err) { showToast(err.message, "❌"); }
 }
 
-let activeOffersTab = "lelang";
+let activeOffersTab = "langsung";
 let activeVerificationFilter = "all"; // "all" | "unverified" | "verified"
 let activeOffersMonth = "all"; // "all" | "YYYY-MM"
 let cachedOffersData = { langsung_diambil: [], lelang: [], diantar_petani: [] };
@@ -3527,8 +3483,16 @@ function renderOfferRowsHtml(items, tab) {
   };
 
   return items.map(it => {
-    const bioKey = it.jenis_biomassa || it.commodity_code || "sekam_padi";
-    const meta = COMMODITY_MAP[bioKey] || { label: (it.jenis_biomassa || bioKey).replace("_", " ").toUpperCase(), badge: "badge-gray" };
+    const fId = Number(it.harvest_id || it.listing_id || it.id || 0);
+    const fName = it.nama_petani || it.farmer_name || 'Petani';
+    const fKec = it.kecamatan || it.farmer_kecamatan || '-';
+    const fPhone = it.farmer_phone || '-';
+    const qKg = it.qty_kg != null ? it.qty_kg : (it.quantity_kg != null ? it.quantity_kg : 0);
+    const pHrg = it.harga_per_kg != null ? it.harga_per_kg : (it.price_per_kg != null ? it.price_per_kg : 450);
+    const bioKey = it.commodity_code || it.biomass_type || it.jenis_biomassa || "sekam_padi";
+    const bioName = it.jenis_biomassa || it.biomass_name || bioKey.replace("_", " ").toUpperCase();
+    const meta = COMMODITY_MAP[bioKey] || { label: bioName, badge: "badge-gray" };
+    const pKirim = it.pilihan_kirim || it.delivery_scheme_label || (it.delivery_scheme === "JEMPUT" ? "Dijemput Pengepul" : "Diantar Petani");
 
     let actionHtml = "";
     if (tab === "langsung" || tab === "diantar") {
@@ -3536,13 +3500,14 @@ function renderOfferRowsHtml(items, tab) {
         actionHtml = `
           <div style="display:flex; flex-direction:column; gap:4px;">
             <button type="button" class="btn btn-primary btn-sm" style="background:#059669; border-color:#059669; font-weight:600; white-space:nowrap; padding:4px 8px;"
-                    data-onclick="openApproveOfferModal(${Number(it.harvest_id || 0)}, ${Number(it.qty_kg || 0)}, ${Number(it.harga_per_kg || 450)}, '${esc(it.nama_petani)}', '${esc(it.jenis_biomassa)}')">
+                    data-onclick="openApproveOfferModal(${fId}, ${Number(qKg)}, ${Number(pHrg)}, '${esc(fName)}', '${esc(bioName)}')">
               ✓ Setujui Qty &amp; Harga
             </button>
             <button type="button" class="btn btn-secondary btn-sm" style="font-size:11px; padding:3px 7px;"
-                    data-onclick="openVerificationModal(${Number(it.harvest_id || 0)}, ${Number(it.qty_kg || 0)})"
-                    data-verify-harvest-id="${Number(it.harvest_id || 0)}"
-                    data-verify-qty="${Number(it.qty_kg || 0)}">
+                    data-onclick="selectVerifyItem(${fId})"
+                    data-verify-harvest-id="${fId}"
+                    data-verify-qty="${Number(qKg)}"
+                    title="Buka Popup Uji Mutu Proksimat &amp; Timbang Biomassa">
               🔬 Uji Mutu Lapangan
             </button>
           </div>
@@ -3552,9 +3517,9 @@ function renderOfferRowsHtml(items, tab) {
           <div style="display:flex; flex-direction:column; gap:4px;">
             <span class="badge badge-green" style="font-size:10px; text-align:center;">✓ Terverifikasi Pengepul</span>
             <button type="button" class="btn btn-primary btn-sm" style="padding:4px 8px;"
-                    data-onclick="openVerificationModal(${Number(it.harvest_id || 0)}, ${Number(it.qty_kg || 0)})"
-                    data-verify-harvest-id="${Number(it.harvest_id || 0)}"
-                    data-verify-qty="${Number(it.qty_kg || 0)}">
+                    data-onclick="selectVerifyItem(${fId})"
+                    data-verify-harvest-id="${fId}"
+                    data-verify-qty="${Number(qKg)}">
               ⚖️ Timbang &amp; Uji Fisik
             </button>
           </div>
@@ -3564,17 +3529,17 @@ function renderOfferRowsHtml(items, tab) {
       const curBid = it.my_active_bid;
       actionHtml = `
         <div style="display:flex; gap:4px; align-items:center; flex-wrap:wrap;">
-          <input id="bp-${it.listing_id}" type="number" class="btn btn-secondary btn-sm" style="width:85px;" value="${curBid ? curBid.price : (it.harga_per_kg || 450)}" placeholder="Rp/kg" aria-label="Harga tawaran Rp/kg lot #${it.listing_id}">
-          <input id="bq-${it.listing_id}" type="number" class="btn btn-secondary btn-sm" style="width:80px;" value="${it.qty_kg}" min="1" max="${it.qty_kg}" aria-label="Jumlah kg ditawar lot #${it.listing_id}">
-          <select id="bs-${it.listing_id}" class="btn btn-secondary btn-sm" style="display:none;" aria-label="Skema lot #${it.listing_id}"><option value="jemput">jemput</option></select>
-          <button type="button" class="btn btn-secondary btn-sm" data-onclick="adviseBid(${Number(it.listing_id)}, this)">Hitung saran</button>
+          <input id="bp-${it.listing_id || fId}" type="number" class="btn btn-secondary btn-sm" style="width:85px;" value="${curBid ? curBid.price : (pHrg || 450)}" placeholder="Rp/kg" aria-label="Harga tawaran Rp/kg lot #${it.listing_id || fId}">
+          <input id="bq-${it.listing_id || fId}" type="number" class="btn btn-secondary btn-sm" style="width:80px;" value="${qKg}" min="1" max="${qKg}" aria-label="Jumlah kg ditawar lot #${it.listing_id || fId}">
+          <select id="bs-${it.listing_id || fId}" class="btn btn-secondary btn-sm" style="display:none;" aria-label="Skema lot #${it.listing_id || fId}"><option value="jemput">jemput</option></select>
+          <button type="button" class="btn btn-secondary btn-sm" data-onclick="adviseBid(${Number(it.listing_id || fId)}, this)">Hitung saran</button>
           <button type="button" class="btn btn-primary btn-sm"
-                  data-onclick="placeBid(${Number(it.listing_id)}, this)"
-                  data-bid-listing-id="${Number(it.listing_id)}">
+                  data-onclick="placeBid(${Number(it.listing_id || fId)}, this)"
+                  data-bid-listing-id="${Number(it.listing_id || fId)}">
             ${curBid ? 'Ubah Tawaran' : 'Tawar ➔'}
           </button>
         </div>
-        <div id="ba-${it.listing_id}" class="kpi-lbl" style="font-size:10px; margin-top:3px;"></div>
+        <div id="ba-${it.listing_id || fId}" class="kpi-lbl" style="font-size:10px; margin-top:3px;"></div>
         ${curBid ? `<span class="badge badge-blue" style="font-size:10px; margin-top:2px; display:inline-block;">Tawaran Anda: ${rp(curBid.price)}/kg</span>` : ''}
         ${it.is_verified_initial ? `<span class="badge badge-green" style="font-size:10px; margin-top:2px; display:inline-block;">✓ Deal Terverifikasi</span>` : ''}
       `;
@@ -3595,11 +3560,11 @@ function renderOfferRowsHtml(items, tab) {
       qualityText = `<span style="font-weight:600;">${esc(it.kualitas)}</span>`;
     }
 
-    const rawOrigin = it.origin_qr_code || it.wr_code || (it.harvest_id ? `WR-HV-${it.harvest_id}` : `WR-LST-${it.listing_id}`);
+    const rawOrigin = it.origin_qr_code || it.qr_code || it.wr_code || (it.harvest_id ? ('WR-HV-' + String(it.harvest_id).padStart(4, '0')) : ('WR-LST-' + String(it.listing_id || fId).padStart(4, '0')));
     const trxCode = it.custody_trx || it.trx_code || null;
 
     return `
-      <tr data-listing-id="${it.listing_id || it.harvest_id || ''}">
+      <tr data-listing-id="${it.listing_id || it.harvest_id || fId}">
         <td style="vertical-align:top;">
           <div style="font-family:monospace; font-weight:700; color:var(--primary); font-size:11.5px; display:flex; align-items:center; gap:4px; flex-wrap:nowrap;">
             <span>🌾 ${esc(rawOrigin)}</span>
@@ -3619,28 +3584,31 @@ function renderOfferRowsHtml(items, tab) {
           <div style="font-size:10px; color:var(--ink-muted); margin-top:2px;">${esc(it.status_label || it.status)}</div>
         </td>
         <td>
-          <b>${esc(it.nama_petani)}</b>
-          <br><small class="muted" style="font-size:10px;">📍 Kec. ${esc(it.kecamatan || '-')}</small>
+          <b>${esc(fName)}</b>
+          <br><small class="muted" style="font-size:10px;">📍 Kec. ${esc(fKec)}</small>
         </td>
         <td>
-          <code style="font-size:11.5px; color:var(--ink);">${esc(it.farmer_phone || '-')}</code>
+          <div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap;">
+            <code style="font-size:11.5px; color:var(--ink);">${esc(fPhone)}</code>
+            <button type="button" class="btn btn-secondary btn-sm btn-wa" data-fo-contact="${fId}" style="font-size:10.5px; padding:2px 6px;" aria-label="Chat WhatsApp petani lot #${fId}">${it.farmer_without_phone ? "👵 Tanpa HP" : "💬 WA"}</button>
+          </div>
         </td>
-        <td><span class="badge ${meta.badge}">${esc(it.jenis_biomassa)}</span></td>
+        <td><span class="badge ${meta.badge}">${esc(bioName)}</span></td>
         <td class="num">
-          <b style="font-size:13px;">${num(it.qty_kg, 0)}</b>
-          ${it.farmer_claimed_qty && it.farmer_claimed_qty !== it.qty_kg ? `<br><small class="muted" style="font-size:10px;">(Klaim: ${num(it.farmer_claimed_qty, 0)})</small>` : ''}
+          <b style="font-size:13px;">${num(qKg, 0)}</b>
+          ${it.farmer_claimed_qty && it.farmer_claimed_qty !== qKg ? `<br><small class="muted" style="font-size:10px;">(Klaim: ${num(it.farmer_claimed_qty, 0)})</small>` : ''}
         </td>
         <td>
           ${qualityText}
           <br><span style="font-size:11px; color:var(--ink-muted);">🏭 ${esc(it.titik_pasok || 'Lahan Petani')}</span>
         </td>
-        <td><span class="badge ${it.pilihan_kirim && it.pilihan_kirim.includes('Dijemput') ? 'badge-blue' : 'badge-green'}">${esc(it.pilihan_kirim || 'Diantar')}</span></td>
-        <td class="num"><b>${rp(it.harga_per_kg)}</b></td>
+        <td><span class="badge ${pKirim.includes('Dijemput') ? 'badge-blue' : 'badge-green'}">${esc(pKirim)}</span></td>
+        <td class="num"><b>${rp(pHrg)}</b></td>
         <td>
-          ${it.biochar_request ? `<span class="badge badge-green" style="font-size:10px; margin-bottom:2px; display:inline-block;" title="Pesan muatan balik biochar">🌱 Biochar: ${num(it.biochar_request.requested_kg, 0)} kg</span><br>` : ''}
+          ${it.biochar_request ? `<span class="badge badge-green" style="font-size:10px; margin-bottom:2px; display:inline-block;" title="Pesan muatan balik abu bottom ash">🌱 Abu Bottom Ash: ${num(it.biochar_request.requested_kg, 0)} kg</span><br>` : ''}
           <div style="display:flex; gap:4px; align-items:center; flex-wrap:wrap;">
-            ${it.photo_url ? `<button type="button" class="btn btn-secondary btn-sm" style="font-size:10px; padding:2px 6px;" data-onclick="viewPhotoModal('${esc(it.photo_url)}', 'Foto Muatan ${esc(it.nama_petani)}')">📷 Foto</button>` : ''}
-            <button type="button" class="btn btn-secondary btn-sm" style="font-size:11px; padding:3px 7px;" data-onclick="viewOfferDetailModal(${Number(it.listing_id || it.harvest_id || 0)}, '${tab}')">🔍 Detail</button>
+            ${it.photo_url ? `<button type="button" class="btn btn-secondary btn-sm" style="font-size:10px; padding:2px 6px;" data-onclick="viewPhotoModal('${esc(it.photo_url)}', 'Foto Muatan ${esc(fName)}')">📷 Foto</button>` : ''}
+            <button type="button" class="btn btn-secondary btn-sm" style="font-size:11px; padding:3px 7px;" data-onclick="viewOfferDetailModal(${fId}, '${tab}')">🔍 Detail</button>
           </div>
         </td>
         <td>${actionHtml}</td>
@@ -3708,10 +3676,11 @@ function renderOffersTable() {
         verifiedCount: 0
       };
     }
+    const itemKg = Number(it.qty_kg != null ? it.qty_kg : it.quantity_kg) || 0;
+    const itemHrg = Number(it.harga_per_kg != null ? it.harga_per_kg : it.price_per_kg) || 450;
     monthGroups[meta.key].items.push(it);
-    monthGroups[meta.key].totalKg += (Number(it.qty_kg) || 0);
-    const hrg = Number(it.harga_per_kg) || 450;
-    monthGroups[meta.key].totalEstRp += ((Number(it.qty_kg) || 0) * hrg);
+    monthGroups[meta.key].totalKg += itemKg;
+    monthGroups[meta.key].totalEstRp += (itemKg * itemHrg);
     if (it.is_verified_initial) {
       monthGroups[meta.key].verifiedCount++;
     } else {
@@ -3744,8 +3713,8 @@ function renderOffersTable() {
   let monthlyCardsHtml = "";
   displayedMonthKeys.forEach((mKey, idx) => {
     const g = monthGroups[mKey];
-    // Open by default for first month or if single month selected
-    const isExpanded = (displayedMonthKeys.length === 1 || idx === 0);
+    // Open by default so all lots across months are immediately visible & accessible
+    const isExpanded = true;
     const rowsHtml = renderOfferRowsHtml(g.items, activeOffersTab);
 
     monthlyCardsHtml += `
@@ -3771,44 +3740,35 @@ function renderOffersTable() {
         </div>
 
         <!-- Tabel Detail Data Per Bulan -->
-        <div id="month-detail-${mKey}" style="display:${isExpanded ? 'block' : 'none'}; overflow-x:auto;">
-          <table class="data-table" style="margin:0;">
-            <thead>
-              <tr>
-                <th>No. QR Code Ketelusuran</th>
-                <th>Status</th>
-                <th>Nama Petani</th>
-                <th>📱 No. Telepon Petani</th>
-                <th>Jenis Biomassa</th>
-                <th class="num">Qty (kg)</th>
-                <th>Kualitas &amp; Titik Pasok</th>
-                <th>Pilihan Kirim</th>
-                <th class="num">Harga/kg</th>
-                <th>Detail Petani</th>
-                <th>Aksi Finalisasi</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${rowsHtml}
-            </tbody>
-          </table>
+        <div id="month-detail-${mKey}" style="display:${isExpanded ? 'block' : 'none'};">
+          <div class="table-scroll">
+            <table class="data-table" style="margin:0;">
+              <thead>
+                <tr>
+                  <th>No. QR Code Ketelusuran</th>
+                  <th>Status</th>
+                  <th>Nama Petani</th>
+                  <th>📱 No. Telepon Petani</th>
+                  <th>Jenis Biomassa</th>
+                  <th class="num">Qty (kg)</th>
+                  <th>Kualitas &amp; Titik Pasok</th>
+                  <th>Pilihan Kirim</th>
+                  <th class="num">Harga/kg</th>
+                  <th>Detail Petani</th>
+                  <th>Aksi Finalisasi</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rowsHtml}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     `;
   });
 
   box.innerHTML = monthPillsHtml + monthlyCardsHtml;
-
-  // Delegasi klik langsung pada tabel untuk Verifikasi dan Bidding
-  box.onclick = function(e) {
-    const btnV = e.target && e.target.closest && e.target.closest("[data-verify-harvest-id]");
-    if (btnV) {
-      const hid = Number(btnV.getAttribute("data-verify-harvest-id"));
-      const qty = Number(btnV.getAttribute("data-verify-qty"));
-      openVerificationModal(hid, qty);
-      return;
-    }
-  };
 }
 
 function openApproveOfferModal(harvestId, currentQty, currentPrice, farmerName, commodityName) {
@@ -3863,6 +3823,9 @@ function openApproveOfferModal(harvestId, currentQty, currentPrice, farmerName, 
 window.openApproveOfferModal = openApproveOfferModal;
 
 function openVerificationModal(harvestId, qty, item) {
+  const existing = document.getElementById("verification-modal-dialog");
+  if (existing) existing.remove();
+
   item = item || {};
   const allLots = (cachedOffersData.langsung_diambil || []).concat(cachedOffersData.diantar_petani || []).concat(cachedOffersData.lelang || []);
   const currentItem = allLots.find(x => x.harvest_id == harvestId) || item;
@@ -3873,13 +3836,14 @@ function openVerificationModal(harvestId, qty, item) {
   const originCode = currentItem.origin_qr_code || currentItem.wr_code || `WR-HV-${harvestId}`;
 
   const d = document.createElement("dialog");
+  d.id = "verification-modal-dialog";
   d.className = "ui-confirm";
   d.style.maxWidth = "560px";
   d.style.width = "95vw";
   d.innerHTML = `
     <form method="dialog" class="fo-form" id="modal-verify-form" style="padding:4px;">
       <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:10px; margin-bottom:12px;">
-        <h3 style="margin:0; font-size:1.15rem; color:var(--primary);">🔬 Uji Mutu Proksimat &amp; Timbang</h3>
+        <h3 style="margin:0; font-size:1.15rem; color:var(--primary);">🔬 Uji Mutu Proksimat Biomassa &amp; Timbang</h3>
         <button type="button" class="btn btn-secondary btn-sm" id="btn-close-vm" style="font-size:12px; padding:2px 8px;">✕</button>
       </div>
 
@@ -3894,41 +3858,42 @@ function openVerificationModal(harvestId, qty, item) {
       </div>
 
       <div class="fo-body">
+        <input type="hidden" id="v-harvest-id" value="${harvestId}">
         <div style="margin-bottom:8px;">
-          <label class="kpi-lbl" for="vm-weight">⚖️ Berat Timbangan Nyata Pengepul (kg) <span style="color:var(--warn); font-weight:700;">*wajib</span></label>
-          <input type="number" id="vm-weight" class="btn btn-secondary" style="width:100%; text-align:left;" min="0.1" step="0.1" value="${initialQty}" required inputmode="decimal">
+          <label class="kpi-lbl" for="v-weight">⚖️ Berat Timbangan Nyata Pengepul (kg) <span style="color:var(--warn); font-weight:700;">*wajib</span></label>
+          <input type="number" id="v-weight" name="v_weight" class="btn btn-secondary" style="width:100%; text-align:left;" min="0.1" step="0.1" value="${initialQty}" required inputmode="decimal">
         </div>
 
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
           <div>
-            <label class="kpi-lbl" for="vm-moisture">💧 Kadar Air (% bb) <span style="color:var(--warn); font-weight:700;">*wajib</span></label>
-            <input type="number" id="vm-moisture" class="btn btn-secondary" style="width:100%; text-align:left;" step="0.1" min="0" max="60" inputmode="decimal" placeholder="Baca moisture meter" required value="13.5">
+            <label class="kpi-lbl" for="v-moisture">💧 Kadar Air (% bb) <span style="color:var(--warn); font-weight:700;">*wajib</span></label>
+            <input type="number" id="v-moisture" name="v_moisture" class="btn btn-secondary" style="width:100%; text-align:left;" step="0.1" min="0" max="60" inputmode="decimal" placeholder="Baca moisture meter" required value="13.5">
           </div>
           <div>
-            <label class="kpi-lbl" for="vm-ash">🧪 Kadar Abu (% bk)</label>
-            <input type="number" id="vm-ash" class="btn btn-secondary" style="width:100%; text-align:left;" step="0.1" min="0" max="40" inputmode="decimal" placeholder="Opsional / uji lab">
+            <label class="kpi-lbl" for="v-ash">🧪 Kadar Abu (% bk)</label>
+            <input type="number" id="v-ash" name="v_ash" class="btn btn-secondary" style="width:100%; text-align:left;" step="0.1" min="0" max="40" inputmode="decimal" placeholder="Opsional / uji lab">
           </div>
           <div>
-            <label class="kpi-lbl" for="vm-vm">🔥 Volatile Matter (%)</label>
-            <input type="number" id="vm-vm" class="btn btn-secondary" style="width:100%; text-align:left;" step="0.1" min="0" max="100" inputmode="decimal" placeholder="Opsional / uji lab">
+            <label class="kpi-lbl" for="v-vm">🔥 Volatile Matter (%)</label>
+            <input type="number" id="v-vm" name="v_vm" class="btn btn-secondary" style="width:100%; text-align:left;" step="0.1" min="0" max="100" inputmode="decimal" placeholder="Opsional / uji lab">
           </div>
           <div>
-            <label class="kpi-lbl" for="vm-fc">🪨 Fixed Carbon (%)</label>
-            <input type="number" id="vm-fc" class="btn btn-secondary" style="width:100%; text-align:left;" step="0.1" min="0" max="100" inputmode="decimal" placeholder="Opsional / uji lab">
+            <label class="kpi-lbl" for="v-fc">🪨 Fixed Carbon (%)</label>
+            <input type="number" id="v-fc" name="v_fc" class="btn btn-secondary" style="width:100%; text-align:left;" step="0.1" min="0" max="100" inputmode="decimal" placeholder="Opsional / uji lab">
           </div>
           <div>
-            <label class="kpi-lbl" for="vm-contam">🍂 Kontaminan (%)</label>
-            <input type="number" id="vm-contam" class="btn btn-secondary" style="width:100%; text-align:left;" step="0.1" min="0" max="50" inputmode="decimal" value="0">
+            <label class="kpi-lbl" for="v-contam">🍂 Kontaminan (%)</label>
+            <input type="number" id="v-contam" name="v_contam" class="btn btn-secondary" style="width:100%; text-align:left;" step="0.1" min="0" max="50" inputmode="decimal" value="0">
           </div>
           <div>
-            <label class="kpi-lbl" for="vm-temp">🌡️ Suhu Pirolisis (°C)</label>
-            <input type="number" id="vm-temp" class="btn btn-secondary" style="width:100%; text-align:left;" value="500" step="10">
+            <label class="kpi-lbl" for="v-temp">🌡️ Suhu Pirolisis (°C)</label>
+            <input type="number" id="v-temp" name="v_temp" class="btn btn-secondary" style="width:100%; text-align:left;" value="500" step="10">
           </div>
         </div>
 
         <div style="margin-top:8px;">
-          <label class="kpi-lbl" for="vm-photo">📷 URL Foto Bukti Serah-Terima (opsional)</label>
-          <input type="text" id="vm-photo" class="btn btn-secondary" style="width:100%; text-align:left;" placeholder="https://... atau /uploads/...">
+          <label class="kpi-lbl" for="v-photo">📷 URL Foto Bukti Serah-Terima (opsional)</label>
+          <input type="text" id="v-photo" name="v_photo" class="btn btn-secondary" style="width:100%; text-align:left;" placeholder="https://... atau /uploads/...">
         </div>
 
         <div id="vm-preview" style="background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:10px 14px; margin:12px 0; font-size:12px; line-height:1.4;">
@@ -3940,7 +3905,7 @@ function openVerificationModal(harvestId, qty, item) {
         <div class="ui-confirm-actions" style="margin-top:14px; display:flex; gap:8px; flex-wrap:wrap;">
           <button type="button" class="btn btn-secondary" id="btn-cancel-vm" style="flex:1;">Batal</button>
           <button type="button" class="btn btn-danger" id="btn-reject-vm">⛔ Tolak Lot</button>
-          <button type="submit" class="btn btn-primary" id="btn-submit-vm" style="flex:2;">Verifikasi Mutu &amp; Terbitkan Harga ➔</button>
+          <button type="submit" class="btn btn-primary" id="btn-submit-verify" style="flex:2;">Verifikasi Mutu &amp; Terbitkan Harga ➔</button>
         </div>
       </div>
     </form>
@@ -3955,9 +3920,9 @@ function openVerificationModal(harvestId, qty, item) {
 
   // Real-time preview calculation
   const updatePreview = () => {
-    const w = Number(d.querySelector("#vm-weight").value) || 0;
-    const m = Number(d.querySelector("#vm-moisture").value) || 0;
-    const ct = Number(d.querySelector("#vm-contam").value) || 0;
+    const w = Number((d.querySelector("#v-weight") || {}).value) || 0;
+    const m = Number((d.querySelector("#v-moisture") || {}).value) || 0;
+    const ct = Number((d.querySelector("#v-contam") || {}).value) || 0;
 
     let grade = "A", mult = 1.10, score = 92;
     if (m > 18 || ct > 5) {
@@ -3983,7 +3948,7 @@ function openVerificationModal(harvestId, qty, item) {
     `;
   };
 
-  d.querySelectorAll("#vm-weight, #vm-moisture, #vm-ash, #vm-contam").forEach(inp => {
+  d.querySelectorAll("#v-weight, #v-moisture, #v-ash, #v-contam").forEach(inp => {
     inp.addEventListener("input", updatePreview);
   });
   updatePreview();
@@ -3998,8 +3963,8 @@ function openVerificationModal(harvestId, qty, item) {
       if (reason && reason.trim()) {
         apiMutation("/api/v1/collector/verify", {
           harvest_id: Number(harvestId),
-          weighed_kg: Number(d.querySelector("#vm-weight").value) || initialQty,
-          moisture: Number(d.querySelector("#vm-moisture").value) || 22,
+          weighed_kg: Number(d.querySelector("#v-weight").value) || initialQty,
+          moisture: Number(d.querySelector("#v-moisture").value) || 22,
           rejection_reason: reason.trim(),
           is_rejected: true
         }, `Tolak lot #${harvestId}`).then(res => {
@@ -4014,7 +3979,7 @@ function openVerificationModal(harvestId, qty, item) {
   // Handle submit verification
   d.querySelector("#modal-verify-form").onsubmit = async (e) => {
     e.preventDefault();
-    const btnSubmit = d.querySelector("#btn-submit-vm");
+    const btnSubmit = d.querySelector("#btn-submit-verify");
     const errEl = d.querySelector(".form-error");
     btnSubmit.disabled = true;
     errEl.hidden = true;
@@ -4022,14 +3987,14 @@ function openVerificationModal(harvestId, qty, item) {
     try {
       const payload = {
         harvest_id: Number(harvestId),
-        weighed_kg: Number(d.querySelector("#vm-weight").value),
-        moisture: Number(d.querySelector("#vm-moisture").value),
-        ash: d.querySelector("#vm-ash").value ? Number(d.querySelector("#vm-ash").value) : null,
-        volatile_matter: d.querySelector("#vm-vm").value ? Number(d.querySelector("#vm-vm").value) : null,
-        fixed_carbon: d.querySelector("#vm-fc").value ? Number(d.querySelector("#vm-fc").value) : null,
-        contamination: Number(d.querySelector("#vm-contam").value) || 0,
-        pyrolysis_temp_c: Number(d.querySelector("#vm-temp").value) || 500,
-        evidence_photo_url: d.querySelector("#vm-photo").value.trim() || null,
+        weighed_kg: Number(d.querySelector("#v-weight").value),
+        moisture: Number(d.querySelector("#v-moisture").value),
+        ash: d.querySelector("#v-ash").value ? Number(d.querySelector("#v-ash").value) : null,
+        volatile_matter: d.querySelector("#v-vm").value ? Number(d.querySelector("#v-vm").value) : null,
+        fixed_carbon: d.querySelector("#v-fc").value ? Number(d.querySelector("#v-fc").value) : null,
+        contamination: Number(d.querySelector("#v-contam").value) || 0,
+        pyrolysis_temp_c: Number(d.querySelector("#v-temp").value) || 500,
+        evidence_photo_url: d.querySelector("#v-photo").value.trim() || null,
       };
 
       const res = await apiMutation("/api/v1/collector/verify", payload, `Verifikasi biomassa #${harvestId}`);
@@ -4039,8 +4004,9 @@ function openVerificationModal(harvestId, qty, item) {
 
       if (!res.queued && res.verification_code) {
         const batchRef = res.batch_ref || (res.listing_id ? `WR-LST-${String(res.listing_id).padStart(4, '0')}` : `WR-HV-${String(res.harvest_id || harvestId).padStart(4, '0')}`);
+        const comLabel = (res.commodity || comName || "sekam").toLowerCase().includes("sekam") ? "Sekam" : (res.commodity || comName);
         openModal(
-          `Resi Serah-Terima ${res.commodity || comName}`,
+          `Resi Serah-Terima ${comLabel}`,
           res.verification_code,
           `${num(res.weighed_kg, 0)} kg · Grade ${res.grade} · ${rp(res.total_price)} — tunjukkan/foto resi ini bersama petani`,
           {
@@ -4088,7 +4054,7 @@ const PENGEPUL_MARKET_HTML = `
           🏭 Kontrak &amp; Harga Pabrik Multi-Biomassa
         </button>
         <button type="button" class="btn btn-primary btn-sm" data-onclick="openRouteOptimizationModal()">
-          🗺️ Optimasi Rute Terverifikasi &amp; Biochar
+          🗺️ Optimasi Rute Terverifikasi &amp; Abu Bottom Ash
         </button>
         <button class="btn btn-primary btn-sm" data-onclick="planPickup(this)">🚛 Rencanakan jemput</button>
       </div>
@@ -4440,10 +4406,10 @@ async function planPickup(btn) {
           <p class="kpi-lbl" style="margin:4px 0;">Muatan: <b>${num(r.summary.total_ton, 2)} ton</b> · Biaya: <b>${rp(r.summary.total_cost)}</b> (${rp(r.summary.cost_per_kg)}/kg) · Algoritma: ${esc(r.summary.algorithm)}</p>
           ${r.backhaul_biochar && r.backhaul_biochar.length ? `
             <div class="banner banner-info" style="margin:8px 0; padding:10px 14px; border-left:4px solid #10b981; background:rgba(16,185,129,0.08); border-radius:4px;">
-              <b style="color:#10b981;">🌱 Alur Balik Sirkular Terintegrasi (Backhaul Biochar):</b>
-              <span style="font-size:12px; display:block; margin-top:2px;">Ditemukan <b>${r.backhaul_biochar.length}</b> permohonan biochar (${num(r.backhaul_biochar.reduce((a,b)=>a+(b.quantity_kg||0),0),0)} kg) dari petani di sepanjang rute penjemputan ini. Armada dapat memuat biochar dari pabrik/gudang untuk didistribusikan langsung saat tiba di lokasi petani!</span>
+              <b style="color:#10b981;">🌱 Alur Balik Sirkular Terintegrasi (Backhaul Abu Bottom Ash):</b>
+              <span style="font-size:12px; display:block; margin-top:2px;">Ditemukan <b>${r.backhaul_biochar.length}</b> permohonan abu bottom ash (${num(r.backhaul_biochar.reduce((a,b)=>a+(b.quantity_kg||0),0),0)} kg) dari petani di sepanjang rute penjemputan ini. Armada dapat memuat abu bottom ash dari pabrik/gudang untuk didistribusikan langsung saat tiba di lokasi petani!</span>
               <ul style="margin:6px 0 0 16px; font-size:11px;">
-                ${r.backhaul_biochar.map(b => `<li>Petani <b>${esc(b.farmer_name)}</b>: <b>${num(b.quantity_kg,0)} kg</b> biochar (${esc(b.status)}) ➔ <i>${esc(b.delivery_address)}</i></li>`).join("")}
+                ${r.backhaul_biochar.map(b => `<li>Petani <b>${esc(b.farmer_name)}</b>: <b>${num(b.quantity_kg,0)} kg</b> abu bottom ash (${esc(b.status)}) ➔ <i>${esc(b.delivery_address)}</i></li>`).join("")}
               </ul>
             </div>
           ` : ''}
@@ -4462,7 +4428,7 @@ async function planPickup(btn) {
           </table>
           <div style="margin-top:12px; display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap;">
             <button type="button" class="btn btn-secondary btn-sm" data-onclick="openRouteOptimizationModal()">
-              🗺️ Optimasi Rute Terverifikasi &amp; Biochar
+              🗺️ Optimasi Rute Terverifikasi &amp; Abu Bottom Ash
             </button>
             <button type="button" class="btn btn-primary btn-sm" data-onclick="confirmAndDispatchPickupPlan(this)">
               🚀 Konfirmasi &amp; Kirim Jadwal ke Petani
@@ -4494,7 +4460,7 @@ window.confirmAndDispatchPickupPlan = confirmAndDispatchPickupPlan;
 // ==============================================================
 // PABRIK — Procurement B2B, QC masuk, batch manufaktur sirkular, pricing engine
 // ==============================================================
-const PRODUCT_NAMES = { bio_pellet: "Bio-pellet / Briket", biochar: "Biochar", bio_silika: "Bio-silika" };
+const PRODUCT_NAMES = { bio_pellet: "Bio-pellet / Briket", biochar: "Biochar Prekursor Material Baterai (Hard Carbon)", bio_silika: "Bio-silika" };
 const LOSS_NAMES = { air: "Air diuapkan", volatil_syngas: "Volatil / syngas", gas_pembakaran: "Gas pembakaran/kalsinasi",
                      bio_oil: "Bio-oil / tar (asap cair)",
                      residu_ekstraksi: "Residu ekstraksi", susut_proses: "Susut proses" };
@@ -4504,14 +4470,14 @@ const DR_STATUS = { submitted: "badge-amber", countered: "badge-blue", accepted:
 const FACTORY_OPS_HTML = `
   <div class="card" style="margin-top:16px;">
     <div class="card-header"><div><h3 class="card-title">🧮 Rekomendasi Harga Beli Multi-Biomassa</h3>
-      <p class="card-sub">Netback multi-produk (bio-pellet, briket, biochar, bio-silika) − biaya variabel − biaya tetap − margin (angka dari menu Parameter)</p></div></div>
+      <p class="card-sub">Netback multi-produk (bio-pellet, briket, biochar baterai, bio-silika) − biaya variabel − biaya tetap − margin (angka dari menu Parameter)</p></div></div>
     <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px;">
       <div style="grid-column:span 3;"><label class="kpi-lbl">Komoditas biomassa</label><select id="pr-commodity" class="btn btn-secondary" style="width:100%;"></select></div>
       <div><label class="kpi-lbl">Kadar air (%)</label><input id="pr-m" type="number" class="btn btn-secondary" style="width:100%;" value="11" step="0.5"></div>
       <div><label class="kpi-lbl">Abu (% bk)</label><input id="pr-a" type="number" class="btn btn-secondary" style="width:100%;" value="18" step="0.5"></div>
       <div><label class="kpi-lbl">Kontaminan (%)</label><input id="pr-c" type="number" class="btn btn-secondary" style="width:100%;" value="0" step="0.5"></div>
       <div><label class="kpi-lbl">Harga bio-pellet / briket (Rp/kg) *</label><input id="pr-pp" type="number" class="btn btn-secondary" style="width:100%;" min="0" placeholder="wajib"></div>
-      <div><label class="kpi-lbl">Harga biochar (Rp/kg) *</label><input id="pr-pb" type="number" class="btn btn-secondary" style="width:100%;" min="0" placeholder="wajib"></div>
+      <div><label class="kpi-lbl">Harga biochar baterai (Rp/kg) *</label><input id="pr-pb" type="number" class="btn btn-secondary" style="width:100%;" min="0" placeholder="wajib"></div>
       <div><label class="kpi-lbl">Harga bio-silika (Rp/kg) *</label><input id="pr-ps" type="number" class="btn btn-secondary" style="width:100%;" min="0" placeholder="wajib"></div>
       <div style="grid-column:span 2;"><label class="kpi-lbl">Jalur bio-silika</label><select id="pr-route" class="btn btn-secondary" style="width:100%;">
         <option value="biochar">Silika dari biochar</option>
@@ -4539,8 +4505,8 @@ const FACTORY_OPS_HTML = `
     <div id="st-list" style="overflow-x:auto;"><p class="muted">Memuat…</p></div>
   </div>
   <div class="card" style="margin-top:16px;">
-    <div class="card-header"><div><h3 class="card-title">🏭 Batch Produksi Multi-Produk (Biomassa → Pellet/Briket, Biochar, Biosilika)</h3>
-      <p class="card-sub">Pilih lot hasil QC, isi timbangan output (bio-pellet / briket, biochar, bio-silika) &amp; loss, biaya → mass balance &amp; biaya per ton produk</p></div>
+    <div class="card-header"><div><h3 class="card-title">🏭 Batch Produksi Multi-Produk (Biomassa → Pellet/Briket, Biochar Baterai, Biosilika)</h3>
+      <p class="card-sub">Pilih lot hasil QC, isi timbangan output (bio-pellet / briket, biochar material baterai, bio-silika, abu bottom ash untuk petani) &amp; loss, biaya → mass balance &amp; biaya per ton produk</p></div>
       <button class="btn btn-secondary btn-sm" id="btn-batch-model">Isi dari model</button></div>
     <div style="display:flex; flex-direction:column; gap:20px;">
       <div>
@@ -4851,7 +4817,7 @@ async function saveBatch() {
         <td class="num">${rp(p.price_per_ton_rp)}</td><td class="num"><b>${p.margin_per_ton_rp == null ? "-" : rp(p.margin_per_ton_rp)}</b></td>
         <td class="num">${e.yield_variance[k].variance_pct == null ? "-" : num(e.yield_variance[k].variance_pct, 1) + "%"}</td></tr>`).join("")}</tbody></table>
       <p class="kpi-lbl">${esc(e.computation_details.alokasi)} · ${esc(e.computation_details.impas)}</p>
-      <div class="card" style="background:var(--primary-soft); margin-top:8px;"><b>🌾 Dompet biochar petani:</b>
+      <div class="card" style="background:var(--primary-soft); margin-top:8px;"><b>🌾 Dompet abu bottom ash petani:</b>
         ${num(e.wallet.allocated_kg, 2)} kg dikreditkan ke ${e.wallet.farmers.length} petani
         (porsi ${num(e.wallet.return_share * 100, 0)}% biochar)${e.wallet.untraceable_kg ? ` · ${num(e.wallet.untraceable_kg, 2)} kg dari biomassa yang tidak tertelusur ke petani` : ""}
         <div class="kpi-lbl">${esc(e.wallet.method || "")}</div></div>`;
@@ -5180,34 +5146,7 @@ async function loadCollectorData() {
     const queueTable = $("table-col-queue");
     const tbody = queueTable ? queueTable.querySelector("tbody") : null;
     if (tbody) {
-      if (!list.length) {
-        tbody.innerHTML = `<tr><td colspan="7">${emptyState("📦", "Tidak ada antrian biomassa", "Semua laporan biomassa petani telah diverifikasi atau belum ada laporan baru.")}</td></tr>`;
-      } else {
-        const queued = new Set(myOutbox("/api/v1/collector/verify").map(i => i.body.harvest_id));
-        tbody.innerHTML = list.map(item => `
-          <tr>
-            <td>
-              <code style="font-family:monospace; font-weight:700; color:var(--primary); font-size:11px;">${esc(item.wr_code || ('WR-HV-' + String(item.id).padStart(4, '0')))}</code>
-              <br><small class="muted" style="font-size:10px;">#${item.id} · ${item.is_active || item.status === 'reported' ? '🟢 Aktif' : '⚪ Non-Aktif'}</small>
-            </td>
-            <td><b>${esc(item.farmer_name || 'Petani')}</b><br><span style="font-size:var(--fs-xs); color:var(--ink-muted);">${esc(item.kecamatan || '-')}</span></td>
-            <td><span class="badge badge-purple">${esc(item.commodity_name || (item.commodity || "sekam_padi").replace('_', ' ').toUpperCase())}</span></td>
-            <td class="num"><b>${num(item.quantity_kg, 0)}</b></td>
-            <td class="num">${item.farmer_moisture_est != null ? `${num(item.farmer_moisture_est, 1)}%` : '<span class="muted">–</span>'}</td>
-            <td>${item.farmer_grade_est ? `<span class="badge ${item.farmer_grade_est === 'A' ? 'badge-green' : item.farmer_grade_est === 'B' ? 'badge-amber' : 'badge-gray'}">Grade ${esc(item.farmer_grade_est)}</span>` : '<span class="muted">–</span>'}</td>
-            <td>
-              ${queued.has(item.id) ? '<span class="badge badge-amber">antre (offline)</span>' : ''}
-              <button type="button" class="btn btn-secondary btn-sm btn-wa" data-fo-contact="${Number(item.id)}" aria-label="Chat WhatsApp petani lot #${Number(item.id)}">${item.farmer_without_phone ? "👵 Tanpa HP" : "💬 WA"}</button>
-              ${item.is_auction ? (item.dp ? `<span class="badge badge-blue" title="${esc(item.dp.receipt_code)}">DP ${rp(item.dp.amount_rp)}</span>`
-                : `<button type="button" class="btn btn-secondary btn-sm" data-fo-dp="${Number(item.id)}" data-amount="${Math.round((item.agreed_price_per_kg || 0) * item.quantity_kg)}"
-                     data-name="${esc(item.farmer_name || "Petani")}" title="Uang muka mengikat hasil lelang; dipotong saat pelunasan">🤝 DP</button>`) : ""}
-              <button class="btn btn-primary btn-sm" data-onclick="selectVerifyItem(${Number(item.id)})">
-                Uji 🔬
-              </button>
-            </td>
-          </tr>
-        `).join("");
-      }
+      tbody.innerHTML = "";
     }
   } catch (err) {
     console.error("loadCollectorData:", err);
@@ -5221,17 +5160,8 @@ function selectVerifyItem(id) {
     item = all.find(x => x.harvest_id == id || x.listing_id == id || x.id == id);
   }
   item = item || {};
-  if ($("v-harvest-id")) $("v-harvest-id").value = id;
-  if ($("v-weight")) $("v-weight").value = item.quantity_kg || item.qty_kg || "";
-  const est = [item.farmer_moisture_est != null ? `air ±${num(item.farmer_moisture_est)}%` : "", item.farmer_grade_est ? `grade ${item.farmer_grade_est}` : ""].filter(Boolean).join(", ");
-  if ($("col-verify-target")) $("col-verify-target").innerText = `Memverifikasi Biomassa #${id} dari ${item.farmer_name || item.nama_petani || "Petani"} (estimasi petani ${num(item.quantity_kg || item.qty_kg,0)} kg${est ? ` · ${est}` : ""})`;
-  if ($("btn-submit-verify")) {
-    $("btn-submit-verify").disabled = false;
-    $("btn-submit-verify").innerText = `Verifikasi Mutu #${id} ➔`;
-  }
-  if ($("btn-reject-lot")) $("btn-reject-lot").disabled = false;
-  const formEl = $("form-verify-harvest");
-  if (formEl && formEl.scrollIntoView) formEl.scrollIntoView({ behavior: "smooth" });
+  const qty = item.quantity_kg || item.qty_kg || 1000;
+  openVerificationModal(id, qty, item);
 }
 window.selectVerifyItem = selectVerifyItem;
 
@@ -5240,13 +5170,7 @@ window.selectHarvestForVerification = function(harvestId, qty) {
     showToast("Lot belum memiliki ID panen atau proses kesepakatan harga lelang belum selesai.", "⚠️");
     return;
   }
-  selectVerifyItem(harvestId);
-  if (qty && $("v-weight")) $("v-weight").value = qty;
-  if ($("v-harvest-id")) $("v-harvest-id").value = harvestId;
-  if ($("btn-submit-verify")) $("btn-submit-verify").disabled = false;
-  const formEl = $("form-verify-harvest");
-  if (formEl) formEl.scrollIntoView({ behavior: "smooth" });
-  showToast(`Harvest #${harvestId} siap diverifikasi & timbang.`, "⚖️");
+  openVerificationModal(harvestId, qty);
 };
 
 const optNum = id => { const v = ($(id) || {}).value; return v === undefined || String(v).trim() === "" ? null : Number(v); };
@@ -5400,7 +5324,7 @@ async function loadDriverBackhaulTasks() {
   try {
     const tasks = await api("/api/v1/driver/backhaul-tasks");
     if (!tasks || !tasks.length) {
-      box.innerHTML = `<p class="muted" style="padding:8px 0;">Tidak ada penugasan muatan balik biochar saat ini.</p>`;
+      box.innerHTML = `<p class="muted" style="padding:8px 0;">Tidak ada penugasan muatan balik abu bottom ash saat ini.</p>`;
       return;
     }
     box.innerHTML = tasks.map(t => {
@@ -5420,7 +5344,7 @@ async function loadDriverBackhaulTasks() {
               ${!isDelivered ? `
                 <div style="margin-top:6px; display:flex; gap:4px; justify-content:flex-end; flex-wrap:wrap;">
                   <button type="button" class="btn btn-secondary btn-sm" data-onclick="driverScanBackhaulCheckpoint('${esc(t.qr_dispatch_token)}')">📷 Scan Outbound</button>
-                  <button type="button" class="btn btn-primary btn-sm" data-onclick="driverConfirmDropBiochar(${Number(t.id)}, ${Number(t.total_weight_kg)})">🤝 Konfirmasi Serah Sawah</button>
+                  <button type="button" class="btn btn-primary btn-sm" data-onclick="driverConfirmDropBiochar(${Number(t.id)}, ${Number(t.total_weight_kg)})">🤝 Konfirmasi Serah Abu Sawah</button>
                 </div>
               ` : `<div style="font-size:var(--fs-xs); color:var(--success); margin-top:4px;">✓ Selesai diantar ke sawah</div>`}
             </div>
@@ -5441,10 +5365,10 @@ async function driverScanBackhaulCheckpoint(qrToken) {
       body: {
         qr_token: qrToken,
         checkpoint_type: "FACTORY_OUTBOUND",
-        notes: "Driver muat biochar di gerbang outbound pabrik"
+        notes: "Driver muat abu bottom ash di gerbang outbound pabrik"
       }
     });
-    showToast(res.message || "Checkpoint muatan balik biochar diverifikasi! 📷", "✅");
+    showToast(res.message || "Checkpoint muatan balik abu bottom ash diverifikasi! 📷", "✅");
     loadDriverBackhaulTasks();
   } catch (err) { showToast(err.message, "❌"); }
 }
@@ -5454,11 +5378,11 @@ function driverConfirmDropBiochar(distId, defaultKg) {
   const d = document.createElement("dialog");
   d.className = "ui-confirm";
   d.innerHTML = `<form method="dialog" style="max-width:380px;">
-    <h3>🤝 Konfirmasi Penyerahan Biochar ke Sawah</h3>
-    <p class="ui-confirm-body">Truk tiba di lokasi petani binaan. Masukkan konfirmasi berat dan catatan penyerahan.</p>
+    <h3>🤝 Konfirmasi Penyerahan Abu Bottom Ash ke Sawah</h3>
+    <p class="ui-confirm-body">Truk tiba di lokasi petani binaan. Masukkan konfirmasi berat dan catatan penyerahan abu bottom ash.</p>
     <div class="form-group"><label for="dr-drop-farmer">ID Petani Penerima</label>
       <input id="dr-drop-farmer" type="number" value="1" min="1" required></div>
-    <div class="form-group"><label for="dr-drop-kg">Berat Biochar Diserahkan (kg)</label>
+    <div class="form-group"><label for="dr-drop-kg">Berat Abu Bottom Ash Diserahkan (kg)</label>
       <input id="dr-drop-kg" type="number" value="${defaultKg || 500}" min="1" step="1" required></div>
     <div class="form-group"><label for="dr-drop-notes">Catatan Serah Terima</label>
       <input id="dr-drop-notes" value="Ditumpuk di saung/lahan sawah petani" maxlength="250"></div>
@@ -5477,7 +5401,7 @@ function driverConfirmDropBiochar(distId, defaultKg) {
           method: "POST",
           body: { distribution_id: distId, farmer_id: farmerId, delivered_kg: kg, notes }
         });
-        showToast("Biochar berhasil diserahkan ke sawah petani! 🌾", "✅");
+        showToast("Abu bottom ash berhasil diserahkan ke sawah petani! 🌾", "✅");
         loadDriverBackhaulTasks();
       } catch (err) { showToast(err.message, "❌"); }
     }
@@ -6131,7 +6055,7 @@ async function initLabProductOptimization() {
     }
 
     const capsBox = $("lab-opt-caps-inputs");
-    const PROD_ICONS = { bio_pellet: "🪵", briket: "⬛", biochar: "🪴", bio_silika: "🧪" };
+    const PROD_ICONS = { bio_pellet: "🪵", briket: "⬛", biochar: "🔋", bio_silika: "🧪" };
     if (capsBox && labOptConfig && labOptConfig.capacities && !capsBox.children.length) {
       capsBox.innerHTML = Object.entries(labOptConfig.capacities).map(([p, cap]) => {
         const pInfo = (labOptConfig.products || {})[p] || {};
@@ -6177,7 +6101,7 @@ function renderLabAllocStocks() {
 async function runLabProductEvaluation() {
   const out = $("lab-opt-eval-out");
   if (!out) return;
-  const PROD_ICONS = { bio_pellet: "🪵", briket: "⬛", biochar: "🪴", bio_silika: "🧪" };
+  const PROD_ICONS = { bio_pellet: "🪵", briket: "⬛", biochar: "🔋", bio_silika: "🧪" };
   const GRADE_BADGE = { S: "badge-green", A: "badge-green", B: "badge-blue", C: "badge-amber", D: "badge-red" };
   return withBusy($("lab-opt-eval-go"), async () => {
     try {
@@ -6247,7 +6171,7 @@ async function runLabProductEvaluation() {
 async function runLabProductAllocation() {
   const out = $("lab-opt-alloc-out");
   if (!out) return;
-  const PROD_ICONS = { bio_pellet: "🪵", briket: "⬛", biochar: "🪴", bio_silika: "🧪" };
+  const PROD_ICONS = { bio_pellet: "🪵", briket: "⬛", biochar: "🔋", bio_silika: "🧪" };
   const GRADE_BADGE = { S: "badge-green", A: "badge-green", B: "badge-blue", C: "badge-amber", D: "badge-red" };
 
   const stocks = [...document.querySelectorAll("[data-lab-opt-use]:checked")].map(cb => {

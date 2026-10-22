@@ -1,5 +1,5 @@
 # Dokumentasi Perkembangan Aktual Solusi & Roadmap — Bio-Chain v2
-**Smart Rice-Husk Supply Chain for Pyrolysis Biochar**  
+**Smart Rice-Husk Supply Chain for Battery Material Precursor & Circular Bottom Ash**  
 *ANGEL Innovation Hackathon 2026 · Track Sustainable Energy*
 
 ---
@@ -80,7 +80,7 @@ Bio-Chain v2 dirancang sesuai kerangka hukum dan standar teknis resmi:
 
 ### 4.2 Dampak Lingkungan & Net Zero Emission
 - **Pengurangan Emisi**: Setiap 1 ton biochar sekam padi yang diproduksi dan diaplikasikan ke tanah menghindari **1.82 ton CO₂e** emisi ke atmosfer.
-- **Peningkatan Kesuburan Tanah**: Biochar sekam padi memiliki kandungan silika amorf tinggi ($>15\%$) yang meningkatkan kapasitas tukar kation (KTK) tanah sawah, menahan air tanah, dan mengurangi kebutuhan pupuk kimia sintetis hingga 20%.
+- **Peningkatan Kesuburan Tanah Sawah Melalui Abu Bottom Ash Sirkular**: Abu bottom ash sisa pembakaran dialokasikan kembali ke sawah petani untuk menstabilkan keasaman tanah, menahan air tanah, dan mengurangi pupuk kimia sintetis. Sementara itu, biochar pirolisis diarahkan bernilai tinggi untuk pengembangan material baterai (hard carbon anoda Li-ion & Na-ion).
 
 ---
 

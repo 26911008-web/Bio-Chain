@@ -57,7 +57,7 @@ async def circular_summary(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(_auditor)],
 ):
-    """Neraca massa agregat: sekam ditimbang pengepul → diterima pabrik → biochar kembali ke petani."""
+    """Neraca massa agregat: sekam ditimbang pengepul → diterima pabrik → abu bottom ash kembali ke petani (biochar untuk material baterai)."""
     w = (await db.execute(select(
         func.coalesce(func.sum(Harvest.verified_kg), 0.0),
         func.coalesce(func.sum(Harvest.received_kg), 0.0),

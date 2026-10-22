@@ -7,7 +7,7 @@
  * - Background Sync (Chrome/Edge Android): saat sinyal kembali, SW membangunkan halaman yang terbuka untuk
  *   mengirim antrean. Safari/Firefox tidak mendukung → halaman memakai event 'online' & interval.
  */
-const VERSION = "biochain-shell-v17";         // v17: full-featured advanced route optimization modal + dual capacity
+const VERSION = "biochain-shell-v18";         // v18: dynamic table pagination, 10/20/all filters, and top scroll navigation
 const SHELL = ["/", "/static/tokens.css", "/static/components.css", "/static/app.js", "/static/ui-enhance.js", "/static/field-ops.js",
                "/static/factory-ops.js", "/static/excel-filter.js"];  // three.js sengaja tidak di-precache
 
@@ -35,8 +35,27 @@ self.addEventListener("fetch", event => {
     }).catch(() => caches.match("/")));
     return;
   }
-  const cacheable = url.origin === location.origin
-    || /(cdn\.jsdelivr\.net|unpkg\.com|cdnjs\.cloudflare\.com|fonts\.(googleapis|gstatic)\.com)$/.test(url.hostname);
+
+  // Aset lokal origin: Gunakan network-first agar pembaruan kode selalu tampil saat refresh,
+  // dan hanya jatuh ke cache jika perangkat sedang offline / blank spot di lapangan.
+  if (url.origin === location.origin) {
+    event.respondWith(
+      fetch(req).then(res => {
+        if (res && res.ok) {
+          const copy = res.clone();
+          caches.open(VERSION).then(c => c.put(req, copy));
+        }
+        return res;
+      }).catch(async () => {
+        const hit = await caches.match(req);
+        return hit;
+      })
+    );
+    return;
+  }
+
+  // Pustaka CDN eksternal: stale-while-revalidate
+  const cacheable = /(cdn\.jsdelivr\.net|unpkg\.com|cdnjs\.cloudflare\.com|fonts\.(googleapis|gstatic)\.com)$/.test(url.hostname);
   if (!cacheable) return;                                   // tile peta OSM: tidak disimpan (kebijakan OSM)
   event.respondWith(caches.open(VERSION).then(async cache => {
     const hit = await cache.match(req);

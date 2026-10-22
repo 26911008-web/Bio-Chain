@@ -1,0 +1,21 @@
+{
+  "base": "http://127.0.0.1:8765",
+  "at": "2026-10-18T17:19:15.771Z",
+  "scenario": {
+    "harvestId": 1196,
+    "harvestQr": "BIO-79844BDD-6GOI6I",
+    "listingId": 211,
+    "bidId": 241,
+    "verifiedHarvestId": 1197,
+    "deliveryRequestId": 63,
+    "petaniUser": "petani_sugeng",
+    "pengepulUser": "pengepul_sleman"
+  },
+  "results": [
+    {
+      "file": "29_pabrik_dashboard_esg_kpi.png",
+      "ok": true,
+      "missing": []
+    }
+  ]
+}

@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     # Ekonomi sirkular / mass balance
     SHRINKAGE_TOLERANCE_PCT: float = 5.0        # susut pengepul→pabrik di atas ini ditandai untuk audit
     ESTIMATE_TOLERANCE_PCT: float = 10.0        # selisih estimasi petani vs timbangan pengepul
-    BIOCHAR_FARMER_RETURN_SHARE: float = 1.0    # porsi output batch yang dialokasikan ke dompet petani
+    BIOCHAR_FARMER_RETURN_SHARE: float = 1.0    # porsi output abu bottom ash batch yang dialokasikan ke dompet petani
     BASE_PRICE_PER_KG: float = 400.0            # Rp/kg sekam sebelum multiplier grade
 
     # Asisten AI — semua kunci hanya di server (.env), tidak pernah ke browser

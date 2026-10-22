@@ -7,7 +7,8 @@
   "use strict";
 
   const GRADE_BADGE = { S: "badge-green", A: "badge-green", B: "badge-blue", C: "badge-amber", D: "badge-red" };
-  const PROD_ICONS = { bio_pellet: "🪵", briket: "⬛", biochar: "🪴", bio_silika: "🧪" };
+  const PROD_ICONS = { bio_pellet: "🪵", briket: "⬛", biochar: "🔋", bio_silika: "🧪" };
+  const numOrNull = (v) => (v === "" || v == null ? null : Number(v));
 
   function renderAllocStocks(bmCache, H, num) {
     const box = $("fx-opt-alloc-stocks");

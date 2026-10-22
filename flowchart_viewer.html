@@ -457,7 +457,7 @@
     </div>
     <div class="legend-row">
       <div class="legend-line line-green"></div>
-      <span>Alur Balik Sirkular Biochar ke Lahan Petani</span>
+      <span>Alur Balik Sirkular Abu Bottom Ash ke Lahan Petani (Biochar Dijual Pabrik Jadi Baterai)</span>
     </div>
   </div>
 
@@ -494,7 +494,7 @@ flowchart TB
     subgraph ZONA_1["🌾 ZONA 1: AWAL - MODUL PETANI (PENAWARAN, LELANG & EVALUASI)"]
         direction TB
         Z1_START(["Mulai: Petani Memiliki Stok Panen Biomassa"]):::startNode
-        Z1_INPUT_LAPOR[/"Input Lapor Biomassa: Jenis, Qty (kg), Kadar Air, Foto Sampel & Request Biochar"/]:::inputData
+        Z1_INPUT_LAPOR[/"Input Lapor Biomassa: Jenis, Qty (kg), Kadar Air, Foto Sampel & Request Abu Bottom Ash"/]:::inputData
         Z1_DEC_CHANNEL{"Pilih Jalur Penjualan Biomassa?"}:::decisionNode
 
         Z1_DIR_DEC_DELIVERY{"Pilihan Pengiriman Jalur Langsung?"}:::decisionNode
@@ -517,7 +517,7 @@ flowchart TB
         Z1_EVAL_PANEL["Panel Evaluasi Petani: Analisis Historis, Mutu & Kemitraan"]:::stepOperasional
         Z1_EVAL_QC["Menerima Rekap Feedback QC Lapangan & Deviasi Timbang"]:::stepOperasional
         Z1_EVAL_PAY["Evaluasi Rekam Jejak Kecepatan Pembayaran Pengepul (DP & Lunas)"]:::stepOperasional
-        Z1_EVAL_BIOCHAR["Evaluasi Dompet Biochar, Serapan Karbon & Kesuburan Lahan"]:::stepOperasional
+        Z1_EVAL_BIOCHAR["Evaluasi Alokasi Abu Bottom Ash & Kesuburan Lahan Sawah"]:::stepOperasional
 
         Z1_START --> Z1_INPUT_LAPOR
         Z1_INPUT_LAPOR --> Z1_DEC_CHANNEL
@@ -549,8 +549,8 @@ flowchart TB
         Z2_BID_ANALYSIS[/"Bursa Lelang: Analisis Netback Margin & Kirim Bidding Harga/kg"/]:::inputData
         Z2_FINALISASI["Finalisasi Kesepakatan Transaksi & Penerbitan Dokumen Panen"]:::stepOperasional
         Z2_MULTI_PICKUP["Perencanaan Rute Penjemputan Multi-Stop (VRP Solver)"]:::stepOperasional
-        Z2_DEC_BIOCHAR_REQ{"Ada Request Biochar dari Petani di Rute Tersebut?"}:::decisionNode
-        Z2_ROUTE_BIOCHAR["Siapkan Rute Backhaul: Bawa Biochar + Jemput Biomassa Sekaligus (Hemat Cost)"]:::stepKhusus
+        Z2_DEC_BIOCHAR_REQ{"Ada Request Abu Bottom Ash dari Petani di Rute Tersebut?"}:::decisionNode
+        Z2_ROUTE_BIOCHAR["Siapkan Rute Backhaul: Bawa Abu Bottom Ash + Jemput Biomassa Sekaligus (Hemat Cost)"]:::stepKhusus
         Z2_ROUTE_NORMAL["Rute Reguler: Penjemputan Biomassa Langsung"]:::stepOperasional
         Z2_SEND_SCHEDULE[/"Kirim Rencana Jadwal Jemput ke Petani untuk Konfirmasi"/]:::inputData
 
@@ -569,7 +569,7 @@ flowchart TB
     subgraph ZONA_3["⚖️ ZONA 3: EKSEKUSI QC LAPANGAN & PEMBAYARAN PENGEPUL KE PETANI"]
         direction TB
         Z3_ARRIVE["Armada Tiba di Lokasi Petani (atau Petani Antar Sendiri ke Hub)"]:::stepOperasional
-        Z3_HANDOVER_BIOCHAR["Serah Terima Biochar ke Petani Sesuai Request (Jika Ada)"]:::stepKhusus
+        Z3_HANDOVER_BIOCHAR["Serah Terima Abu Bottom Ash ke Petani Sesuai Request (Jika Ada)"]:::stepKhusus
         Z3_FIELD_QC[/"Timbang Berat Riil (kg), Uji Kadar Air (MC) & Inspeksi Mutu Lapangan"/]:::inputData
         Z3_DEC_FIELD_QC{"Lolos Pemeriksaan Mutu QC Lapangan?"}:::decisionNode
         Z3_REJECT_INPUT[/"Input Alasan Penolakan & Upload Foto Bukti Kerusakan"/]:::inputData
@@ -614,10 +614,10 @@ flowchart TB
         Z4_FLEET_DEPART["Armada Pengepul Berangkat Mengantar Stok ke Pabrik"]:::stepOperasional
 
         Z4_FACTORY_DISPATCH["Otomatis Masuk Antrean Job Modul Driver Truk Pabrik"]:::stepKhusus
-        Z4_DEC_LOAD_BIOCHAR{"Ada Perintah Bawa Biochar Pabrik ke Pengepul?"}:::decisionNode
-        Z4_LOAD_BIOCHAR_TRUCK["Driver Pabrik Muat Biochar di Pabrik Terlebih Dahulu"]:::stepKhusus
+        Z4_DEC_LOAD_BIOCHAR{"Ada Perintah Bawa Abu Bottom Ash Pabrik ke Pengepul?"}:::decisionNode
+        Z4_LOAD_BIOCHAR_TRUCK["Driver Pabrik Muat Abu Bottom Ash di Pabrik Terlebih Dahulu"]:::stepKhusus
         Z4_TRUCK_DEPART_EMPTY["Driver Pabrik Berangkat Menuju Hub Pengepul"]:::stepOperasional
-        Z4_DRIVER_COLLECT[/"Driver Scan QR Muat di Pengepul, Serah Terima Biochar & Upload Bukti"/]:::inputData
+        Z4_DRIVER_COLLECT[/"Driver Scan QR Muat di Pengepul, Serah Terima Abu Bottom Ash & Upload Bukti"/]:::inputData
         Z4_TRUCK_TO_GATE["Armada Truk Tiba di Gerbang Utama Pabrik"]:::stepOperasional
 
         Z4_WEIGHBRIDGE[/"Scan QR Tiket & Penimbangan Jembatan Timbang (Gross, Tare, Netto)"/]:::inputData
@@ -641,7 +641,7 @@ flowchart TB
 
         Z4_DEC_FLEET_MODE -->|"Dijemput Pabrik (Armada Pabrik)"| Z4_FACTORY_DISPATCH
         Z4_FACTORY_DISPATCH --> Z4_DEC_LOAD_BIOCHAR
-        Z4_DEC_LOAD_BIOCHAR -->|"Ya (Muat Biochar)"| Z4_LOAD_BIOCHAR_TRUCK
+        Z4_DEC_LOAD_BIOCHAR -->|"Ya (Muat Abu Bottom Ash)"| Z4_LOAD_BIOCHAR_TRUCK
         Z4_DEC_LOAD_BIOCHAR -->|"Tidak"| Z4_TRUCK_DEPART_EMPTY
         Z4_LOAD_BIOCHAR_TRUCK --> Z4_DRIVER_COLLECT
         Z4_TRUCK_DEPART_EMPTY --> Z4_DRIVER_COLLECT
@@ -697,19 +697,19 @@ flowchart TB
             Z5B_DEC_PRODUCT{"Pilih Rencana Produksi Optimal?"}:::decisionNode
 
             Z5B_PROD_PELLET["Produksi Biopellet Kalor Tinggi (Standar Ekspor / Co-Firing PLN)"]:::stepOperasional
-            Z5B_PROD_CHAR["Produksi Biochar Pirolisis Mutu Unggul untuk Pembenah Tanah"]:::stepOperasional
+            Z5B_PROD_CHAR["Produksi Biochar Mutu Tinggi (Hard Carbon Anoda Baterai & Sink Karbon Industri)"]:::stepOperasional
             Z5B_PROD_SILIKA["Produksi Bio-Silika Murni dari Abu Pembakaran Terkontrol"]:::stepOperasional
             Z5B_PROD_BRIKET["Produksi Briket Biomassa Padat Energi untuk Industri"]:::stepOperasional
 
-            Z5B_RECORD_OUTPUT["Pencatatan Produk Utama & Hasil Samping (Abu Dasar, Biochar Kasar, Asap Cair)"]:::stepOperasional
+            Z5B_RECORD_OUTPUT["Pencatatan Produk Utama & Hasil Samping (Abu Dasar/Bottom Ash untuk Petani, Baterai-Grade Biochar)"]:::stepOperasional
             Z5B_LAB_SAFETY[/"Uji Keamanan Laboratorium Hasil Samping: Analisis Logam Berat (Pb, Cd, As)"/]:::inputData
             Z5B_DEC_SAFETY_PASS{"Hasil Uji Keamanan Lolos Ambang Batas Pertanian?"}:::decisionNode
             Z5B_RES_DISPOSAL(["Disposal Limbah Industri Aman / Penanganan B3 Non-Lahan"]):::resultMerah
 
-            Z5B_REG_BIOCHAR["Registrasi Batch Biochar Bersertifikat ke Modul Sirkularitas Bio-Chain"]:::stepKhusus
-            Z5B_SHIP_COLLECTOR["Distribusi Balik Biochar dari Pabrik ke Pengepul (Backhaul Armada Pabrik)"]:::stepKhusus
-            Z5B_COLLECTOR_FARMER["Distribusi Balik Biochar dari Pengepul ke Petani (Backhaul Armada Pengepul)"]:::stepKhusus
-            Z5B_FARMER_APPLY["Aplikasi Biochar pada Lahan Pertanian Petani & Update Dompet Karbon"]:::stepKhusus
+            Z5B_REG_BIOCHAR["Registrasi Batch Abu Bottom Ash Bersertifikat Bebas Logam Berat ke Modul Sirkular"]:::stepKhusus
+            Z5B_SHIP_COLLECTOR["Distribusi Balik Abu Bottom Ash dari Pabrik ke Pengepul (Backhaul Armada Pabrik)"]:::stepKhusus
+            Z5B_COLLECTOR_FARMER["Distribusi Balik Abu Bottom Ash dari Pengepul ke Petani (Backhaul Armada Pengepul)"]:::stepKhusus
+            Z5B_FARMER_APPLY["Aplikasi Abu Bottom Ash pada Lahan Sawah Petani & Update Kesuburan Tanah"]:::stepKhusus
             Z5B_RES_CIRCULAR_COMPLETE(["Siklus Sirkular Selesai: Zero Waste & Ekosistem Tertutup Tercapai"]):::resultHijau
 
             Z5B_RAMP_ALLOC --> Z5B_UPDATE_AGGR
@@ -718,7 +718,7 @@ flowchart TB
             Z5B_HIGHS_SOLVER --> Z5B_DEC_PRODUCT
 
             Z5B_DEC_PRODUCT -->|"Opsi 1: Biopellet"| Z5B_PROD_PELLET
-            Z5B_DEC_PRODUCT -->|"Opsi 2: Biochar"| Z5B_PROD_CHAR
+            Z5B_DEC_PRODUCT -->|"Opsi 2: Biochar (Baterai)"| Z5B_PROD_CHAR
             Z5B_DEC_PRODUCT -->|"Opsi 3: Bio-Silika"| Z5B_PROD_SILIKA
             Z5B_DEC_PRODUCT -->|"Opsi 4: Briket"| Z5B_PROD_BRIKET
 
@@ -771,11 +771,11 @@ flowchart TB
     Z4_FEEDBACK_PARTIAL -.->|"Feedback Mutu: Potongan Refraksi Pabrik"| Z2_OFFERS_DASH
     Z4_FEEDBACK_ACCEPT -.->|"Feedback Mutu: Grade A Diterima Penuh"| Z2_OFFERS_DASH
 
-    Z5B_SHIP_COLLECTOR ==>|"Backhaul Armada Pabrik Bawa Biochar"| Z4_LOAD_BIOCHAR_TRUCK
-    Z4_DRIVER_COLLECT ==>|"Drop Biochar ke Gudang Pengepul"| Z2_ROUTE_BIOCHAR
-    Z2_ROUTE_BIOCHAR ==>|"Armada Pengepul Bawa Biochar ke Rute Petani"| Z3_HANDOVER_BIOCHAR
-    Z3_HANDOVER_BIOCHAR ==>|"Serah Terima Biochar ke Petani"| Z5B_FARMER_APPLY
-    Z5B_FARMER_APPLY ==>|"Kredit Karbon & Rekam Kesuburan Tanah"| Z1_EVAL_BIOCHAR
+    Z5B_SHIP_COLLECTOR ==>|"Backhaul Armada Pabrik Bawa Abu Bottom Ash"| Z4_LOAD_BIOCHAR_TRUCK
+    Z4_DRIVER_COLLECT ==>|"Drop Abu Bottom Ash ke Gudang Pengepul"| Z2_ROUTE_BIOCHAR
+    Z2_ROUTE_BIOCHAR ==>|"Armada Pengepul Bawa Abu Bottom Ash ke Rute Petani"| Z3_HANDOVER_BIOCHAR
+    Z3_HANDOVER_BIOCHAR ==>|"Serah Terima Abu Bottom Ash ke Petani"| Z5B_FARMER_APPLY
+    Z5B_FARMER_APPLY ==>|"Netralisasi pH & Rekam Kesuburan Tanah"| Z1_EVAL_BIOCHAR
 `;
 
     // 2. INISIALISASI MERMAID

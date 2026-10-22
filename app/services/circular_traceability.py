@@ -5,8 +5,8 @@ Menyediakan silsilah ketelusuran tertutup (closed-loop circular economy) dari:
 2. ⚖️ Pengepul (Verifikasi kesesuaian kuantitas, uji mutu lapangan, resi timbang TRX-...)
 3. 🚚 Driver (Penjemputan armada, rute konsolidasi logistik Sleman-Klaten, checkpoint muat)
 4. 🏭 Pabrik (Timbang jembatan timbang gerbang TIK-..., uji QC refraksi susut)
-5. ⚗️ Pengolahan Pabrik (Pirolisis suhu tinggi / gasifikasi / boiler, yield biochar & abu sisa pembakaran)
-6. ♻️ Muatan Balik & Sawah Petani (Surat jalan muatan balik biochar/abu DSP-..., aplikasi kembali ke tanah sawah petani)
+5. ⚗️ Pengolahan Pabrik (Pirolisis / gasifikasi / boiler, yield biochar material baterai & abu bottom ash sisa pembakaran)
+6. ♻️ Muatan Balik & Sawah Petani (Surat jalan muatan balik abu bottom ash DSP-..., aplikasi kembali pembenah tanah sawah petani)
 """
 
 import hashlib
@@ -332,8 +332,8 @@ async def get_circular_traceability(db: AsyncSession, identifier: str) -> dict[s
     stage_5 = {
         "step": 5,
         "stage_id": "STAGE_5_CONVERSION_PRODUCTION",
-        "title": "⚗️ Pirolisis, Biochar & Abu Sisa Pembakaran",
-        "subtitle": "Biomassa diproses menjadi bio-pellet/briket, biochar aktif & abu biosilika",
+        "title": "⚗️ Pirolisis & Pembakaran (Biochar Material Baterai & Abu Bottom Ash)",
+        "subtitle": "Biomassa diproses menjadi biochar material baterai, bio-pellet/briket & abu bottom ash",
         "status": "COMPLETED" if is_converted else ("IN_PROGRESS" if is_delivered else "PROJECTED"),
         "status_label": "Konversi Selesai" if is_converted else ("Antrean Pirolisis" if is_delivered else "Proyeksi Hasil Olah"),
         "badge": "badge-green" if is_converted else ("badge-blue" if is_delivered else "badge-purple"),
@@ -363,8 +363,8 @@ async def get_circular_traceability(db: AsyncSession, identifier: str) -> dict[s
     stage_6 = {
         "step": 6,
         "stage_id": "STAGE_6_CIRCULAR_BACKHAUL_FARMER",
-        "title": "♻️ Muatan Balik & Kembali ke Sawah Petani",
-        "subtitle": "Armada mengangkut biochar kembali ke sawah asal petani (Closed-Loop)",
+        "title": "♻️ Muatan Balik Abu Bottom Ash ke Sawah Petani",
+        "subtitle": "Armada mengangkut abu bottom ash kembali ke sawah asal petani sebagai pembenah tanah (Closed-Loop)",
         "status": "COMPLETED" if is_circular_returned else ("READY_FOR_BACKHAUL" if is_converted else "PROJECTED"),
         "status_label": "Sirkular 100% Tertutup" if is_circular_returned else ("Tersedia di Gudang Muatan Balik" if is_converted else "Alokasi Hak Sawah"),
         "badge": "badge-green" if is_circular_returned else ("badge-blue" if is_converted else "badge-purple"),
@@ -386,7 +386,7 @@ async def get_circular_traceability(db: AsyncSession, identifier: str) -> dict[s
             "closed_loop_verification": "TERVERIFIKASI TERTUTUP 100% (Sawah ➔ Pabrik ➔ Sawah)",
         },
         "timestamp": time_t6.isoformat() if time_t6 else None,
-        "note": "Menghilangkan perjalanan truk kosong (backhaul), mengembalikan hara silika dan karbon ke tanah petani.",
+        "note": "Menghilangkan perjalanan truk kosong (backhaul), mengembalikan hara silika dan mineral abu bottom ash ke tanah petani.",
     }
 
     stages = [stage_1, stage_2, stage_3, stage_4, stage_5, stage_6]

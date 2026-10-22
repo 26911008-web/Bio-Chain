@@ -3,7 +3,7 @@
 Mengelompokkan notifikasi ke dalam 4 kategori status:
 - 🟡 PENDING_ACTION: Menunggu verifikasi, persetujuan harga, konfirmasi jadwal, atau pembayaran.
 - 🔵 IN_PROGRESS: Dalam perjalanan armada supir, proses QC gerbang, atau pirolisis aktif.
-- 🟢 COMPLETED: Pembayaran lunas, konversi selesai & dompet terisi, atau biochar diserahkan ke sawah.
+- 🟢 COMPLETED: Pembayaran lunas, konversi selesai & dompet terisi, atau abu bottom ash diserahkan ke sawah.
 - 🔴 ALERT_DISCREPANCY: Susut di luar toleransi, penolakan mutu, atau tagihan lewat jatuh tempo.
 """
 
@@ -330,8 +330,8 @@ async def ensure_seed_notifications(db: AsyncSession) -> None:
         # === 🟢 COMPLETED ===
         {
             "event_type": "PAYMENT_AND_BIOCHAR_CREDITED",
-            "title": "💰 Pembayaran Lunas & +285 kg Saldo Biochar",
-            "message": "Pembayaran hasil jual biomassa sebesar Rp 1.029.000 telah berhasil ditransfer. Saldo muatan balik 285 kg biochar sawah telah masuk ke Dompet Biochar Anda.",
+            "title": "💰 Pembayaran Lunas & +285 kg Saldo Abu Bottom Ash",
+            "message": "Pembayaran hasil jual biomassa sebesar Rp 1.029.000 telah berhasil ditransfer. Saldo muatan balik 285 kg abu bottom ash sawah telah masuk ke Dompet Abu Anda.",
             "status_group": "COMPLETED",
             "target_role": "petani",
             "transaction_code": "TRX-PAY-0006",
@@ -367,7 +367,7 @@ async def ensure_seed_notifications(db: AsyncSession) -> None:
         {
             "event_type": "CIRCULAR_CLOSED_LOOP",
             "title": "🔄 Sirkularitas 100% Terpenuhi (Batch 04)",
-            "message": "Seluruh by-product abu biosilika dan biochar aktif telah didistribusikan kembali ke kelompok tani sawah.",
+            "message": "Seluruh by-product abu bottom ash telah didistribusikan kembali ke kelompok tani sawah (biochar difokuskan untuk material baterai).",
             "status_group": "COMPLETED",
             "target_role": "pabrik",
             "transaction_code": "CIRC-LOOP-004",

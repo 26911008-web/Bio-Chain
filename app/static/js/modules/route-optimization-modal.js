@@ -133,7 +133,7 @@
               </div>
               <div style="display:flex; justify-content:space-between; align-items:center; margin-top:3px; font-size:11.5px; color:var(--ink-muted); flex-wrap:wrap;">
                 <span>🌾 <b>${num(h.quantity_kg, 0)} kg</b> ${H(comLabel)} · Ref: <code>${H(h.batch_ref || h.wr_code || "WR-HV")}</code></span>
-                <span style="color:var(--primary); font-size:11px; font-weight:600;">🔄 Muatan Balik: ~${num(estBackhaul, 0)} kg Biochar Sawah</span>
+                <span style="color:var(--primary); font-size:11px; font-weight:600;">🔄 Muatan Balik: ~${num(estBackhaul, 0)} kg Abu Bottom Ash Sawah</span>
               </div>
             </div>
           </label>
@@ -384,7 +384,7 @@
           <div class="kpi-lbl" style="font-size:10px;">Vol: ${num(activeRoute.biomass_m3 || res.total_biomass_m3, 1)} m³</div>
         </div>
         <div class="kpi-tile" style="padding:10px;">
-          <div class="kpi-lbl">Biochar Muatan Balik</div>
+          <div class="kpi-lbl">Abu Bottom Ash Muatan Balik</div>
           <div class="kpi-val" style="font-size:1.15rem; color:#2563eb;">${num(activeRoute.biochar_kg || res.total_biochar_backhaul_kg, 0)} kg</div>
           <div class="kpi-lbl" style="font-size:10px;">Vol: ${num(activeRoute.biochar_m3 || res.total_biochar_backhaul_m3, 1)} m³</div>
         </div>
@@ -406,7 +406,7 @@
                 <th style="padding:6px 8px;">Urutan / Tahap</th>
                 <th style="padding:6px 8px;">Titik Lokasi &amp; Aktivitas</th>
                 <th style="padding:6px 8px;" class="num">Biomassa Dimuat</th>
-                <th style="padding:6px 8px;" class="num">Biochar Diturunkan</th>
+                <th style="padding:6px 8px;" class="num">Abu Bottom Ash Diturunkan</th>
                 <th style="padding:6px 8px;" class="num">Akumulasi Beban (kg)</th>
                 <th style="padding:6px 8px;" class="num">Akumulasi Volume (m³)</th>
                 <th style="padding:6px 8px; text-align:center;">Status</th>
@@ -650,7 +650,7 @@
           <div style="font-family:sans-serif; font-size:12px;">
             <b style="color:#b45309;">📍 STOP #${idx + 1}: ${H(pt.name || pt.farmer_name)}</b><br>
             <b>Biomassa Diambil:</b> ${num(pt.biomass_kg || ((s.m3 || 10) * 120), 0)} kg<br>
-            <b>Biochar Diturunkan:</b> ${num(pt.biochar_drop_kg || 0, 0)} kg<br>
+            <b>Abu Bottom Ash Diturunkan:</b> ${num(pt.biochar_drop_kg || 0, 0)} kg<br>
             <span class="muted">Ref Lot: #${pt.harvest_id || pt.id}</span>
           </div>
         `);
@@ -1004,9 +1004,9 @@
               <div class="sub">Vol: ${biomassM3} m³</div>
             </div>
             <div class="ro-print-kpi-item purple">
-              <div class="lbl">Muatan Balik Biochar</div>
+              <div class="lbl">Muatan Balik Abu Bottom Ash</div>
               <div class="val" style="color:#2563eb;">${biocharKg} kg</div>
-              <div class="sub">Integrasi sirkular sawah</div>
+              <div class="sub">Integrasi sirkular sawah (pembenah tanah)</div>
             </div>
           </div>
 
@@ -1017,7 +1017,7 @@
                 <th style="width:36px; text-align:center;">No</th>
                 <th>Titik Lokasi &amp; Kelompok Tani</th>
                 <th style="width:115px; text-align:right;">Muat Biomassa</th>
-                <th style="width:115px; text-align:right;">Turun Biochar</th>
+                <th style="width:115px; text-align:right;">Turun Abu Bottom Ash</th>
                 <th style="width:80px; text-align:center;">Jam Tiba</th>
                 <th style="width:120px; text-align:center;">Paraf Petani</th>
               </tr>
@@ -1042,7 +1042,7 @@
               <ol>
                 <li>Pastikan muatan sekam tertutup terpal rapat saat melintasi jalan raya.</li>
                 <li>Verifikasi kode QR lot penjemputan biomassa sebelum memuat ke bak truk.</li>
-                <li>Bila petani menerima biochar sawah, turunkan muatan balik sesuai kuota tercatat.</li>
+                <li>Bila petani menerima abu bottom ash sawah, turunkan muatan balik sesuai kuota tercatat (biochar disimpan untuk material baterai).</li>
                 <li>Mintakan paraf dan catat jam kedatangan di setiap lokasi stop.</li>
               </ol>
             </div>
@@ -1155,7 +1155,7 @@
               <th style="width:110px;">Tahap / Urutan</th>
               <th>Titik Lokasi &amp; Aktivitas Logistik</th>
               <th style="width:100px; text-align:right;">Biomassa Dimuat</th>
-              <th style="width:105px; text-align:right;">Biochar Diturunkan</th>
+              <th style="width:105px; text-align:right;">Abu Bottom Ash Diturunkan</th>
               <th style="width:95px; text-align:right;">Total Beban</th>
               <th style="width:90px; text-align:right;">Total Volume</th>
               <th style="width:75px; text-align:center;">Status</th>
@@ -1171,7 +1171,7 @@
           <div class="ro-print-notes">
             <strong>Catatan Audit &amp; Verifikasi Logistik:</strong>
             <p style="margin:2px 0 0;">
-              Hasil routing dihitung secara komputasional dengan mempertimbangkan densitas sekam (~120 kg/m³) dan biochar (~300 kg/m³). Dokumen ini valid untuk lampiran klaim efisiensi karbon dan penjaminan mutu rantai pasok.
+              Hasil routing dihitung secara komputasional dengan mempertimbangkan densitas sekam (~120 kg/m³) dan abu bottom ash (~450 kg/m³). Dokumen ini valid untuk lampiran klaim efisiensi karbon dan penjaminan mutu rantai pasok.
             </p>
           </div>
           <div class="ro-print-signs">

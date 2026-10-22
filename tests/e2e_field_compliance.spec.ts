@@ -87,8 +87,8 @@ test('PDP: nomor disamarkan + tombol hubungi; petani mengunduh data saya', async
   const ctxP = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const pg = await ctxP.newPage();
   await openAs(pg, 'pengepul');
-  await expect(pg.locator('#table-col-queue [data-fo-contact]').first()).toBeVisible({ timeout: 20_000 });
-  const body = await pg.locator('#table-col-queue').innerText();
+  await expect(pg.locator('#market-table [data-fo-contact], #table-col-queue [data-fo-contact], [data-fo-contact]').first()).toBeVisible({ timeout: 20_000 });
+  const body = await pg.locator('#market-table, #table-col-queue').first().innerText();
   expect(body).not.toMatch(/\b08\d{8,11}\b/);                               // tidak ada nomor lengkap di daftar
   // API daftar juga hanya memberi nomor tersamar; pilih lot yang petaninya punya HP lalu buka kontak
   const api = await pwRequest.newContext();

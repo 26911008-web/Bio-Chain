@@ -4,7 +4,7 @@ Alat evaluasi komparatif & optimasi alokasi alur produksi pabrik:
 1. Evaluasi Komparatif 4 Produk Akhir:
    - Bio-Pellet (standar ISO 17225-2 / ISO 17225-6, cofiring PLTU & boiler industri)
    - Briket Biomassa / Arang (standar SNI 01-6235-2000, shisha/BBQ & industri)
-   - Biochar (pembenah tanah agronomi & sertifikat pemindahan karbon permanen C-sink)
+   - Biochar (material baterai / hard carbon anoda Li-ion & Na-ion, serta sertifikat pemindahan karbon permanen C-sink)
    - Bio-Silika Amorf (ekstraksi silika presipitasi kemurnian tinggi dari biomassa kaya silika)
 
 2. Matriks Efisiensi Multi-Dimensi:
@@ -62,9 +62,9 @@ PRODUCT_META = {
         "loss_rate": 0.03,
     },
     "biochar": {
-        "name": "Biochar Pembenah Tanah",
-        "description": "Arang hayati hasil pirolisis lambat kaya karbon stabil untuk bioremediasi tanah sawah & C-sink removal permanen.",
-        "standard": "European Biochar Certificate (EBC) / IBI Standard",
+        "name": "Biochar Prekursor Material Baterai",
+        "description": "Karbon hayati pirolisis terkontrol tinggi berpori mikro untuk material baterai (hard carbon anoda Li-ion/Na-ion) & pemindahan karbon permanen.",
+        "standard": "Battery-Grade Hard Carbon / EBC C-Sink",
         "default_price_rp_kg": 3500.0,
         "default_kwh_per_ton_product": 45.0,
         "target_moisture_pct": 8.0,
@@ -429,7 +429,7 @@ def evaluate_briket_pathway(f: FeedstockItem, price_rp_kg: float | None = None) 
 
 
 def evaluate_biochar_pathway(f: FeedstockItem, price_rp_kg: float | None = None) -> dict:
-    """Evaluasi teknis & ekonomi pengolahan 1 ton umpan ke Biochar (Agronomi & C-Sink)."""
+    """Evaluasi teknis & ekonomi pengolahan 1 ton umpan ke Biochar (Material Baterai & C-Sink)."""
     price = price_rp_kg if price_rp_kg is not None else PRODUCT_META["biochar"]["default_price_rp_kg"]
     meta = PRODUCT_META["biochar"]
     dry_frac = 1.0 - (f.moisture_pct / 100.0)
@@ -484,7 +484,7 @@ def evaluate_biochar_pathway(f: FeedstockItem, price_rp_kg: float | None = None)
 
     if f.code == "sekam_padi":
         score = 93.0
-        advantages.append("Kaya silika amorf & berpori tinggi: sangat unggul untuk pembenah tanah sawah & CEC tanah.")
+        advantages.append("Kaya struktur pori karbon & silika: sangat prospektif untuk prekursor hard carbon material baterai.")
     elif f.code == "tempurung_kelapa":
         score = 90.0
         advantages.append("Kadar C-organik tinggi (>75%): kapasitas sekuestrasi karbon stabil & adsorpsi sangat tinggi.")
@@ -674,7 +674,7 @@ def evaluate_feedstock(f: FeedstockItem, price_overrides: dict[str, float] | Non
     # Ringkasan rekomendasi
     summary_parts = []
     if f.code == "sekam_padi":
-        summary_parts.append("Sekam padi paling efisien dan menguntungkan diolah menjadi Bio-Silika (margin tertinggi) & Biochar pembenah tanah sawah. Jangan dijadikan biopellet murni tanpa dicampur karena abu 17,5% melanggar standar ISO.")
+        summary_parts.append("Sekam padi paling efisien dan menguntungkan diolah menjadi Bio-Silika (margin tertinggi) & Biochar material baterai (abu sisa dialokasikan ke petani untuk sawah). Jangan dijadikan biopellet murni tanpa dicampur karena abu 17,5% melanggar standar ISO.")
     elif f.code == "tempurung_kelapa":
         summary_parts.append("Tempurung kelapa merupakan bahan baku emas untuk Briket Arang Shisha/BBQ (abu <3%, kalori >7.200 kcal/kg) & Biochar aktif. Sangat tidak disarankan untuk biosilika karena abu terlalu rendah (<1%).")
     elif "serbuk" in f.code or "kayu" in f.name.lower():

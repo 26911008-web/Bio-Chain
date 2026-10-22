@@ -12,8 +12,37 @@
   "use strict";
 
   // Simpan state filter aktif per tabel
-  // Map<HTMLTableElement, { [colIndex]: Set<string> | null }>
+  // Simpan state filter aktif per tabel: Map<HTMLTableElement, { [colIndex]: Set<string> | null }>
   const tableFiltersMap = new WeakMap();
+
+  // Simpan state pagination per tabel: Map<HTMLTableElement, { pageSize: string, currentPage: number }>
+  const tablePaginationMap = new WeakMap();
+
+  function ensureTableId(table) {
+    if (!table.id) {
+      table.id = "tbl-" + Math.random().toString(36).slice(2, 9);
+    }
+    return table.id;
+  }
+
+  function getTableContainer(table) {
+    let container = table.closest(".table-scroll");
+    if (!container) {
+      const parent = table.parentElement;
+      if (parent && (parent.style.overflowX === "auto" || window.getComputedStyle(parent).overflowX === "auto" || parent.classList.contains("table-scroll"))) {
+        container = parent;
+      }
+    }
+    if (!container) {
+      container = table.parentElement;
+    }
+    if (container && !container.classList.contains("table-scroll")) {
+      container.classList.add("table-scroll");
+      container.style.overflowX = "auto";
+      container.style.webkitOverflowScrolling = "touch";
+    }
+    return container;
+  }
 
   // Helper untuk membersihkan teks cell
   function getCellCleanText(cell) {
@@ -50,14 +79,15 @@
     }
   });
 
-  // Terapkan filter pada tabel
+  // Terapkan filter kolom dan pagination pada tabel
   function applyFiltersToTable(table) {
+    if (!table || (table.style && table.style.display === "none") || (table.parentElement && table.parentElement.style && table.parentElement.style.display === "none")) return;
     const filters = tableFiltersMap.get(table) || {};
     const tbody = table.tBodies[0];
     if (!tbody) return;
 
     const rows = [...tbody.rows].filter(r => r.cells.length > 1 && !r.classList.contains("empty-state-row"));
-    let visibleCount = 0;
+    const matchingRows = [];
 
     rows.forEach(row => {
       let isVisible = true;
@@ -71,15 +101,54 @@
           break;
         }
       }
-      row.style.display = isVisible ? "" : "none";
-      if (isVisible) visibleCount++;
+      row.dataset.excelFilterMatch = isVisible ? "1" : "0";
+      if (isVisible) matchingRows.push(row);
     });
 
-    // Update status bar
-    updateStatusBar(table, visibleCount, rows.length);
+    // Pagination calculations (10, 50, 100, 200, atau semua baris)
+    let savedLimit = "all";
+    try {
+      const stored = localStorage.getItem("biochain_table_rows_limit");
+      if (stored) savedLimit = stored;
+    } catch (_) {}
+
+    let pState = tablePaginationMap.get(table);
+    if (!pState) {
+      pState = { pageSize: savedLimit, currentPage: 1 };
+      tablePaginationMap.set(table, pState);
+    }
+
+    const isAll = (pState.pageSize === "all");
+    const pageSizeNum = isAll ? matchingRows.length : (parseInt(pState.pageSize, 10) || 50);
+    const totalPages = Math.max(1, Math.ceil(matchingRows.length / (pageSizeNum || 1)));
+
+    if (pState.currentPage > totalPages) pState.currentPage = totalPages;
+    if (pState.currentPage < 1) pState.currentPage = 1;
+
+    const startIdx = isAll ? 0 : (pState.currentPage - 1) * pageSizeNum;
+    const endIdx = isAll ? matchingRows.length : Math.min(matchingRows.length, startIdx + pageSizeNum);
+
+    // Update baris DOM
+    rows.forEach(row => {
+      if (row.dataset.excelFilterMatch === "0") {
+        row.style.display = "none";
+      } else {
+        const mIdx = matchingRows.indexOf(row);
+        row.style.display = (mIdx >= startIdx && mIdx < endIdx) ? "" : "none";
+      }
+    });
+
+    // Update status bar excel filter
+    updateStatusBar(table, matchingRows.length, rows.length);
 
     // Update highlight tombol header
     updateHeaderFilterIndicators(table, filters);
+
+    // Update toolbar pagination & baris data
+    updatePaginationToolbar(table, matchingRows.length, rows.length, startIdx, endIdx, pState.currentPage, totalPages, pState.pageSize);
+
+    // Update synchronized top scrollbar
+    updateTopScrollbar(table);
   }
 
   // Update indikator header (hijau jika kolom sedang difilter)
@@ -102,17 +171,239 @@
     });
   }
 
+  // Helper update status tombol geser horizontal
+  function updateScrollNavButtons(toolbar, container) {
+    if (!toolbar || !container) return;
+    const btnL = toolbar.querySelector(".tpt-scroll-left");
+    const btnR = toolbar.querySelector(".tpt-scroll-right");
+    if (!btnL || !btnR) return;
+
+    const maxScroll = Math.max(0, container.scrollWidth - container.clientWidth);
+    const curScroll = container.scrollLeft;
+
+    if (maxScroll <= 2) {
+      btnL.disabled = true;
+      btnR.disabled = true;
+      btnL.title = "Semua kolom pas di layar (tidak terpotong)";
+      btnR.title = "Semua kolom pas di layar (tidak terpotong)";
+    } else {
+      btnL.disabled = (curScroll <= 2);
+      btnR.disabled = (curScroll >= maxScroll - 2);
+      btnL.title = (curScroll > 2) ? "Geser tabel ke kiri" : "Sudah di kolom paling kiri";
+      btnR.title = (curScroll < maxScroll - 2) ? "Geser tabel ke kanan" : "Sudah di kolom paling kanan";
+    }
+  }
+
+  // Update toolbar pagination dan kontrol jumlah baris (10, 20, 50, 100, semua) + navigasi geser tabel
+  function updatePaginationToolbar(table, matchingCount, totalCount, startIdx, endIdx, currentPage, totalPages, pageSize) {
+    const tableId = ensureTableId(table);
+    const container = getTableContainer(table);
+    if (!container || !container.parentNode) return;
+
+    let toolbar = container.parentNode.querySelector(`.table-pagination-toolbar[data-for="${tableId}"]`);
+    if (!toolbar) {
+      toolbar = document.createElement("div");
+      toolbar.className = "table-pagination-toolbar";
+      toolbar.dataset.for = tableId;
+
+      toolbar.innerHTML = `
+        <div class="tpt-controls">
+          <label class="tpt-label">
+            <span style="font-size:13px;">📄</span>
+            <span>Tampilkan:</span>
+            <select class="tpt-select" aria-label="Jumlah raw data yang ditampilkan">
+              <option value="10">10 baris</option>
+              <option value="20">20 baris</option>
+              <option value="50">50 baris</option>
+              <option value="100">100 baris</option>
+              <option value="all">Semua baris data</option>
+            </select>
+          </label>
+          <span class="tpt-info"></span>
+        </div>
+        <div class="tpt-scroll-nav">
+          <span class="tpt-scroll-lbl">↔ Geser Tabel:</span>
+          <button type="button" class="btn btn-secondary btn-sm tpt-scroll-left" title="Geser tabel ke kiri" aria-label="Geser tabel ke kiri">◀ Geser Kiri</button>
+          <button type="button" class="btn btn-secondary btn-sm tpt-scroll-right" title="Geser tabel ke kanan" aria-label="Geser tabel ke kanan">Geser Kanan ▶</button>
+        </div>
+        <div class="tpt-paging">
+          <button type="button" class="btn btn-secondary btn-sm tpt-prev" aria-label="Halaman sebelumnya">◀ Prev</button>
+          <span class="tpt-page-num"></span>
+          <button type="button" class="btn btn-secondary btn-sm tpt-next" aria-label="Halaman berikutnya">Next ▶</button>
+        </div>
+      `;
+
+      container.parentNode.insertBefore(toolbar, container);
+
+      const sel = toolbar.querySelector(".tpt-select");
+      sel.value = pageSize || "all";
+      sel.onchange = () => {
+        const val = sel.value;
+        try { localStorage.setItem("biochain_table_rows_limit", val); } catch (_) {}
+        const p = tablePaginationMap.get(table) || {};
+        p.pageSize = val;
+        p.currentPage = 1;
+        tablePaginationMap.set(table, p);
+        applyFiltersToTable(table);
+      };
+
+      const btnScrollLeft = toolbar.querySelector(".tpt-scroll-left");
+      const btnScrollRight = toolbar.querySelector(".tpt-scroll-right");
+      if (btnScrollLeft) {
+        btnScrollLeft.onclick = (e) => {
+          e.preventDefault();
+          container.scrollBy({ left: -320, behavior: "smooth" });
+        };
+      }
+      if (btnScrollRight) {
+        btnScrollRight.onclick = (e) => {
+          e.preventDefault();
+          container.scrollBy({ left: 320, behavior: "smooth" });
+        };
+      }
+    }
+
+    toolbar.dataset.totalPages = String(totalPages || 1);
+    toolbar.dataset.currentPage = String(currentPage || 1);
+
+    // Dynamic onclick handlers bound without stale closure
+    const btnPrev = toolbar.querySelector(".tpt-prev");
+    const btnNext = toolbar.querySelector(".tpt-next");
+
+    if (btnPrev) {
+      btnPrev.onclick = (e) => {
+        e.preventDefault();
+        const p = tablePaginationMap.get(table) || { currentPage: 1, pageSize: "all" };
+        if (p.currentPage > 1) {
+          p.currentPage--;
+          tablePaginationMap.set(table, p);
+          applyFiltersToTable(table);
+        }
+      };
+    }
+
+    if (btnNext) {
+      btnNext.onclick = (e) => {
+        e.preventDefault();
+        const p = tablePaginationMap.get(table) || { currentPage: 1, pageSize: "all" };
+        const maxPages = parseInt(toolbar.dataset.totalPages, 10) || 1;
+        if (p.currentPage < maxPages) {
+          p.currentPage++;
+          tablePaginationMap.set(table, p);
+          applyFiltersToTable(table);
+        }
+      };
+    }
+
+    const sel = toolbar.querySelector(".tpt-select");
+    if (sel && sel.value !== pageSize) sel.value = pageSize;
+
+    const info = toolbar.querySelector(".tpt-info");
+    const isFiltered = (matchingCount < totalCount);
+    const filterSuffix = isFiltered ? ` (difilter dari total ${totalCount} baris)` : "";
+
+    if (totalCount === 0) {
+      info.textContent = "Tidak ada baris data";
+    } else if (matchingCount === 0) {
+      info.textContent = `0 data cocok${filterSuffix}`;
+    } else if (pageSize === "all") {
+      info.textContent = `Menampilkan semua ${matchingCount} baris data${filterSuffix}`;
+    } else {
+      info.textContent = `Menampilkan ${startIdx + 1}–${endIdx} dari ${matchingCount} baris data${filterSuffix}`;
+    }
+
+    const pageNum = toolbar.querySelector(".tpt-page-num");
+    pageNum.textContent = (pageSize === "all") ? "Semua Baris" : `Hal ${currentPage} / ${totalPages}`;
+
+    if (btnPrev) btnPrev.disabled = (currentPage <= 1 || pageSize === "all" || matchingCount === 0);
+    if (btnNext) btnNext.disabled = (currentPage >= totalPages || pageSize === "all" || matchingCount === 0);
+
+    updateScrollNavButtons(toolbar, container);
+  }
+
+  // Update synchronized top scrollbar ("garis penggeser di taruh atas tabel saja")
+  function updateTopScrollbar(table) {
+    const tableId = ensureTableId(table);
+    const container = getTableContainer(table);
+    if (!container || !container.parentNode) return;
+
+    let topBar = container.parentNode.querySelector(`.table-top-scrollbar[data-for="${tableId}"]`);
+    if (!topBar) {
+      topBar = document.createElement("div");
+      topBar.className = "table-top-scrollbar";
+      topBar.dataset.for = tableId;
+      topBar.setAttribute("title", "Garis penggeser horizontal tabel (geser ke kanan/kiri)");
+      topBar.innerHTML = `<div class="table-top-scrollbar-inner"></div>`;
+
+      // Sisipkan tepat sebelum container (setelah toolbar)
+      container.parentNode.insertBefore(topBar, container);
+    }
+
+    const inner = topBar.querySelector(".table-top-scrollbar-inner");
+    const scrollW = container.scrollWidth;
+    const clientW = container.clientWidth;
+
+    inner.style.width = `${scrollW}px`;
+
+    // Tampilkan jika tabel melebihi lebar layar horizontal
+    if (scrollW > clientW + 2) {
+      topBar.style.display = "block";
+      topBar.scrollLeft = container.scrollLeft;
+    } else {
+      topBar.style.display = "none";
+    }
+
+    const toolbar = container.parentNode.querySelector(`.table-pagination-toolbar[data-for="${tableId}"]`);
+    if (toolbar) {
+      updateScrollNavButtons(toolbar, container);
+    }
+
+    // Pasang listener sinkronisasi scroll dua arah (top bar <-> table container)
+    if (!container.dataset.topScrollAttached) {
+      container.dataset.topScrollAttached = "1";
+      let isSyncing = false;
+
+      topBar.addEventListener("scroll", () => {
+        if (isSyncing) return;
+        isSyncing = true;
+        container.scrollLeft = topBar.scrollLeft;
+        isSyncing = false;
+        if (toolbar) updateScrollNavButtons(toolbar, container);
+      });
+
+      container.addEventListener("scroll", () => {
+        if (isSyncing) return;
+        isSyncing = true;
+        topBar.scrollLeft = container.scrollLeft;
+        isSyncing = false;
+        if (toolbar) updateScrollNavButtons(toolbar, container);
+      });
+
+      if (window.ResizeObserver) {
+        const ro = new ResizeObserver(() => {
+          updateTopScrollbar(table);
+        });
+        ro.observe(container);
+        ro.observe(table);
+      }
+    }
+  }
+
   // Update status bar di atas tabel
   function updateStatusBar(table, visibleCount, totalCount) {
-    let bar = table.parentElement ? table.parentElement.querySelector(`.excel-filter-status-bar[data-for="${table.id || 'tbl'}"]`) : null;
+    const tableId = ensureTableId(table);
+    const container = getTableContainer(table);
+    if (!container || !container.parentNode) return;
+
+    let bar = container.parentNode.querySelector(`.excel-filter-status-bar[data-for="${tableId}"]`);
     const filters = tableFiltersMap.get(table) || {};
     const activeFilterCount = Object.values(filters).filter(Boolean).length;
 
     if (!bar) {
       bar = document.createElement("div");
       bar.className = "excel-filter-status-bar";
-      bar.dataset.for = table.id || "tbl";
-      table.parentNode.insertBefore(bar, table);
+      bar.dataset.for = tableId;
+      container.parentNode.insertBefore(bar, container);
     }
 
     if (activeFilterCount === 0) {
@@ -428,12 +719,51 @@
 
   // Scanner otomatis untuk tabel baru di DOM
   function scanAndEnhanceTables(root = document) {
-    root.querySelectorAll("table.data-table, table.table").forEach(enhanceTableWithExcelFilter);
+    root.querySelectorAll("table.data-table, table.table").forEach(table => {
+      enhanceTableWithExcelFilter(table);
+      applyFiltersToTable(table);
+    });
   }
 
   // Global Observer
   let scanPending = false;
-  const observer = new MutationObserver(() => {
+  const observer = new MutationObserver((mutations) => {
+    let hasRelevantMutation = false;
+    for (const m of mutations) {
+      for (const node of m.addedNodes) {
+        if (node.nodeType === 1) {
+          const cl = node.classList;
+          if (cl?.contains("table-pagination-toolbar") ||
+              cl?.contains("table-top-scrollbar") ||
+              cl?.contains("excel-filter-status-bar") ||
+              cl?.contains("excel-filter-popover") ||
+              node.closest?.(".table-pagination-toolbar, .table-top-scrollbar, .excel-filter-popover")) {
+            continue;
+          }
+          hasRelevantMutation = true;
+          break;
+        }
+      }
+      if (hasRelevantMutation) break;
+      for (const node of m.removedNodes) {
+        if (node.nodeType === 1) {
+          const cl = node.classList;
+          if (cl?.contains("table-pagination-toolbar") ||
+              cl?.contains("table-top-scrollbar") ||
+              cl?.contains("excel-filter-status-bar") ||
+              cl?.contains("excel-filter-popover") ||
+              node.closest?.(".table-pagination-toolbar, .table-top-scrollbar, .excel-filter-popover")) {
+            continue;
+          }
+          hasRelevantMutation = true;
+          break;
+        }
+      }
+      if (hasRelevantMutation) break;
+    }
+
+    if (!hasRelevantMutation) return;
+
     if (scanPending) return;
     scanPending = true;
     requestAnimationFrame(() => {
@@ -452,7 +782,14 @@
     });
   }
 
+  window.addEventListener("resize", () => {
+    document.querySelectorAll("table.data-table, table.table").forEach(updateTopScrollbar);
+  });
+
   // Expose API ke Window
   window.enableExcelTableFilters = scanAndEnhanceTables;
   window.toggleQuickFilterRow = toggleQuickFilterRow;
+  window.updateAllTableTopScrollbars = () => {
+    document.querySelectorAll("table.data-table, table.table").forEach(updateTopScrollbar);
+  };
 })();

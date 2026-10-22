@@ -10,7 +10,7 @@
 2. [BAB 2: Panduan Peran Petani (🌾)](#bab-2-panduan-peran-petani-)
    - 2.1 Pendaftaran Multi-Biomassa & Parameter Mutu Awal
    - 2.2 Dua Jalur Penjualan: Direct Price vs Bursa Lelang
-   - 2.3 Program Penebusan Biochar Muatan Balik (Backhaul Redemption)
+   - 2.3 Program Penebusan Abu Bottom Ash Muatan Balik (Backhaul Soil Amendment)
    - 2.4 Transparansi Rincian Refraksi Kadar Air ("Potongan Air")
    - 2.5 Pemantauan Status Batch, QR Code & XP Gamifikasi
 3. [BAB 3: Panduan Peran Pengepul / KUD (📦)](#bab-3-panduan-peran-pengepul--kud-)
@@ -40,7 +40,7 @@
 
 ## BAB 1: Pengenalan & Petunjuk Memulai Cepat
 
-Bio-Chain v2.4 adalah platform agritech sirkular generasi baru yang menghubungkan rantai pasok biomassa pertanian (sekam padi, tongkol jagung, ampas tebu, serbuk kayu, limbah kelapa) menjadi produk bernilai tinggi (biochar penyubur tanah, bahan bakar boiler, dan kredit karbon tersertifikasi).
+Bio-Chain v2.4 adalah platform agritech sirkular generasi baru yang menghubungkan rantai pasok biomassa pertanian (sekam padi, tongkol jagung, ampas tebu, serbuk kayu, limbah kelapa) menjadi produk bernilai tinggi (biochar prekursor anoda baterai, abu bottom ash penyubur tanah sawah sirkular, bahan bakar boiler, dan kredit karbon tersertifikasi).
 
 ### 1.1 Persyaratan Sistem
 - **Sistem Operasi**: Windows 10/11, macOS, atau Linux (Ubuntu 22.04+).
@@ -77,7 +77,7 @@ Portal Petani dirancang dengan estetika modern, kontras tinggi, dan antarmuka ra
 |  3. PILIH JALUR TRANSAKSI:                                                                        |
 |       ├─ [MODE 1: DIRECT PRICE] ──> Harga Katalog Tetap, Kepastian Tunai Instan                   |
 |       └─ [MODE 2: BURSA LELANG] ──> Set Batas Minimum (Reserve Price), Lelang 48 Jam Multi-Buyer  |
-|  4. OPSI: Centang "Tukar Muatan Balik Biochar" (Gratis Ongkir Rute Truk)                          |
+|  4. OPSI: Centang "Tukar Muatan Balik Abu Bottom Ash" (Gratis Ongkir Rute Truk)                   |
 |  5. Terbitkan Batch & Dapatkan TIKET QR RESMI (HMAC-SHA256)                                       |
 +---------------------------------------------------------------------------------------------------+
 ```
@@ -104,12 +104,12 @@ Petani memiliki kendali penuh atas cara menjual panennya:
   - Tentukan durasi lelang (12, 24, atau 48 jam).
   - Tawaran masuk secara real-time dari berbagai pembeli pabrik. Sistem dilengkapi proteksi *anti-sniping* (perpanjangan waktu 5 menit otomatis jika ada penawaran baru di detik-detik akhir).
 
-### 2.3 Program Penebusan Biochar Muatan Balik (Backhaul Redemption)
-Petani dapat menukar poin panen atau saldo hasil penjualan biomassa dengan produk biochar untuk memperbaiki pH dan kesuburan tanah:
-1. Centang opsi **"Tebus Biochar Muatan Balik"**.
-2. Masukkan kuantitas karung biochar yang diinginkan (misal: 20 karung @ 25 kg = 500 kg).
-3. **Keuntungan**: Truk logistik yang menjemput sekam akan membawa biochar langsung dari pabrik (*zero extra shipping fee*).
-4. **Fleksibilitas Pengambilan**: Jika sawah belum masuk jadwal bajak tanah, petani dapat memilih opsi **"Simpan di Gudang Pengepul"** agar biochar tetap kering dan aman dari hujan.
+### 2.3 Program Penebusan Abu Bottom Ash Muatan Balik (Backhaul Soil Amendment)
+Petani dapat menukar poin panen atau saldo hasil penjualan biomassa dengan produk abu bottom ash sisa pembakaran/boiler untuk memperbaiki pH dan kesuburan tanah sawah (sementara biochar berkualitas tinggi difokuskan untuk material baterai anoda):
+1. Centang opsi **"Tebus Abu Bottom Ash Muatan Balik"**.
+2. Masukkan kuantitas karung abu bottom ash yang diinginkan (misal: 20 karung @ 25 kg = 500 kg).
+3. **Keuntungan**: Truk logistik yang menjemput sekam akan membawa abu bottom ash langsung dari pabrik (*zero extra shipping fee*).
+4. **Fleksibilitas Pengambilan**: Jika sawah belum masuk jadwal bajak tanah, petani dapat memilih opsi **"Simpan di Gudang Pengepul"** agar abu tetap kering dan aman dari hujan.
 
 ### 2.4 Transparansi Rincian Refraksi Kadar Air ("Potongan Air")
 Jika kadar air aktual melampaui batas referensi, sistem menerapkan formula refraksi kontinu:

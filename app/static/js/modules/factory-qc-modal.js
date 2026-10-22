@@ -11,8 +11,8 @@
     const d = document.createElement("dialog");
     d.className = "ui-confirm";
     d.innerHTML = `<form method="dialog" style="max-width:440px;">
-      <h3>🚚 Terbitkan Surat Jalan Muatan Balik Biochar</h3>
-      <p class="ui-confirm-body">Muatan balik biochar mengoptimalkan utilisasi armada dan mewujudkan rantai pasok sirkular (ZONA 5B ➔ ZONA 4).</p>
+      <h3>🚚 Terbitkan Surat Jalan Muatan Balik Abu Bottom Ash</h3>
+      <p class="ui-confirm-body">Muatan balik abu bottom ash mengoptimalkan utilisasi armada dan mewujudkan rantai pasok sirkular ke sawah (ZONA 5B ➔ ZONA 4). Biochar pabrik difokuskan untuk material baterai.</p>
       <div class="form-group"><label for="fx-bd-col">Pengepul Mitra</label>
         <select id="fx-bd-col" required>
           <option value="2">UD Sekam Berkah (#2)</option>
@@ -54,7 +54,7 @@
             body: { collector_id: colId, driver_id: drvId, vehicle_plate: plate, total_weight_kg: kg, total_bags: bags, loading_instructions: inst }
           });
           showToast(r.message, "✅");
-          openModal("Surat Jalan Muatan Balik Biochar", r.qr_dispatch_token, `${r.dispatch_code} · ${num(r.total_weight_kg, 0)} kg biochar (${r.total_bags} karung)`);
+          openModal("Surat Jalan Muatan Balik Abu Bottom Ash", r.qr_dispatch_token, `${r.dispatch_code} · ${num(r.total_weight_kg, 0)} kg abu bottom ash (${r.total_bags} karung)`);
           if (typeof onCreated === "function") onCreated();
         } catch (err) { showToast(err.message, "❌"); }
       }

@@ -167,7 +167,7 @@ async def optimize_multi_ramp_blend(
         "BIOCHAR": {
             "preferred": ["sekam_padi", "tempurung_kelapa", "ampas_tebu", "serbuk_sengon"],
             "restricted": [],
-            "rationale": "Cocok untuk hampir semua biomassa berselulosa/lignin; menghasilkan karbon aktif pembenah tanah & carbon sink.",
+            "rationale": "Cocok untuk hampir semua biomassa berselulosa/lignin; menghasilkan karbon aktif untuk pengembangan material baterai & carbon sink.",
         },
         "BIO_SILICA": {
             "preferred": ["sekam_padi"],
@@ -183,7 +183,7 @@ async def optimize_multi_ramp_blend(
 
     product_configs = [
         ("BIOPELLET", "Biopellet Industri & Ekspor", alloc_pellet),
-        ("BIOCHAR", "Biochar Pembenah Tanah & C-Sink", alloc_biochar),
+        ("BIOCHAR", "Biochar Prekursor Material Baterai & C-Sink", alloc_biochar),
         ("BIO_SILICA", "Bio-Silika Presipitasi Kemurnian Tinggi", alloc_silica),
         ("BRIQUETTE", "Briket Arang Kalori Tinggi", alloc_briquette),
     ]
@@ -473,7 +473,7 @@ async def test_byproduct_heavy_metals(
 
     if passed:
         bp.circular_status = "APPROVED_FOR_SOIL"
-        msg = f"✅ Uji Logam Berat LOLOS (Pb: {req.pb_ppm:g}, Cd: {req.cd_ppm:g}, As: {req.as_ppm:g} ppm). Biochar disetujui untuk pembenah tanah sawah!"
+        msg = f"✅ Uji Logam Berat LOLOS (Pb: {req.pb_ppm:g}, Cd: {req.cd_ppm:g}, As: {req.as_ppm:g} ppm). Abu bottom ash disetujui untuk pembenah tanah sawah kelompok tani!"
     else:
         bp.circular_status = "REJECTED_HAZARDOUS"
         msg = f"⛔ PERINGATAN: Melebihi ambang batas aman logam berat! (Batas: Pb<50, Cd<2, As<10 ppm). Status dikarantina B3, dilarang disalurkan ke petani."

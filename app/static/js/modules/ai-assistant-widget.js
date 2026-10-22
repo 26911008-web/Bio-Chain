@@ -8,7 +8,7 @@
 // Teks model dirender sebagai teks (esc) + markdown minimal; tidak ada HTML dari model yang dieksekusi.
 // ==============================================================
 const AI_SUGGEST = {
-  petani: ["Bagaimana agar biomassa saya naik ke Grade A?", "Kapan waktu terbaik melapor stok?", "Apa arti dompet biochar saya?"],
+  petani: ["Bagaimana agar biomassa saya naik ke Grade A?", "Kapan waktu terbaik melapor stok?", "Apa manfaat abu bottom ash untuk sawah?"],
   pengepul: ["Antrean mana yang sebaiknya diverifikasi dulu?", "Cara cepat menilai kadar air di lapangan?", "Bagaimana menekan susut timbangan?"],
   driver: ["Tips muat biomassa agar bak truk optimal?", "Apa yang harus dicek saat scan QR?", "Bagaimana jika sinyal hilang di jalan?"],
   pabrik: ["Saran optimasi pasokan minggu ini?", "Bagaimana menekan susut pengepul→pabrik?", "Strategi blending untuk biomassa basah?"],

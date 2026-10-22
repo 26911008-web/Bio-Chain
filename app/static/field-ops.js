@@ -28,9 +28,9 @@
   };
 
   // ---------------------------------------------------------------- dialog generik (form)
-  function formDialog({ title, body, ok = "Simpan", danger = false, onSubmit }) {
+  function formDialog({ title, body, ok = "Simpan", danger = false, wide = false, onSubmit }) {
     const d = document.createElement("dialog");
-    d.className = "ui-confirm";
+    d.className = wide ? "ui-confirm ui-confirm-wide" : "ui-confirm";
     d.innerHTML = `<form method="dialog" class="fo-form">
         <h3>${H(title)}</h3>
         <div class="fo-body">${body}</div>
@@ -112,8 +112,8 @@
 
     <section class="card" aria-labelledby="fo-backhaul-title" style="margin-top:16px;">
       <div class="card-header"><div>
-        <h3 class="card-title" id="fo-backhaul-title">🚚 Rute Konsolidasi &amp; Muatan Balik Biochar</h3>
-        <p class="card-sub">Simulasi kapasitas ganda armada (30 m³ &amp; 5.000 kg) dengan integrasi pengiriman biochar ke petani.</p></div>
+        <h3 class="card-title" id="fo-backhaul-title">🚚 Rute Konsolidasi &amp; Muatan Balik Abu Bottom Ash</h3>
+        <p class="card-sub">Simulasi kapasitas ganda armada (30 m³ &amp; 5.000 kg) dengan integrasi pengiriman abu bottom ash untuk pembenah tanah sawah petani.</p></div>
         <button type="button" class="btn btn-primary btn-sm" id="fo-plan-route-btn" data-onclick="openRouteOptimizationModal()">🗺️ Optimasi &amp; Teknis Rute Terverifikasi</button></div>
       <div id="fo-backhaul-status"><p class="muted">Klik tombol di atas untuk membuka modul pop-up optimasi rute terverifikasi, peta spasial Leaflet, dan analisis teknis kapasitas.</p></div>
     </section>
@@ -477,32 +477,32 @@
     <section class="card" id="fo-soil-amendment-card" aria-labelledby="fo-soil-amendment-title" style="margin-top:16px;">
       <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
         <div>
-          <h3 class="card-title" id="fo-soil-amendment-title">🌿 Alokasi Abu &amp; Evaluasi Mutu Biochar (Pembenah Tanah Sawah)</h3>
-          <p class="card-sub">Pemanfaatan produk sirkular kembali ke sawah: alokasi abu boiler bebas logam berat (Kepmentan 261/2019) dan ulasan mutu biochar pirolisis.</p>
+          <h3 class="card-title" id="fo-soil-amendment-title">🌿 Alokasi Abu Bottom Ash &amp; Evaluasi Kualitas Sirkular Sawah</h3>
+          <p class="card-sub">Pemanfaatan produk sirkular kembali ke sawah: alokasi abu bottom ash bebas logam berat (Kepmentan 261/2019) untuk pembenah tanah, sementara biochar difokuskan pada material baterai.</p>
         </div>
-        <button type="button" class="btn btn-primary btn-sm" id="btn-open-eval-biochar">📝 Isi Evaluasi Mutu Biochar</button>
+        <button type="button" class="btn btn-primary btn-sm" id="btn-open-eval-biochar">📝 Isi Evaluasi Mutu Abu Bottom Ash</button>
       </div>
 
       <!-- Bagian 1: Alokasi Abu Pembenah Tanah untuk Kelompok (Poktan) -->
       <div style="margin-bottom:18px;">
         <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:6px; margin-bottom:10px;">
           <h4 style="margin:0; font-size:13.5px; font-weight:700; color:var(--ink); display:flex; align-items:center; gap:6px;">
-            <span>🪨</span> <span>Alokasi Abu Pembenah Tanah untuk Kelompok Anda</span>
+            <span>🪨</span> <span>Alokasi Abu Bottom Ash Pembenah Tanah untuk Kelompok Anda</span>
           </h4>
           <span class="muted" style="font-size:11px;">Standar Uji Logam Berat: Pb, Cd, As &le; Ambang Aman</span>
         </div>
         <div id="fo-ash-container"><p class="muted" style="font-size:12px;">Memuat data alokasi abu...</p></div>
       </div>
 
-      <!-- Bagian 2: Evaluasi & Ulasan Mutu Biochar Sawah -->
+      <!-- Bagian 2: Evaluasi & Ulasan Mutu Abu Bottom Ash Sawah -->
       <div>
         <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:6px; margin-bottom:10px;">
           <h4 style="margin:0; font-size:13.5px; font-weight:700; color:var(--ink); display:flex; align-items:center; gap:6px;">
-            <span>🌾</span> <span>Evaluasi &amp; Ulasan Mutu Biochar Lapangan</span>
+            <span>🌾</span> <span>Evaluasi &amp; Ulasan Mutu Abu Bottom Ash Sawah</span>
           </h4>
-          <span class="muted" style="font-size:11px;">Ukuran Mesh, Kematangan Pirolisis &amp; Dampak Kesuburan Tanah</span>
+          <span class="muted" style="font-size:11px;">Ukuran Butir, Kelembapan &amp; Dampak Kesuburan Tanah</span>
         </div>
-        <div id="fo-biochar-evaluations"><p class="muted" style="font-size:12px;">Memuat evaluasi mutu biochar…</p></div>
+        <div id="fo-biochar-evaluations"><p class="muted" style="font-size:12px;">Memuat evaluasi mutu abu bottom ash…</p></div>
       </div>
     </section>`;
 
@@ -612,7 +612,7 @@
       const [w, reqs] = await Promise.all([api("/api/v1/farmer/wallet"), api("/api/v1/farmer/biochar/redemptions")]);
       box.innerHTML = `
         <div class="kpi-row">
-          <div class="kpi-tile"><div class="kpi-lbl">Saldo biochar</div><div class="kpi-val">${num(w.balance_kg, 1)} kg</div>
+          <div class="kpi-tile"><div class="kpi-lbl">Saldo Abu Bottom Ash</div><div class="kpi-val">${num(w.balance_kg, 1)} kg</div>
             <div class="kpi-lbl">hak dari biomassa yang diolah</div></div>
           <div class="kpi-tile"><div class="kpi-lbl">Potensi bisa diambil</div><div class="kpi-val">${num(w.available_kg, 1)} kg</div>
             <div class="kpi-lbl">${w.held_kg ? `${num(w.held_kg, 1)} kg sedang diajukan` : "siap diajukan"}</div></div>
@@ -620,9 +620,9 @@
             <div class="kpi-lbl">telah diaplikasikan ke sawah</div></div>
         </div>
         <div class="demo-hint-box" style="margin:12px 0 10px; padding:10px 14px; border-radius:8px; background:var(--surface-2); border:1px solid var(--border);">
-          <div style="font-weight:700; color:var(--primary); margin-bottom:4px;">🌱 Informasi Ekonomi Sirkular Biochar:</div>
+          <div style="font-weight:700; color:var(--primary); margin-bottom:4px;">🌱 Informasi Ekonomi Sirkular Abu Bottom Ash:</div>
           <p style="margin:0; font-size:12px; line-height:1.4;" class="muted">
-            Permintaan pengiriman biochar kini <b>terintegrasi langsung saat melapor biomassa</b> di modul <i>"🌾 Lapor &amp; Jual Biomassa"</i> agar armada membawa biochar muatan balik secara efisien. Tabel di bawah mencatat riwayat permohonan, nomor QR code, dan status serah terima biochar.
+            Permintaan pengiriman abu bottom ash kini <b>terintegrasi langsung saat melapor biomassa</b> di modul <i>"🌾 Lapor &amp; Jual Biomassa"</i> agar armada membawa abu bottom ash muatan balik secara efisien. Tabel di bawah mencatat riwayat permohonan, nomor QR code, dan status serah terima abu bottom ash.
           </p>
         </div>
         <div id="br-list">
@@ -631,7 +631,7 @@
               <table class="data-table">
                 <thead>
                   <tr>
-                    <th>No. QR Code Biochar</th>
+                    <th>No. QR Code Abu Bottom Ash</th>
                     <th>No. Lapor &amp; Kirim Asal</th>
                     <th class="num">Jumlah (kg)</th>
                     <th>Luas Sawah</th>
@@ -646,7 +646,7 @@
                     <tr>
                       <td>
                         <code style="font-family:monospace; font-weight:700; color:var(--primary); font-size:12px;">${H(x.request_code || ('BCR-REQ-' + x.id))}</code>
-                        <button type="button" class="btn btn-secondary btn-sm" style="padding:1px 5px; font-size:9px; height:18px; margin-left:4px;" data-onclick="openModal('QR Code Biochar Sawah', '${H(x.request_code || ('BCR-REQ-' + x.id))}', 'Nomor permohonan muatan balik biochar')">📱 QR</button>
+                        <button type="button" class="btn btn-secondary btn-sm" style="padding:1px 5px; font-size:9px; height:18px; margin-left:4px;" data-onclick="openModal('QR Code Abu Bottom Ash Sawah', '${H(x.request_code || ('BCR-REQ-' + x.id))}', 'Nomor permohonan muatan balik abu bottom ash')">📱 QR</button>
                       </td>
                       <td>
                         <code>${H(x.harvest_qr || ('WR-HV-' + (x.harvest_id || x.id)))}</code>
@@ -664,7 +664,7 @@
                 </tbody>
               </table>
             </div>
-          ` : emptyState("🌱", "Belum ada riwayat biochar", "Pesan biochar muatan balik saat melapor biomassa pada formulir di atas.")}
+          ` : emptyState("🌱", "Belum ada riwayat abu bottom ash", "Pesan abu bottom ash muatan balik saat melapor biomassa pada formulir di atas.")}
         </div>
       `;
     } catch (e) {
@@ -1167,12 +1167,12 @@
 
   function openBiocharEvaluationModal() {
     formDialog({
-      title: "🌿 Evaluasi Mutu Biochar (Pembenah Tanah Sawah)",
+      title: "🌿 Evaluasi Mutu Abu Bottom Ash (Pembenah Tanah Sawah)",
       ok: "Kirim Evaluasi Mutu",
       body: `
         <div class="form-group">
-          <label for="be-batch">Kode Batch / ID Permintaan Biochar</label>
-          <input type="text" id="be-batch" name="batch_code" value="BIOCHAR-SAWAH-01" required>
+          <label for="be-batch">Kode Batch / ID Alokasi Abu Bottom Ash</label>
+          <input type="text" id="be-batch" name="batch_code" value="ASH-SAWAH-01" required>
         </div>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
           <div class="form-group">
@@ -1180,7 +1180,7 @@
             <input type="number" id="be-mesh" name="mesh" min="1" max="5" value="5" required>
           </div>
           <div class="form-group">
-            <label for="be-mat">Kematangan Pirolisis (1-5)</label>
+            <label for="be-mat">Kadar Kalsinasi / Kematangan (1-5)</label>
             <input type="number" id="be-mat" name="maturity" min="1" max="5" value="5" required>
           </div>
         </div>
@@ -1211,7 +1211,7 @@
             review_notes: fd.get("notes") || null,
           }
         });
-        showToast("Evaluasi kualitas biochar berhasil dicatat!", "🌿");
+        showToast("Evaluasi kualitas abu bottom ash berhasil dicatat!", "🌿");
         loadBiocharEvaluations();
       }
     });
@@ -1223,7 +1223,7 @@
     try {
       const rows = await api("/api/v1/farmer/biochar-evaluations");
       box.innerHTML = rows.length ? `<div class="table-scroll"><table class="data-table"><thead><tr>
-        <th>Batch / Permintaan</th><th>Skor Total</th><th>Mesh</th><th>Pirolisis</th><th>Kelembapan</th><th>Dampak Tanah</th><th>Catatan</th></tr></thead><tbody>
+        <th>Batch / Alokasi</th><th>Skor Total</th><th>Mesh</th><th>Kalsinasi</th><th>Kelembapan</th><th>Dampak Tanah</th><th>Catatan</th></tr></thead><tbody>
         ${rows.map(e => `<tr>
           <td><code>${H(e.batch_code || `#${e.biochar_request_id || '-'}`)}</code></td>
           <td><b style="color:var(--green); font-size:1.05em;">⭐ ${num(e.overall_score, 1)} / 5.0</b></td>
@@ -1233,7 +1233,7 @@
           <td>${e.soil_impact_rating}/5</td>
           <td><small>${H(e.review_notes || '-')}</small></td>
         </tr>`).join("")}
-      </tbody></table></div>` : emptyState("🌿", "Belum ada evaluasi mutu biochar", "Klik tombol di atas untuk mengisi ulasan biochar yang telah diaplikasikan ke lahan sawah.");
+      </tbody></table></div>` : emptyState("🌿", "Belum ada evaluasi mutu abu bottom ash", "Klik tombol di atas untuk mengisi ulasan abu bottom ash yang telah diaplikasikan ke lahan sawah.");
     } catch (e) { box.innerHTML = `<div class="banner banner-error" role="alert">⚠️ ${H(e.message)}</div>`; }
   }
 
@@ -1466,6 +1466,7 @@
     formDialog({
       title: "⚖️ Timbang Masuk Jembatan & Input Keputusan QC",
       ok: "✅ Proses Masuk & Terbitkan Invoice",
+      wide: true,
       body: `
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
           <div class="form-group">
@@ -2024,7 +2025,7 @@
 
           const productIcons = {
             "BIOPELLET": "🌿 BIOPELLET (Bahan Bakar Industri)",
-            "BIOCHAR": "🌱 BIOCHAR (Pembenah Tanah & Carbon Sink)",
+            "BIOCHAR": "🔋 BIOCHAR (Material Prekursor Baterai & Carbon Sink)",
             "BIO_SILICA": "🧪 BIO-SILIKA (Presipitasi Sekam Padi)",
             "BRIQUETTE": "🔥 BRIKET (Arang Kalori Tinggi)",
           };

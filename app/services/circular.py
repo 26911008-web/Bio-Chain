@@ -1,7 +1,7 @@
-"""Pengambilan biochar petani untuk sawah — sisi keluar Dompet Biochar.
+"""Pengambilan abu bottom ash petani untuk sawah — sisi keluar Dompet Abu (Bottom Ash).
 
 Invarian: saldo tersedia = Σ ledger − Σ permintaan berstatus 'diajukan'. Ledger `redemption` (negatif) hanya
-ditulis pabrik saat karung benar-benar diserahkan, sehingga dompet tidak pernah berkurang untuk biochar yang
+ditulis pabrik saat karung benar-benar diserahkan, sehingga dompet tidak pernah berkurang untuk abu yang
 belum keluar gudang. Serah-terima mengunci baris permintaan (FOR UPDATE) → tidak bisa tercatat dua kali.
 """
 
@@ -39,7 +39,7 @@ async def request_redemption(db: AsyncSession, farmer: User, kg: float, land_are
     await lock_row(db, User, farmer.id)
     available = await wallet_balance(db, farmer.id) - await pending_kg(db, farmer.id)
     if kg > available + 1e-6:
-        raise HTTPException(409, f"Saldo biochar tersedia {max(0.0, available):.1f} kg (sebagian mungkin sedang diajukan).")
+        raise HTTPException(409, f"Saldo abu bottom ash tersedia {max(0.0, available):.1f} kg (sebagian mungkin sedang diajukan).")
     r = BiocharRedemption(farmer_id=farmer.id, kg=round(kg, 2), land_area_ha=land_area_ha, pickup_point=pickup_point,
                           note=(note or "").strip() or None,
                           estimate=estimate(kg, land_area_ha) if land_area_ha else None)
@@ -86,7 +86,7 @@ async def handover(db: AsyncSession, operator: User, redemption_id: int, kg: flo
         raise HTTPException(422, "Kg diserahkan tidak boleh melebihi yang diajukan.")
     await lock_row(db, User, r.farmer_id)          # serah-terima beberapa permintaan petani yang sama → cek saldo berurutan
     if out_kg > await wallet_balance(db, r.farmer_id) + 1e-6:
-        raise HTTPException(409, "Saldo dompet petani tidak cukup (cek penyesuaian ledger).")
+        raise HTTPException(409, "Saldo dompet abu petani tidak cukup (cek penyesuaian ledger).")
     now = datetime.now(timezone.utc)
     # Klaim status dulu (compare-and-swap): atomik juga di SQLite yang mengabaikan FOR UPDATE → dua klik "Serahkan"
     # bersamaan tidak bisa memotong dompet petani dua kali.
@@ -97,7 +97,7 @@ async def handover(db: AsyncSession, operator: User, redemption_id: int, kg: flo
         await db.rollback()
         raise HTTPException(409, "Permintaan ini baru saja diserahkan petugas lain.")
     entry = BiocharLedgerEntry(farmer_id=r.farmer_id, entry_type="redemption", amount_kg=-out_kg,
-                               note=f"Diambil untuk sawah ({r.land_area_ha or '-'} ha) · permintaan #{r.id}"
+                               note=f"Abu bottom ash diambil untuk sawah ({r.land_area_ha or '-'} ha) · permintaan #{r.id}"
                                     + (f" · {note.strip()}" if note and note.strip() else ""),
                                created_by_id=operator.id)
     db.add(entry)

@@ -1,8 +1,8 @@
-"""Manfaat ekonomi biochar sekam di sawah petani — rumus pendekatan ekonomi sirkular.
+"""Manfaat ekonomi abu bottom ash sekam di sawah petani — rumus pendekatan ekonomi sirkular.
 
 Semua koefisien adalah parameter (`biochar_sawah.*`, menu Parameter) dengan rujukan di
 docs/08_RISET_BIOCHAR_SAWAH.md. Rumus sengaja konservatif: hasil adalah PERKIRAAN untuk membantu petani
-memutuskan, bukan janji panen.
+memutuskan aplikasi abu bottom ash pembenah tanah, bukan janji panen.
 
     r        = kg / 1000 / luas ;  r_eff = min(r, r_cap)         dosis (t/ha)
     f(r)     = R_maks · (1 − e^(−k·r_eff))                       kenaikan hasil (%), jenuh pada dosis tinggi

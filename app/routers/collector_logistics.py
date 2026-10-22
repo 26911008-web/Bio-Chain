@@ -240,10 +240,10 @@ async def consolidated_pickup_plan(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(require_role(UserRole.PENGEPUL))],
 ):
-    """Penyusunan rute multi-stop penjemputan biomassa petani terintegrasi muatan balik (backhaul) biochar.
+    """Penyusunan rute multi-stop penjemputan biomassa petani terintegrasi muatan balik (backhaul) abu bottom ash.
 
     Memverifikasi constraint kapasitas ganda armada (Massa ≤ 5.000 kg dan Volume ≤ 30 m³).
-    Simulasi dinamis: muatan balik biochar diturunkan di petani sementara biomassa dimuat.
+    Simulasi dinamis: muatan balik abu bottom ash diturunkan di petani sementara biomassa dimuat. Biochar diproduksi pabrik untuk material baterai.
     """
     harvests = (await db.execute(
         select(Harvest).where(Harvest.id.in_(req.harvest_ids))
@@ -361,7 +361,7 @@ async def consolidated_pickup_plan(
 
         trip_timeline = [{
             "stage": "START_DEPOT",
-            "description": f"Armada {plate_used} ({driver_used}) berangkat membawa muatan balik biochar",
+            "description": f"Armada {plate_used} ({driver_used}) berangkat membawa muatan balik abu bottom ash",
             "biochar_kg": curr_b_kg,
             "biomass_kg": 0.0,
             "total_weight_kg": curr_b_kg,

@@ -5,7 +5,7 @@ from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..params import P
@@ -226,8 +226,26 @@ async def get_offers_dashboard(
     )
     listings = (await db.execute(listings_q.order_by(StockListing.id.desc()))).scalars().all()
 
-    # Preload farmers
-    f_ids = list({l.farmer_id for l in listings if l.farmer_id})
+    # Preload unverified direct harvest offers (assigned to collector or unassigned/open)
+    direct_harvests_q = select(Harvest).where(
+        Harvest.status == HarvestStatus.REPORTED,
+        or_(Harvest.collector_id == user.id, Harvest.collector_id.is_(None))
+    )
+    direct_harvests = (await db.execute(direct_harvests_q.order_by(Harvest.id.desc()))).scalars().all()
+
+    # Preload all verified harvests for this collector
+    verified_harvests_q = select(Harvest).where(
+        Harvest.status == HarvestStatus.VERIFIED,
+        Harvest.collector_id == user.id
+    )
+    verified_harvests = (await db.execute(verified_harvests_q.order_by(Harvest.id.desc()))).scalars().all()
+
+    # Preload farmers across all sources
+    f_ids = list(
+        {l.farmer_id for l in listings if l.farmer_id}
+        | {h.farmer_id for h in direct_harvests if h.farmer_id}
+        | {h.farmer_id for h in verified_harvests if h.farmer_id}
+    )
     farmers_map = {}
     if f_ids:
         f_res = await db.execute(select(User).where(User.id.in_(f_ids)))
@@ -251,20 +269,6 @@ async def get_offers_dashboard(
     for b in all_bids_res.scalars().all():
         all_bids_by_listing.setdefault(b.listing_id, []).append(b)
 
-    # Preload unverified direct harvest offers
-    direct_harvests_q = select(Harvest).where(
-        Harvest.status == HarvestStatus.REPORTED,
-        Harvest.collector_id == user.id
-    )
-    direct_harvests = (await db.execute(direct_harvests_q.order_by(Harvest.id.desc()))).scalars().all()
-
-    # Preload all verified harvests for this collector
-    verified_harvests_q = select(Harvest).where(
-        Harvest.status == HarvestStatus.VERIFIED,
-        Harvest.collector_id == user.id
-    )
-    verified_harvests = (await db.execute(verified_harvests_q.order_by(Harvest.id.desc()))).scalars().all()
-
     # Preload biochar requests for poktan backhaul
     biochar_reqs = (await db.execute(
         select(BiocharCircularRequest)
@@ -280,27 +284,44 @@ async def get_offers_dashboard(
     for h in verified_harvests:
         f = farmers_map.get(h.farmer_id) if h.farmer_id else None
         target_mill = mills_map.get(h.mill_id) if h.mill_id else None
+        farmer_name = f.full_name if f else (f.username if f else f"Petani #{h.farmer_id}")
+        kec = getattr(f, "kecamatan", None) or getattr(target_mill, "kecamatan", None) or "-"
+        price = getattr(h, "agreed_price_per_kg", None) or h.base_price_per_kg or 450.0
+        qty = h.verified_kg or h.quantity_kg
         item = {
             "id": h.id,
+            "harvest_id": h.id,
             "source_type": "harvest",
             "is_verified": True,
+            "is_verified_initial": True,
+            "is_active": True,
+            "status": "VERIFIED",
+            "status_label": "Terverifikasi",
             "status_badge": "Stok Gudang (Siap Delivery)",
-            "farmer_name": f.full_name if f else (f.username if f else f"Petani #{h.farmer_id}"),
+            "farmer_name": farmer_name,
+            "nama_petani": farmer_name,
             "farmer_phone": f.phone if f else "-",
-            "farmer_kecamatan": getattr(f, "kecamatan", None) or getattr(target_mill, "kecamatan", None) or "-",
+            "farmer_without_phone": getattr(f, "without_phone", False) if f else False,
+            "farmer_kecamatan": kec,
+            "kecamatan": kec,
             "farmer_lat": f.lat if f and f.lat is not None else None,
             "farmer_lon": f.lon if f and f.lon is not None else None,
             "commodity_code": h.commodity or "sekam_padi",
             "biomass_type": h.commodity or "sekam_padi",
             "biomass_name": (h.commodity or "sekam_padi").replace("_", " ").title(),
-            "quantity_kg": h.verified_kg or h.quantity_kg,
+            "jenis_biomassa": (h.commodity or "sekam_padi").replace("_", " ").title(),
+            "quantity_kg": qty,
+            "qty_kg": qty,
             "moisture_pct": h.moisture,
             "ash_pct": h.ash,
             "grade": h.grade.value if h.grade and hasattr(h.grade, 'value') else (h.grade or "A"),
             "delivery_scheme": "JEMPUT",
             "delivery_scheme_label": "Gudang Pengepul",
-            "price_per_kg": getattr(h, "agreed_price_per_kg", None) or h.base_price_per_kg or 450.0,
-            "total_estimated_rp": (h.verified_kg or h.quantity_kg) * (getattr(h, "agreed_price_per_kg", None) or h.base_price_per_kg or 450.0),
+            "pilihan_kirim": "Gudang Pengepul",
+            "titik_pasok": "Gudang Pengepul",
+            "price_per_kg": price,
+            "harga_per_kg": price,
+            "total_estimated_rp": qty * price,
             "pickup_date": getattr(h, "pickup_date", None) or "-",
             "payment_scheme": "CASH",
             "notes": getattr(h, "notes", None) or "Biomassa tersimpan di gudang transit.",
@@ -310,7 +331,11 @@ async def get_offers_dashboard(
             "factory_price_estimate": getattr(target_mill, "contract_price_per_kg", 650.0),
             "factory_distance_km": 14.5,
             "factory_delivery_mode": "Pabrik Jemput Armada",
+            "qr_code": h.qr_code,
+            "origin_qr_code": h.qr_code,
+            "wr_code": getattr(h, "wr_code", None) or f"WR-HV-{h.id:04d}",
             "created_at": h.created_at.isoformat() if getattr(h, "created_at", None) else None,
+            "reported_at": h.reported_at.isoformat() if getattr(h, "reported_at", None) else (h.created_at.isoformat() if getattr(h, "created_at", None) else None),
             "actions": {
                 "can_plan_pickup": False,
                 "can_verify": False,
@@ -324,27 +349,45 @@ async def get_offers_dashboard(
     for h in direct_harvests:
         f = farmers_map.get(h.farmer_id) if h.farmer_id else None
         target_mill = mills_map.get(h.mill_id) if h.mill_id else None
+        farmer_name = f.full_name if f else (f.username if f else f"Petani #{h.farmer_id}")
+        kec = getattr(f, "kecamatan", None) or getattr(target_mill, "kecamatan", None) or "-"
+        price = getattr(h, "agreed_price_per_kg", None) or h.base_price_per_kg or 450.0
+        qty = h.quantity_kg
         item = {
             "id": h.id,
+            "harvest_id": h.id,
             "source_type": "harvest",
             "is_verified": False,
+            "is_verified_initial": False,
+            "is_active": True,
+            "status": "REPORTED",
+            "status_label": "Belum Ditimbang",
             "status_badge": "Belum Ditimbang",
-            "farmer_name": f.full_name if f else (f.username if f else f"Petani #{h.farmer_id}"),
+            "farmer_name": farmer_name,
+            "nama_petani": farmer_name,
             "farmer_phone": f.phone if f else "-",
-            "farmer_kecamatan": getattr(f, "kecamatan", None) or getattr(target_mill, "kecamatan", None) or "-",
+            "farmer_without_phone": getattr(f, "without_phone", False) if f else False,
+            "farmer_kecamatan": kec,
+            "kecamatan": kec,
             "farmer_lat": f.lat if f and f.lat is not None else None,
             "farmer_lon": f.lon if f and f.lon is not None else None,
             "commodity_code": h.commodity or "sekam_padi",
             "biomass_type": h.commodity or "sekam_padi",
             "biomass_name": (h.commodity or "sekam_padi").replace("_", " ").title(),
-            "quantity_kg": h.quantity_kg,
+            "jenis_biomassa": (h.commodity or "sekam_padi").replace("_", " ").title(),
+            "quantity_kg": qty,
+            "qty_kg": qty,
+            "farmer_claimed_qty": qty,
             "moisture_pct": h.moisture,
             "ash_pct": h.ash,
             "grade": h.grade.value if h.grade and hasattr(h.grade, 'value') else (h.grade or "A"),
             "delivery_scheme": "JEMPUT",
             "delivery_scheme_label": "Dijemput Pengepul",
-            "price_per_kg": getattr(h, "agreed_price_per_kg", None) or h.base_price_per_kg or 450.0,
-            "total_estimated_rp": h.quantity_kg * (getattr(h, "agreed_price_per_kg", None) or h.base_price_per_kg or 450.0),
+            "pilihan_kirim": "Dijemput Pengepul",
+            "titik_pasok": getattr(target_mill, "name", "Lahan Petani") if target_mill else "Lahan Petani",
+            "price_per_kg": price,
+            "harga_per_kg": price,
+            "total_estimated_rp": qty * price,
             "pickup_date": getattr(h, "pickup_date", None) or "-",
             "payment_scheme": "CASH",
             "notes": getattr(h, "notes", None) or "-",
@@ -354,7 +397,11 @@ async def get_offers_dashboard(
             "factory_price_estimate": getattr(target_mill, "contract_price_per_kg", 650.0),
             "factory_distance_km": 14.5,
             "factory_delivery_mode": "Pabrik Jemput Armada",
+            "qr_code": h.qr_code,
+            "origin_qr_code": h.qr_code,
+            "wr_code": getattr(h, "wr_code", None) or f"WR-HV-{h.id:04d}",
             "created_at": h.created_at.isoformat() if getattr(h, "created_at", None) else None,
+            "reported_at": h.reported_at.isoformat() if getattr(h, "reported_at", None) else (h.created_at.isoformat() if getattr(h, "created_at", None) else None),
             "actions": {
                 "can_plan_pickup": True,
                 "can_verify": True,
@@ -378,28 +425,45 @@ async def get_offers_dashboard(
 
         target_mill = mills_map.get(l.factory_target_id) if getattr(l, 'factory_target_id', None) else None
         fac_price = target_mill.contract_price_per_kg if target_mill else 650.0
+        farmer_name = f.full_name if f else (f.username if f else f"Petani #{l.farmer_id}")
+        kec = f.kecamatan if f else "-"
+        qty = l.remaining_kg
 
         item = {
             "id": l.id,
+            "listing_id": l.id,
+            "harvest_id": getattr(l, "harvest_id", None),
             "source_type": "listing",
             "is_verified": False,
+            "is_verified_initial": False,
+            "is_active": True,
+            "status": "LISTED",
+            "status_label": "Lelang Aktif" if is_bidding else "Langsung",
             "status_badge": "Lelang Aktif" if is_bidding else "Langsung",
-            "farmer_name": f.full_name if f else (f.username if f else f"Petani #{l.farmer_id}"),
+            "farmer_name": farmer_name,
+            "nama_petani": farmer_name,
             "farmer_phone": f.phone if f else "-",
-            "farmer_kecamatan": f.kecamatan if f else "-",
+            "farmer_without_phone": getattr(f, "without_phone", False) if f else False,
+            "farmer_kecamatan": kec,
+            "kecamatan": kec,
             "farmer_lat": f.lat if f and f.lat is not None else None,
             "farmer_lon": f.lon if f and f.lon is not None else None,
             "commodity_code": l.commodity or "sekam_padi",
             "biomass_type": l.commodity or "sekam_padi",
             "biomass_name": (l.commodity or "sekam_padi").replace("_", " ").title(),
-            "quantity_kg": l.remaining_kg,
+            "jenis_biomassa": (l.commodity or "sekam_padi").replace("_", " ").title(),
+            "quantity_kg": qty,
+            "qty_kg": qty,
             "moisture_pct": l.moisture_pct,
             "ash_pct": None,
             "grade": l.grade_estimate or "A",
             "delivery_scheme": skema,
             "delivery_scheme_label": "Dijemput Pengepul" if skema == "JEMPUT" else "Diantar Petani",
+            "pilihan_kirim": "Dijemput Pengepul" if skema == "JEMPUT" else "Diantar Petani",
+            "titik_pasok": target_mill.name if target_mill else "Lahan Petani",
             "price_per_kg": hrg,
-            "total_estimated_rp": l.remaining_kg * hrg,
+            "harga_per_kg": hrg,
+            "total_estimated_rp": qty * hrg,
             "pickup_date": (l.auction_expiry.strftime("%Y-%m-%d") if getattr(l, "auction_expiry", None) else (l.expires_at.strftime("%Y-%m-%d") if getattr(l, "expires_at", None) else "-")),
             "payment_scheme": getattr(l, "payment_scheme", None) or getattr(l, "payment_status", None) or "CASH",
             "notes": getattr(l, "notes", None) or "-",
@@ -409,7 +473,11 @@ async def get_offers_dashboard(
             "factory_price_estimate": fac_price,
             "factory_distance_km": getattr(l, 'factory_distance_km', 18.2) or 18.2,
             "factory_delivery_mode": getattr(l, 'factory_delivery_mode', 'Pabrik Jemput Armada') or 'Pabrik Jemput Armada',
+            "qr_code": getattr(l, "qr_code", None),
+            "origin_qr_code": getattr(l, "qr_code", None) or f"WR-LST-{l.id:04d}",
+            "wr_code": f"WR-LST-{l.id:04d}",
             "created_at": l.created_at.isoformat() if l.created_at else None,
+            "reported_at": l.created_at.isoformat() if l.created_at else None,
             "is_bidding": is_bidding,
             "bidding_details": {
                 "floor_price": l.floor_price or 400.0,
