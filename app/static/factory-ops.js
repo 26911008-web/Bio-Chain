@@ -36,6 +36,21 @@
         <p class="card-sub">Nilai awal = titik tengah literatur (docs/15). Ganti dengan hasil lab per lot; harga dasar beli WAJIB diisi pabrik (tanpa angka bawaan).</p></div></div>
       <div id="fx-bm"><p class="muted">Memuat…</p></div></section>
 
+    ${canWrite() ? `<section class="card" aria-labelledby="fx-fb-title">
+      <div class="card-header"><div><h3 class="card-title" id="fx-fb-title">⚗️ Prototipe 1 — Blend Bahan Bakar Biaya Terendah &amp; Risiko Terak</h3>
+        <p class="card-sub">LP HiGHS: campuran termurah yang memenuhi kalori, abu, klorin dan indeks alkali (anti-slagging boiler). Geser slider untuk uji campuran manual.</p></div></div>
+      <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:8px;">
+        <div class="form-group"><label for="fx-fb-preset">Spesifikasi produk</label><select id="fx-fb-preset"></select></div>
+        <div class="form-group"><label for="fx-fb-target">Target produk (kg)</label><input id="fx-fb-target" type="number" min="1" step="100" value="10000"></div>
+        <div class="form-group"><label for="fx-fb-kcal">Target kalori (kcal/kg, opsional)</label><input id="fx-fb-kcal" type="number" min="1000" max="6000" step="50"></div>
+      </div>
+      <div id="fx-fb-feeds" class="table-scroll"><p class="muted">Memuat…</p></div>
+      <button type="button" class="btn btn-primary btn-sm" id="fx-fb-go">⚙️ Optimasi campuran</button>
+      <div id="fx-fb-out" style="margin-top:12px;"></div>
+      <div id="fx-fb-sliders" style="margin-top:12px;"></div>
+      <div style="max-width:420px; margin:12px auto;"><canvas id="fx-fb-radar" aria-label="Radar mutu campuran terhadap batas spesifikasi" role="img"></canvas></div>
+    </section>` : ""}
+
     <section class="card" aria-labelledby="fx-ash-title">
       <div class="card-header"><div><h3 class="card-title" id="fx-ash-title">🪨 Ledger Abu → Kelompok Tani</h3>
         <p class="card-sub">Abu boiler/pirolisis hanya boleh ke lahan bila lulus uji logam berat (Kepmentan 261/2019). Serah-terima wajib foto &amp; titik lahan.</p></div>
@@ -458,6 +473,107 @@
     });
   }
 
+  // ---------------------------------------------------------------- Prototipe 1: blend bahan bakar
+  let fbPresets = null, fbRadar = null, fbTimer = null;
+  const VERDICT_BADGE = { AMAN: "badge-green", WASPADA: "badge-amber", BAHAYA: "badge-red", LAYAK: "badge-green", "TIDAK LAYAK": "badge-red" };
+
+  async function initFuelBlend() {
+    if (!$("fx-fb-feeds")) return;
+    try {
+      fbPresets = await api("/api/v1/factory/fuel-blend/presets");
+      if (!bmCache.length) bmCache = await api("/api/v1/biomass");
+      $("fx-fb-preset").innerHTML = Object.entries(fbPresets.presets).map(([k, v]) => `<option value="${H(k)}">${H(v.label)}</option>`).join("");
+      $("fx-fb-feeds").innerHTML = `<table class="data-table"><thead><tr><th>Pakai</th><th>Komoditas</th><th class="num">Stok (kg)</th>
+        <th class="num">Harga (Rp/kg)</th><th class="num">MC aktual (%)</th><th class="num">Porsi maks (%)</th></tr></thead><tbody>${bmCache.map(b => `<tr>
+        <td><input type="checkbox" data-fb-use="${H(b.code)}" ${fbPresets.factory_stock_kg[b.code] ? "checked" : ""} aria-label="Pakai ${H(b.name)}"></td>
+        <td>${H(b.name)}</td>
+        <td class="num"><input type="number" min="0" step="100" data-fb-kg="${H(b.code)}" value="${Math.round(fbPresets.factory_stock_kg[b.code] || 0)}" style="width:100px;"></td>
+        <td class="num"><input type="number" min="0" step="10" data-fb-price="${H(b.code)}" value="${b.base_price_per_kg ?? ""}" placeholder="wajib" style="width:90px;"></td>
+        <td class="num"><input type="number" min="0" max="94" step="0.5" data-fb-mc="${H(b.code)}" placeholder="${num(b.moisture_typ_pct, 0)}" style="width:70px;"></td>
+        <td class="num"><input type="number" min="0" max="100" step="5" data-fb-max="${H(b.code)}" value="100" style="width:70px;"></td></tr>`).join("")}</tbody></table>
+        ${fbPresets.drying_cost_rp_per_kg_water == null ? `<p class="kpi-lbl">⚠️ Biaya pengeringan belum diisi di menu Parameter — bahan basah (ampas tebu) akan tampak lebih murah dari kenyataan.</p>` : ""}`;
+      $("fx-fb-go").onclick = runFuelBlend;
+    } catch (e) { $("fx-fb-feeds").innerHTML = `<div class="banner banner-error" role="alert">⚠️ ${H(e.message)}</div>`; }
+  }
+
+  function fbFeeds() {
+    return [...document.querySelectorAll("[data-fb-use]:checked")].map(cb => {
+      const c = cb.dataset.fbUse, v = (k) => document.querySelector(`[data-fb-${k}="${c}"]`).value;
+      return { code: c, available_kg: Number(v("kg")) || 0, price_per_kg: v("price") === "" ? null : Number(v("price")),
+               moisture_pct: v("mc") === "" ? null : Number(v("mc")), max_share_pct: Number(v("max")) || 100 };
+    });
+  }
+
+  async function runFuelBlend() {
+    const out = $("fx-fb-out"), feeds = fbFeeds();
+    if (!feeds.length) return showToast("Pilih minimal satu komoditas.", "⚠️");
+    return withBusy($("fx-fb-go"), async () => {
+      try {
+        const r = await api("/api/v1/factory/fuel-blend/optimize", { body: { preset: $("fx-fb-preset").value,
+          target_kg: Number($("fx-fb-target").value), lhv_ar_min_kcal: Number($("fx-fb-kcal").value) || null, feeds } });
+        if (!r.feasible) {
+          out.innerHTML = `<div class="banner banner-error" role="alert">⛔ ${H(r.message)}</div>`;
+          $("fx-fb-sliders").innerHTML = "";
+          return;
+        }
+        const card = r.feasibility_card;
+        out.innerHTML = `<div class="kpi-row">
+            <div class="kpi-tile"><div class="kpi-lbl">Kelayakan</div><div class="kpi-val"><span class="badge ${VERDICT_BADGE[card.verdict]}">${H(card.verdict)}</span></div><div class="kpi-lbl">Terak: ${H(card.slagging)}</div></div>
+            <div class="kpi-tile"><div class="kpi-lbl">Biaya total</div><div class="kpi-val">${rp(r.cost.total_rp)}</div><div class="kpi-lbl">${rp(r.cost.rp_per_kg_product)}/kg produk</div></div>
+            <div class="kpi-tile"><div class="kpi-lbl">Kalori</div><div class="kpi-val">${num(r.properties.gcv_ar_kcal_kg, 0)}</div><div class="kpi-lbl">kcal/kg GCV ar · NCV ${num(r.properties.lhv_ar_kcal_kg, 0)}</div></div>
+            <div class="kpi-tile"><div class="kpi-lbl">Indeks alkali</div><div class="kpi-val">${num(r.properties.indices.alkali_index, 3)}</div><div class="kpi-lbl">kg/GJ · ${H(r.properties.risk_levels.alkali_index)}</div></div></div>
+          <div class="table-scroll"><table class="data-table"><thead><tr><th>Komoditas</th><th class="num">Porsi (% bk)</th><th class="num">Pakai (kg basah)</th>
+            <th class="num">Air diuapkan (kg)</th><th class="num">Biaya</th></tr></thead><tbody>${r.composition.map(c => `<tr><td>${H(c.name)}</td>
+            <td class="num"><b>${num(c.share_dry_pct, 1)}</b></td><td class="num">${num(c.wet_kg_to_use, 0)}</td><td class="num">${num(c.water_to_evaporate_kg, 0)}</td>
+            <td class="num">${rp(c.purchase_rp + c.drying_rp)}</td></tr>`).join("")}</tbody></table></div>
+          <ul class="kpi-lbl">${card.checks.map(c => `<li>${c.ok ? "✅" : "⛔"} ${H(c.check)}: ${H(c.detail)}</li>`).join("")}</ul>
+          ${(r.notes || []).map(n => `<p class="kpi-lbl">ℹ️ ${H(n)}</p>`).join("")}
+          <p class="kpi-lbl">${H(card.recommendation)}</p>`;
+        fbRenderProps(r.properties, r.spec);
+        fbSliders(r.composition, r.spec);
+      } catch (e) { out.innerHTML = `<div class="banner banner-error" role="alert">⚠️ ${H(e.message)}</div>`; }
+    }, "⏳");
+  }
+
+  function fbRenderProps(p, spec) {
+    const warn = $("fx-fb-warn") || Object.assign(document.createElement("div"), { id: "fx-fb-warn" });
+    $("fx-fb-sliders").before(warn);
+    warn.innerHTML = `<p><span class="badge ${VERDICT_BADGE[p.slagging_verdict]}">Risiko terak: ${H(p.slagging_verdict)}</span>
+      B/A ${num(p.indices.base_acid, 3)} · Rs ${num(p.indices.slagging_rs, 3)} · Fu ${num(p.indices.fouling_fu, 2)} · Cl ${num(p.chlorine_pct_db, 3)} %</p>
+      ${p.warnings.map(w => `<div class="banner ${/Tinggi Terak/.test(w) ? "banner-error" : "banner-warning"}" role="alert">⚠️ ${H(w)}</div>`).join("")}`;
+    if (typeof Chart === "undefined" || !$("fx-fb-radar")) return;
+    const ratio = (v, lim) => (v == null || !lim ? 0 : Math.min(2, v / lim));
+    const kcalTarget = spec.lhv_ar_min_mj ? spec.lhv_ar_min_mj * 238.846 : null;
+    const cal = spec.calorific_basis === "gcv_ar" ? p.gcv_ar_kcal_kg : p.lhv_ar_kcal_kg;
+    const data = [ratio(p.ash_pct_db, spec.ash_max_pct), ratio(p.chlorine_pct_db, spec.cl_max_pct), ratio(p.indices.alkali_index, 0.34),
+                  ratio(p.indices.base_acid, 0.4), ratio(p.sulfur_pct_db, spec.s_max_pct), kcalTarget ? Math.min(2, kcalTarget / cal) : 0];
+    const cfg = { type: "radar", data: { labels: ["Abu", "Klorin", "Indeks alkali", "B/A", "Sulfur", "Kekurangan kalori"],
+      datasets: [{ label: "Campuran (÷ batas)", data, fill: true }, { label: "Batas = 1", data: data.map(() => 1), fill: false, borderDash: [4, 4] }] },
+      options: { scales: { r: { min: 0, max: 2, ticks: { stepSize: 0.5 } } }, plugins: { legend: { position: "bottom" } } } };
+    if (fbRadar) { fbRadar.data = cfg.data; fbRadar.update(); } else fbRadar = new Chart($("fx-fb-radar"), cfg);
+  }
+
+  function fbSliders(comp, spec) {
+    $("fx-fb-sliders").innerHTML = `<h4>🎚️ Uji campuran manual (porsi % basis kering)</h4>` + comp.map(c => `
+      <label style="display:grid; grid-template-columns:160px 1fr 60px; gap:8px; align-items:center;">${H(c.name)}
+        <input type="range" min="0" max="100" step="1" value="${Math.round(c.share_dry_pct)}" data-fb-slide="${H(c.code)}" aria-label="Porsi ${H(c.name)}">
+        <span data-fb-val="${H(c.code)}">${Math.round(c.share_dry_pct)}%</span></label>`).join("");
+    $("fx-fb-sliders").oninput = (e) => {
+      const el = e.target.closest("[data-fb-slide]");
+      if (!el) return;
+      $("fx-fb-sliders").querySelector(`[data-fb-val="${el.dataset.fbSlide}"]`).textContent = `${el.value}%`;
+      clearTimeout(fbTimer);
+      fbTimer = setTimeout(async () => {
+        const shares = Object.fromEntries([...document.querySelectorAll("[data-fb-slide]")].map(s => [s.dataset.fbSlide, Number(s.value)]));
+        try {
+          const p = await api("/api/v1/factory/fuel-blend/evaluate", { body: { feeds: fbFeeds().filter(f => f.code in shares),
+            shares_pct: shares, product_moisture_pct: spec.product_moisture_pct } });
+          fbRenderProps(p, spec);
+        } catch (err) { showToast(err.message, "❌"); }
+      }, 300);
+    };
+  }
+
   // ---------------------------------------------------------------- klaim removal karbon (F11)
   const CC_BADGE = { diajukan: "badge-amber", diverifikasi: "badge-green", ditolak: "badge-red" };
   let ccPhotoUrl = null;
@@ -567,7 +683,7 @@
       $("fx-cc-photo").addEventListener("change", () => { ccPhotoUrl = null; });
     }
     loadClaims();
-    loadBiomass(); loadAsh();
+    loadBiomass().then(initFuelBlend); loadAsh();
     if ($("fx-grp-new")) { $("fx-grp-new").onclick = newGroup; $("fx-ash-new").onclick = newAsh; }
     loadCharges();
     loadEfficiency(); loadEsg();

@@ -298,6 +298,14 @@ DEFS: list[ParamDef] = [
     _n("feedstock.burn_w_ash", "Pembakaran: bobot kadar abu", 0.20, "", 0, 1),
     _n("feedstock.burn_w_moisture", "Pembakaran: bobot kadar air", 0.15, "", 0, 1),
     # ---------------- Blending & spesifikasi produk
+    ParamDef("blending.drying_cost_rp_per_kg_water", "Biaya pengeringan per kg air diuapkan", None, "Rp/kg air", 0, 10_000,
+             required_input=True,
+             help="Prototipe 1 (blend bahan bakar): biaya pengering (BBM/listrik/tenaga) per kg air yang diuapkan. "
+                  "Acuan energi ±3 MJ/kg air (≈1,2× panas laten); isi sesuai harga bahan bakar pengering Anda.",
+             source="Panas laten 2,443 MJ/kg (ISO 18125) × rugi pengering ±1,2 — engines/waste_energy.py"),
+    _n("blending.ai_max_kg_gj", "Batas indeks alkali campuran", 0.34, "kg/GJ", 0.05, 2.0,
+       "Di atas batas → campuran ditolak optimizer (>0,34 hampir pasti terak; 0,17–0,34 peringatan).",
+       source="Miles dkk. 1996 NREL/TP-433-8142; Zhu dkk. 2014 Front. Energy Res. 2:7 (docs/15 §2)"),
     _n("blending.biochar_tanah_moisture_max", "Biochar tanah: kadar air maks", 14.0, "%", 0, 60),
     _n("blending.biochar_tanah_ash_max", "Biochar tanah: abu maks", 16.0, "%", 0, 60),
     _n("blending.biochar_tanah_fc_min", "Biochar tanah: FC min", 15.0, "%", 0, 100),

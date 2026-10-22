@@ -118,3 +118,31 @@ test('pabrik: master biomassa & abu gagal uji tidak bisa ke Poktan', async ({ br
   await expect(rowGood).toContainText('dialokasikan', { timeout: 10_000 });
   await context.close();
 });
+
+test('prototipe 1: optimasi blend + slider memicu peringatan terak', async ({ browser }) => {
+  test.setTimeout(90_000);
+  const api = await pwRequest.newContext();
+  const pabrik = await login(api, 'pabrik_indmira', 'pabrik2026');
+  for (const [code, price] of [['tongkol_jagung', 650], ['serbuk_sengon', 500]] as const) {
+    await api.put(`${BASE}/api/v1/biomass/${code}`, { headers: auth(pabrik.access_token),
+      data: { changes: { base_price_per_kg: price }, source: 'harga uji e2e' } });
+  }
+  const { context, page } = await openAs(browser, pabrik);
+  await expect(page.locator('[data-fb-use=tongkol_jagung]')).toBeVisible({ timeout: 20_000 });
+  for (const cb of await page.locator('[data-fb-use]').all()) await cb.uncheck();
+  for (const code of ['tongkol_jagung', 'serbuk_sengon']) {
+    await page.locator(`[data-fb-use=${code}]`).check();
+    await page.locator(`[data-fb-kg=${code}]`).fill('20000');
+  }
+  await page.selectOption('#fx-fb-preset', 'pelet_4000_kcal');
+  await page.click('#fx-fb-go');
+  await expect(page.locator('#fx-fb-out')).toContainText('LAYAK', { timeout: 15_000 });
+  await expect(page.locator('#fx-fb-radar')).toBeVisible();
+  const corn = page.locator('[data-fb-slide=tongkol_jagung]');
+  const wood = page.locator('[data-fb-slide=serbuk_sengon]');
+  await wood.fill('0');
+  await corn.fill('100');
+  await expect(page.locator('#fx-fb-warn')).toContainText('Risiko Tinggi Terak/Slagging pada Boiler Industri', { timeout: 10_000 });
+  await expect(page.locator('#fx-fb-warn')).toContainText('BAHAYA');
+  await context.close();
+});

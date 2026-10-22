@@ -202,3 +202,106 @@ async def ash_dispose(ash_id: int, req: AshDispose, db: DB, user: Annotated[User
 async def farmer_ash(db: DB, user: Annotated[User, Depends(require_role(UserRole.PETANI))]):
     """Ketua Poktan melihat abu yang dialokasikan/diserahkan ke kelompoknya."""
     return await svc.list_ash(db, group_leader=user)
+
+
+# ---------------------------------------------------------------- Prototipe 1: blend bahan bakar (fase 2)
+class FuelFeedInput(BaseModel):
+    code: str = Field(..., max_length=24)
+    available_kg: float = Field(..., ge=0, le=100_000_000)
+    price_per_kg: float | None = Field(None, ge=0, le=100_000, description="Kosong = harga dasar master")
+    moisture_pct: float | None = Field(None, ge=0, lt=95, description="Kosong = MC tipikal master; isi hasil ukur")
+    min_share_pct: float = Field(0, ge=0, le=100)
+    max_share_pct: float = Field(100, ge=0, le=100)
+
+
+class FuelBlendRequest(BaseModel):
+    preset: str | None = Field(None, description="pelet_iso17225_6_a | pelet_iso17225_6_b | pelet_4000_kcal | cofiring_pln")
+    feeds: list[FuelFeedInput] = Field(..., min_length=1, max_length=20)
+    target_kg: float = Field(..., gt=0, le=10_000_000)
+    product_moisture_pct: float | None = Field(None, ge=0, lt=60)
+    lhv_ar_min_kcal: float | None = Field(None, gt=0, lt=7000, description="Target kalori as-received (kcal/kg)")
+    calorific_basis: str | None = Field(None, pattern="^(ncv_ar|gcv_ar)$", description="Basis target kalori")
+    ash_max_pct: float | None = Field(None, gt=0, lt=60)
+    cl_max_pct: float | None = Field(None, gt=0, lt=5)
+    s_max_pct: float | None = Field(None, gt=0, lt=5)
+    ai_max: float | None = Field(None, gt=0, lt=5)
+
+
+class FuelEvaluateRequest(BaseModel):
+    feeds: list[FuelFeedInput] = Field(..., min_length=1, max_length=20)
+    shares_pct: dict[str, float] = Field(..., description="Porsi basis kering per kode (slider)")
+    product_moisture_pct: float = Field(10, ge=0, lt=60)
+
+
+async def _blend_feeds(db: AsyncSession, items: list[FuelFeedInput]):
+    from ..engines.fuel_blend import BlendFeed
+    from ..models.biomass import OXIDES
+    from fastapi import HTTPException
+    feeds = []
+    for it in items:
+        b = await svc.get_biomass(db, it.code)
+        price = it.price_per_kg if it.price_per_kg is not None else svc.base_price_for(b)
+        if price is None:
+            raise HTTPException(422, f"Harga {b.name} belum diisi (isi di baris ini atau harga dasar master).")
+        feeds.append(BlendFeed(
+            code=b.code, name=b.name, available_kg=it.available_kg, price_per_kg=price,
+            moisture_pct=it.moisture_pct if it.moisture_pct is not None else b.moisture_typ_pct,
+            ash_pct_db=b.ash_pct_db, lhv_db_mj_kg=b.lhv_db_mj_kg, hhv_db_mj_kg=b.hhv_db_mj_kg,
+            chlorine_pct_db=b.chlorine_pct_db, sulfur_pct_db=b.sulfur_pct_db,
+            min_share_pct=it.min_share_pct, max_share_pct=it.max_share_pct,
+            **{f"{o}_pct_ash": getattr(b, f"{o}_pct_ash") for o in OXIDES}))
+    return feeds
+
+
+@router.get("/factory/fuel-blend/presets")
+async def fuel_blend_presets(db: DB, user: Annotated[User, Depends(_operator)]):
+    """Preset spesifikasi produk + stok bahan di pabrik (lot diterima, belum diolah) per komoditas."""
+    from sqlalchemy import func, select
+    from ..engines.fuel_blend import PRESETS, THRESHOLDS
+    from ..models.harvest import Harvest
+    from ..params import P
+    rows = (await db.execute(select(Harvest.commodity, func.coalesce(func.sum(Harvest.received_kg), 0.0))
+                             .where(Harvest.received_kg.is_not(None), Harvest.conversion_id.is_(None))
+                             .group_by(Harvest.commodity))).all()
+    return {"presets": PRESETS, "thresholds": {k: v[2] for k, v in THRESHOLDS.items()},
+            "factory_stock_kg": {c or "sekam_padi": round(kg, 1) for c, kg in rows},
+            "drying_cost_rp_per_kg_water": P("blending.drying_cost_rp_per_kg_water"),
+            "ai_max_default": P("blending.ai_max_kg_gj")}
+
+
+@router.post("/factory/fuel-blend/optimize")
+async def fuel_blend_optimize(req: FuelBlendRequest, db: DB, user: Annotated[User, Depends(_operator)]):
+    """Prototipe 1: campuran biaya terendah yang memenuhi nilai kalor, abu, Cl, S dan indeks alkali (anti-terak)."""
+    from fastapi import HTTPException
+    from ..engines.fuel_blend import KCAL_PER_MJ, PRESETS, BlendOptimizeRequest, BlendSpec, optimize
+    from ..params import P
+    base = PRESETS.get(req.preset or "", {}) if req.preset else {}
+    if req.preset and not base:
+        raise HTTPException(422, f"Preset '{req.preset}' tidak dikenal.")
+    spec = BlendSpec(
+        target_kg=req.target_kg,
+        product_moisture_pct=req.product_moisture_pct if req.product_moisture_pct is not None else base.get("product_moisture_pct", 10),
+        lhv_ar_min_mj=(req.lhv_ar_min_kcal / KCAL_PER_MJ) if req.lhv_ar_min_kcal else base.get("lhv_ar_min_mj"),
+        calorific_basis=req.calorific_basis or base.get("calorific_basis", "ncv_ar"),
+        ash_max_pct=req.ash_max_pct if req.ash_max_pct is not None else base.get("ash_max_pct"),
+        cl_max_pct=req.cl_max_pct if req.cl_max_pct is not None else base.get("cl_max_pct"),
+        s_max_pct=req.s_max_pct if req.s_max_pct is not None else base.get("s_max_pct"),
+        ai_max=req.ai_max if req.ai_max is not None else P("blending.ai_max_kg_gj"),
+        drying_cost_rp_per_kg_water=P("blending.drying_cost_rp_per_kg_water"))
+    out = optimize(BlendOptimizeRequest(feeds=await _blend_feeds(db, req.feeds), spec=spec))
+    if spec.drying_cost_rp_per_kg_water is None:
+        out.setdefault("notes", []).append("Biaya pengeringan belum dihitung: isi parameter 'Biaya pengeringan per kg "
+                                           "air diuapkan' agar bahan basah (mis. ampas tebu) tidak tampak murah.")
+    return {"spec": spec.model_dump(), **out}
+
+
+@router.post("/factory/fuel-blend/evaluate")
+async def fuel_blend_evaluate(req: FuelEvaluateRequest, db: DB, user: Annotated[User, Depends(_operator)]):
+    """Slider manual: sifat campuran & indeks terak untuk porsi yang dipilih pengguna (tanpa optimasi)."""
+    from fastapi import HTTPException
+    from ..engines.fuel_blend import evaluate
+    feeds = await _blend_feeds(db, req.feeds)
+    shares = [max(0.0, req.shares_pct.get(f.code, 0.0)) for f in feeds]
+    if sum(shares) <= 0:
+        raise HTTPException(422, "Porsi campuran masih kosong.")
+    return evaluate(feeds, shares, req.product_moisture_pct)
