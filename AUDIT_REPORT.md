@@ -80,11 +80,10 @@
 - [x] Audit TypeScript test specs (`tests/*.spec.ts`) for un-typed `: any` casts and standardize payload contracts (`tests/types.ts`).
 
 ### 3.5 [MODULARIZATION] Top 5 God Files Decomposition Plan
-- [ ] **God File 1: `app/static/app.js` (7,092 lines)**
-  - Sub-module 1: `app/static/js/core/api-client.js` — Centralized network client, bearer token refresh, and network retry logic.
-  - Sub-module 2: `app/static/js/modules/auth-session.js` — Authentication modal, role selector, demo account switcher, and session management.
-  - Sub-module 3: `app/static/js/modules/collector-view.js` — B2B bidding interface, stock listing cards, and CVRP map route visualization.
-  - Orchestrator: Retain `app.js` as the coordinator wiring state and modules.
+- [x] **God File 1: `app/static/app.js` (7,092 lines -> 6,400 lines)**
+  - Sub-module 1: `app/static/js/modules/notification-center.js` (525 lines) — Role-based notification grouping, real-time unread badges, filter tabs, and alert dispatch modals.
+  - Sub-module 2: `app/static/js/modules/ai-assistant-widget.js` (172 lines) — AI assistant streaming widget, persona suggestion chips, multi-LLM provider/model selection, and floating action button.
+  - Orchestrator: Retained `app.js` as core application orchestrator and state coordinator.
 - [x] **God File 2: `app/static/field-ops.js` (3,709 lines -> 2,254 lines)**
   - Sub-module 1: `app/static/js/modules/route-optimization-modal.js` (1,356 lines) — CVRP interactive multi-stop route planner, vector SVG map, Leaflet map, and dispatch manifest printing.
   - Sub-module 2: `app/static/js/modules/field-kuitansi.js` (147 lines) — Digital payment receipt generator, QR code stamper, PDP data masking, and unified payment table.
