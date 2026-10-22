@@ -85,11 +85,10 @@
   - Sub-module 2: `app/static/js/modules/auth-session.js` — Authentication modal, role selector, demo account switcher, and session management.
   - Sub-module 3: `app/static/js/modules/collector-view.js` — B2B bidding interface, stock listing cards, and CVRP map route visualization.
   - Orchestrator: Retain `app.js` as the coordinator wiring state and modules.
-- [ ] **God File 2: `app/static/field-ops.js` (3,709 lines)**
-  - Sub-module 1: `app/static/js/modules/farmer-harvest-form.js` — Harvest submission, biomass type selection, geolocation capture.
-  - Sub-module 2: `app/static/js/modules/offline-sync-queue.js` — IndexedDB offline outbox, retry scheduler, connectivity monitors.
-  - Sub-module 3: `app/static/js/modules/field-kuitansi.js` — Digital payment receipt generator, QR code stamper, PDP masking.
-  - Orchestrator: Retain `field-ops.js` as coordinator.
+- [x] **God File 2: `app/static/field-ops.js` (3,709 lines -> 2,254 lines)**
+  - Sub-module 1: `app/static/js/modules/route-optimization-modal.js` (1,356 lines) — CVRP interactive multi-stop route planner, vector SVG map, Leaflet map, and dispatch manifest printing.
+  - Sub-module 2: `app/static/js/modules/field-kuitansi.js` (147 lines) — Digital payment receipt generator, QR code stamper, PDP data masking, and unified payment table.
+  - Orchestrator: Retained `field-ops.js` as unified field operations frontend coordinator.
 - [x] **God File 3: `app/routers/factory.py` (3,038 lines -> 1,989 lines)**
   - Sub-module 1: `app/routers/factory_inbound.py` (579 lines) — Gate reception, weighbridge QC, dynamic ramps, factory invoices, and TOP settlements.
   - Sub-module 2: `app/routers/factory_production.py` (489 lines) — Multi-ramp blend optimizer, commit execution, by-products ledger, and chemical heavy metal safety checks.
