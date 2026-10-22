@@ -162,6 +162,11 @@ DEFS: list[ParamDef] = [
     _n("logistik.pickup_geofence_m", "Radius geofence pickup", 500.0, "m", 50, 20_000,
        "Scan QR lebih jauh dari ini terhadap titik penggilingan ditandai untuk auditor (tidak diblokir: "
        "GPS di desa bisa meleset & lokasi penggilingan bisa belum akurat)."),
+    ParamDef("logistik.qr_legacy_policy", "QR lot lama (tanpa tanda tangan, sebelum F14)", "terima_tandai", kind="choice",
+             options=(("terima_tandai", "Terima, tandai untuk auditor (masa transisi nota/karung yang sudah tercetak)"),
+                      ("tolak", "Tolak — minta pengepul/petani cetak ulang QR baru dari aplikasi")),
+             help="QR baru BIO-XXXXXXXX-TTTTTT bertanda tangan HMAC dan bisa dicek offline di HP supir. "
+                  "Ganti ke 'tolak' setelah semua lot lama terangkut."),
     _n("logistik.cancel_fee_per_km", "Ongkos batal per km (dibebankan ke pembatal)", 4_000.0, "Rp/km", 0, 100_000,
        "Kompensasi jarak kosong (deadhead) truk bila pengepul membatalkan setelah truk berangkat."),
     # ---------------- Pasar B2B
@@ -217,6 +222,9 @@ DEFS: list[ParamDef] = [
     _n("karbon.uncertainty_deduction_pct", "Potongan ketidakpastian klaim removal", 10.0, "%", 0, 50,
        "Potongan konservatif selama F_C, H/C_org & F_perm belum dari uji lab (CI 90%). Turunkan setelah data lab tersedia.",
        source="Pendekatan pengurangan ketidakpastian VM0044 (nilai internal konservatif — verifikasi ke VVB)"),
+    _n("karbon.h_corg_max", "Batas rasio molar H/C-org biochar untuk klaim", 0.7, "mol/mol", 0.1, 1.0,
+       "Klaim removal (F11) ditolak bila hasil lab H/C-org di atas batas ini: karbon belum cukup stabil.",
+       source="Puro.earth Biochar Methodology 2025 (syarat H/C_org < 0,7); EBC 2023 §; IPCC 2019 Ref. Vol.4 Ap.4"),
     _n("karbon.pyrolysis_ch4_kg_per_t_biochar", "Emisi CH₄ reaktor per t biochar", 0.0, "kg CH₄/t", 0, 100,
        "0 = BELUM DIUKUR → klaim ditandai belum lengkap. Isi hasil uji emisi cerobong/flare (FID/GC).",
        source="Puro 2025 / EBC C-Sink: emisi CH₄ pirolisis wajib dihitung (GWP-100)"),

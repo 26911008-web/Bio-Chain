@@ -106,4 +106,33 @@ def upgrade_schema(sync_conn) -> list[str]:
             print(f"⚠️  uq_route_stops_harvest_live dilewati: harvest_id {dup[0]} ada di >1 stop hidup.")
             continue
         sync_conn.execute(text(ddl))
+    if sync_conn.dialect.name == "sqlite":
+        _sqlite_refresh_checks(sync_conn, added)
     return added
+
+
+# SQLite tidak bisa ALTER CONSTRAINT; DB lama dari sebelum migrasi PG yang mengubah CHECK tetap memakai versi lama.
+# (tabel, CHECK lama, CHECK baru, syarat data lama memenuhi CHECK baru)
+SQLITE_CHECK_UPGRADES = [
+    ("farmer_payments", "CHECK (net_rp = gross_rp - tax_rp)", "CHECK (net_rp = gross_rp - tax_rp - dp_rp)",
+     "SELECT 1 FROM farmer_payments WHERE net_rp != gross_rp - tax_rp - COALESCE(dp_rp, 0) LIMIT 1"),   # 016
+]
+
+
+def _sqlite_refresh_checks(sync_conn, added: list[str]) -> None:
+    """Ganti teks CHECK lama via writable_schema (prosedur resmi SQLite untuk perubahan tanpa ubah format disk)."""
+    for table, old, new, violation_sql in SQLITE_CHECK_UPGRADES:
+        row = sync_conn.execute(text("SELECT sql FROM sqlite_master WHERE type='table' AND name=:t"),
+                                {"t": table}).first()
+        if row is None or old not in row[0] or new in row[0]:
+            continue
+        if sync_conn.execute(text(violation_sql)).first() is not None:
+            print(f"⚠️  CHECK {table} tidak diperbarui: ada baris lama yang melanggar `{new}`.")
+            continue
+        version = sync_conn.execute(text("PRAGMA schema_version")).scalar()
+        sync_conn.execute(text("PRAGMA writable_schema = ON"))
+        sync_conn.execute(text("UPDATE sqlite_master SET sql = replace(sql, :old, :new) WHERE type='table' AND name=:t"),
+                          {"old": old, "new": new, "t": table})
+        sync_conn.execute(text(f"PRAGMA schema_version = {int(version) + 1}"))
+        sync_conn.execute(text("PRAGMA writable_schema = OFF"))
+        added.append(f"{table}:{new}")

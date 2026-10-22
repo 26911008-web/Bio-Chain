@@ -837,12 +837,12 @@ function deadboxAdd(item, reason) {
 const PHOTO_PREFIX = "pending-photo:";
 let PHOTOS_PENDING = 0;
 async function photoCountRefresh() {
-  PHOTOS_PENDING = (await idbTx("photos", "readonly", s => s.count())) || 0;
+  PHOTOS_PENDING = ((await idbTx("photos", "readonly", s => s.getAll())) || []).filter(isMine).length;
   renderNetPill();
 }
 async function photoQueue(file) {
   const token = PHOTO_PREFIX + newId();
-  const ok = await idbTx("photos", "readwrite", s => s.put({ token, blob: file, user_id: STATE.user && STATE.user.user_id,
+  const ok = await idbTx("photos", "readwrite", s => s.put({ token, blob: file, user_id: myUid(), owner_name: ownerName(),
                                                             created_at: Date.now() }));
   if (ok === null) throw new Error("Penyimpanan HP penuh/terblokir — foto tidak bisa disimpan offline.");
   photoCountRefresh();
@@ -876,6 +876,11 @@ async function resolvePendingPhotos(body) {
 }
 window.BiochainPhotos = { queue: photoQueue, prefix: PHOTO_PREFIX, resolve: resolvePendingPhotos, refresh: photoCountRefresh };
 
+const myUid = () => STATE.user && STATE.user.user_id;
+const ownerName = () => STATE.user && (STATE.user.full_name || STATE.user.username) || null;
+// F18 HP bersama: titik GPS & foto tanpa user_id berasal dari versi lama → dianggap milik pengguna yang sedang masuk
+const isMine = rec => rec && (rec.user_id == null || rec.user_id === myUid());
+
 function myOutbox(path) {
   const uid = STATE.user && STATE.user.user_id;
   return outboxRead().filter(i => i.user_id === uid && (!path || i.path === path));
@@ -892,7 +897,8 @@ async function apiMutation(path, body, label) {
     }
   }
   outboxWrite([...outboxRead(), { id: payload.client_event_id, path, body: payload, label,
-                                  user_id: STATE.user && STATE.user.user_id, queued_at: Date.now(), tries: 0 }]);
+                                  user_id: STATE.user && STATE.user.user_id, owner_name: ownerName(),
+                                  queued_at: Date.now(), tries: 0 }]);
   requestBackgroundSync();
   return { queued: true, client_event_id: payload.client_event_id };
 }
@@ -999,8 +1005,7 @@ function havKm(a, b) {
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 async function trackCount() {
-  const n = await idbTx("track", "readonly", s => s.count());
-  TRACK.pending = n || 0;
+  TRACK.pending = ((await idbTx("track", "readonly", s => s.getAll())) || []).filter(isMine).length;
   renderNetPill();
 }
 async function trackStart(routeId) {
@@ -1036,7 +1041,7 @@ async function onFix(pos) {
   if (last) TRACK.km += stepKm;
   TRACK.last = p;
   await idbTx("track", "readwrite", s => s.put({
-    client_point_id: `${TRACK.routeId}-${newId()}`, route_id: TRACK.routeId,
+    client_point_id: `${TRACK.routeId}-${newId()}`, route_id: TRACK.routeId, user_id: myUid(), owner_name: ownerName(),
     recorded_at: new Date(p.t).toISOString(), lat: p.lat, lon: p.lon,
     accuracy_m: c.accuracy, speed_mps: c.speed ?? null }));
   kvSet(`track-km-${TRACK.routeId}`, TRACK.km);
@@ -1050,7 +1055,8 @@ async function trackFlush() {
   if (TRACK.flushing || !STATE.token || navigator.onLine === false || needsLogin || myOutbox().length) return;
   TRACK.flushing = true;
   try {
-    const all = (await idbTx("track", "readonly", s => s.getAll())) || [];
+    // Hanya titik milik supir yang masuk: titik supir lain di HP bersama ditolak server (404) lalu terhapus → jejak hilang
+    const all = ((await idbTx("track", "readonly", s => s.getAll())) || []).filter(isMine);
     const byRoute = {};
     all.forEach(p => (byRoute[p.route_id] = byRoute[p.route_id] || []).push(p));
     for (const [routeId, pts] of Object.entries(byRoute)) {
@@ -1059,7 +1065,7 @@ async function trackFlush() {
         try {
           await api("/api/v1/driver/track", { noLogout: true, timeoutMs: 30000, body: {
             route_id: Number(routeId),
-            points: batch.map(({ route_id, ...rest }) => rest) } });
+            points: batch.map(({ route_id, user_id, owner_name, ...rest }) => rest) } });
         } catch (err) {
           if (err.network || isRetryable(err.status) || err.status === 401) return;   // simpan, coba nanti
           // 404/409 (rute bukan milik / belum dimulai): titik tak bisa dipakai → buang agar tidak menumpuk
@@ -1169,7 +1175,19 @@ function switchAuthMode(mode) {
   }
 }
 
+// F18: data offline pengguna lain tetap disimpan (hanya bisa dikirim dengan token pemiliknya) — beri tahu siapa pemiliknya
+async function foreignPendingNotice() {
+  const uid = myUid();
+  const [track, photos] = await Promise.all([idbTx("track", "readonly", s => s.getAll()),
+                                             idbTx("photos", "readonly", s => s.getAll())]);
+  const others = [...outboxRead(), ...(track || []), ...(photos || [])].filter(r => r && r.user_id != null && r.user_id !== uid);
+  if (!others.length) return;
+  const names = [...new Set(others.map(r => r.owner_name || `akun #${r.user_id}`))].slice(0, 3).join(", ");
+  showToast(`HP ini menyimpan ${others.length} data offline milik ${names}. Data itu aman & baru terkirim saat pemiliknya login di HP ini.`, "📱");
+}
+
 function showAuthenticatedApp() {
+  setTimeout(() => foreignPendingNotice().catch(() => {}), 1500);
   $("login-view").style.display = "none";
   $("app-view").style.display = "flex";
 
@@ -1423,6 +1441,7 @@ function logout(msg="Sampai jumpa!") {
   STATE.user = null;
   localStorage.removeItem("biochain_token");
   localStorage.removeItem("biochain_user");
+  localStorage.removeItem("biochain_driver_route");     // cache lama tanpa pemilik (sebelum F18)
   showToast(msg, "👋");
   showLoginScreen();
 }
@@ -3000,10 +3019,10 @@ async function loadDriverData() {
   let route;
   try {
     route = await api("/api/v1/driver/active-route");
-    try { localStorage.setItem("biochain_driver_route", JSON.stringify(route)); } catch {}
+    try { localStorage.setItem(`biochain_driver_route:${myUid()}`, JSON.stringify(route)); } catch {}
   } catch (err) {
     // Tanpa sinyal: tampilkan rute terakhir yang tersimpan agar supir tetap bisa bekerja
-    try { route = JSON.parse(localStorage.getItem("biochain_driver_route") || "null"); } catch { route = null; }
+    try { route = JSON.parse(localStorage.getItem(`biochain_driver_route:${myUid()}`) || "null"); } catch { route = null; }
     if (!route) { $("driver-stops-list").innerHTML = `<p class="muted">Offline dan belum ada rute tersimpan.</p>`; return; }
     showToast("Offline: menampilkan rute tersimpan terakhir", "📵");
   }
@@ -3125,8 +3144,25 @@ async function reportStopFailed(stopId, btn) {
   loadDriverData();
 }
 
+// F14: cocokkan QR di lokasi tanpa sinyal memakai digest dari rute (QR bertanda tangan). null = tidak bisa dicek lokal.
+async function qrMatchesStop(stopId, code) {
+  let route = null;
+  try { route = JSON.parse(localStorage.getItem(`biochain_driver_route:${myUid()}`) || "null"); } catch {}
+  const stop = route && (route.stops || []).find(s => s.id === stopId);
+  const chk = stop && stop.qr_check;
+  if (!chk || !(window.crypto && crypto.subtle)) return null;      // QR lama / HTTP biasa → server yang memutuskan
+  const norm = String(code || "").replace(/\s+/g, "").toUpperCase().replace(/--/g, "-");
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(chk.salt + norm));
+  const hex = [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, "0")).join("");
+  return hex === chk.sha256;
+}
+
 async function confirmPickupStop(stopId, btn) {
-  startCameraScanner((scannedCode) => {
+  startCameraScanner(async (scannedCode) => {
+    if (await qrMatchesStop(stopId, scannedCode) === false) {
+      showToast("QR tidak cocok dengan lot di stop ini. Periksa karung/nota yang benar lalu scan ulang.", "⛔");
+      return;
+    }
     withBusy(btn, () => sendPickup(stopId, scannedCode, null));
   }, `Scan QR Petani (Stop #${stopId})`);
 }

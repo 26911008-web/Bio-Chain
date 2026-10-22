@@ -553,6 +553,49 @@ async def esg_report(
     return await _esg(db, start, end, label)
 
 
+class CarbonClaimRequest(BaseModel):
+    """F11: periode bulan YYYY-MM (inklusif) + hasil lab biochar periode tersebut (wajib)."""
+    from_: str = Field(..., alias="from", pattern=r"^\d{4}-\d{2}$")
+    to: str = Field(..., pattern=r"^\d{4}-\d{2}$")
+    lab_c_org_pct: float = Field(..., gt=0, le=100)
+    lab_h_corg_ratio: float = Field(..., gt=0, le=2)
+    lab_name: str = Field(..., min_length=3, max_length=120)
+    lab_report_no: str = Field(..., min_length=2, max_length=80)
+    lab_report_url: EvidenceUrl = Field(..., min_length=9)       # wajib: foto/scan laporan lab
+
+    model_config = {"populate_by_name": True}
+
+    def lab(self) -> dict:
+        return self.model_dump(include={"lab_c_org_pct", "lab_h_corg_ratio", "lab_name", "lab_report_no",
+                                        "lab_report_url"})
+
+
+@router.post("/carbon-claims/preview")
+async def carbon_claim_preview(req: CarbonClaimRequest, db: Annotated[AsyncSession, Depends(get_db)],
+                               user: Annotated[User, Depends(_pabrik_only)]):
+    """Pratinjau klaim removal (tidak menyimpan): hasil hitung dengan C-org lab + daftar penghalang & celah."""
+    from ..services import carbon_claims
+    start, end, label = _period(req.from_, req.to)
+    res = await carbon_claims.compute(db, start, end, req.lab())
+    return {"period": label, **{k: v for k, v in res.items() if k != "snapshot"},
+            "carbon_tco2e": res["snapshot"]["carbon_tco2e"]}
+
+
+@router.post("/carbon-claims", status_code=201)
+async def carbon_claim_submit(req: CarbonClaimRequest, db: Annotated[AsyncSession, Depends(get_db)],
+                              user: Annotated[User, Depends(_pabrik_only)]):
+    """Ajukan klaim: snapshot dibekukan (SHA-256) & serah-terima biochar dikunci; diputus auditor (empat mata)."""
+    from ..services import carbon_claims
+    start, end, _ = _period(req.from_, req.to)
+    return await carbon_claims.submit(db, user, start, end, req.lab())
+
+
+@router.get("/carbon-claims")
+async def carbon_claim_list(db: Annotated[AsyncSession, Depends(get_db)], user: Annotated[User, Depends(_audit_read)]):
+    from ..services import carbon_claims
+    return await carbon_claims.list_claims(db)
+
+
 @router.get("/esg/report.csv")
 async def esg_report_csv(
     db: Annotated[AsyncSession, Depends(get_db)],

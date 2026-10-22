@@ -195,3 +195,45 @@ def test_efficiency_overview_and_action_register_four_eyes(client):
     o2 = client.get("/api/v1/factory/efficiency", headers=hf).json()
     assert o2["recorded_totals"]["saving_rp"] >= 1_300_000 and o2["recorded_totals"]["verified"] >= 1
     assert client.post("/api/v1/factory/efficiency/actions", headers=demo_headers(client, "petani"), json=body).status_code == 403
+
+
+def test_carbon_claim_submit_and_reject_through_rls(client):
+    """F11 lewat identitas aplikasi (PG: RLS aktif): pabrik mengajukan, auditor menolak → kunci serah-terima dilepas.
+    Ditolak di akhir agar tes bisa diulang (periode klaim aktif tidak boleh tumpang-tindih)."""
+    from datetime import datetime, timezone
+
+    from app.database import db_manager
+    from app.models.factory_ops import BatchOutput, ManufacturingBatch
+    from app.security.rls import SYSTEM_IDENTITY, bind_identity
+
+    hp, hf, ha = demo_headers(client, "petani"), demo_headers(client, "pabrik"), demo_headers(client, "auditor")
+    pid = client.get("/api/v1/auth/me", headers=hf).json()["user_id"]
+
+    async def produce():
+        async with db_manager.async_session() as s:
+            bind_identity(s, *SYSTEM_IDENTITY)
+            b = ManufacturingBatch(batch_code=f"T-CLM-{uuid.uuid4().hex[:8]}", pyrolysis_temp_c=550, pellet_share=0.3,
+                                   silica_share_of_biochar=0, input_kg=9000, closure_error_pct=0.5, closure_ok=1,
+                                   economics={}, operator_id=pid)
+            s.add(b)
+            await s.flush()
+            s.add(BatchOutput(batch_id=b.id, product="biochar", quantity_kg=3000))
+            await s.commit()
+    asyncio.run(produce())
+    fid = client.get("/api/v1/farmer/wallet", headers=hp).json()["farmer_id"]
+    _credit_wallet(fid, 400)
+    rid = client.post("/api/v1/farmer/biochar/redeem", headers=hp, json={"kg": 400, "land_area_ha": 0.5}).json()["id"]
+    assert client.post(f"/api/v1/factory/biochar-redemptions/{rid}/handover", headers=hf, json={}).status_code == 200
+    month = f"{datetime.now(timezone.utc):%Y-%m}"
+    body = {"from": month, "to": month, "lab_c_org_pct": 45, "lab_h_corg_ratio": 0.3, "lab_name": "Lab Uji",
+            "lab_report_no": "T-1", "lab_report_url": "/uploads/t.jpg"}
+    r = client.post("/api/v1/factory/carbon-claims", headers=hf, json=body)
+    assert r.status_code == 201, r.text
+    c = r.json()
+    assert c["integrity"]["ok"] and c["end_use_kg"] >= 400
+    assert any(x["id"] == c["id"] for x in client.get("/api/v1/auditor/carbon-claims", headers=ha).json())
+    d = client.post(f"/api/v1/auditor/carbon-claims/{c['id']}/decision", headers=ha,
+                    json={"decision": "ditolak", "note": "Tes otomatis: tolak agar kunci dilepas."})
+    assert d.status_code == 200, d.text
+    p = client.post("/api/v1/factory/carbon-claims/preview", headers=hf, json=body).json()
+    assert p["end_use_kg"] >= 400                                         # serah-terima kembali tersedia

@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     # Auth
     JWT_SECRET: str = "biochain-dev-secret-change-in-production-2026"
     JWT_ALGORITHM: str = "HS256"
+    QR_HMAC_KEY: str = ""          # F14: kunci tanda tangan QR lot; kosong = diturunkan dari JWT_SECRET
     JWT_EXPIRE_MINUTES: int = 480  # 8 jam
 
     # Rate Limiting

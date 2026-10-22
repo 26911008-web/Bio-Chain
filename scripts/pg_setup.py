@@ -24,6 +24,7 @@ MIGRATIONS = ["002_circular_mass_balance.sql", "003_concurrency_indexes.sql", "0
               "008_silica_routes_wallet_link.sql", "009_fix_rls_recursion.sql", "010_reporting_warehouse.sql",
               "011_collector_settlements.sql", "012_settlement_events_and_constraints.sql", "013_field_ops_green_logistics.sql",
               "014_field_compliance.sql", "015_farmer_feedback_circular.sql", "016_audit_hardening.sql",
+              "017_carbon_claims.sql",
               "000_app_role.sql"]
 
 

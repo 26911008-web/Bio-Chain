@@ -212,6 +212,9 @@ async def esg_report(db: AsyncSession, start: datetime, end: datetime, label: st
     traced = (await db.execute(select(func.count(func.distinct(CustodyEvent.harvest_id))).join(Harvest, Harvest.id == CustodyEvent.harvest_id)
                                .where(*_between(Harvest.reported_at, start, end)))).scalar() or 0
     pchg = (await db.execute(select(func.count(ParameterChange.id)).where(*_between(ParameterChange.created_at, start, end)))).scalar() or 0
+    from .carbon_claims import verified_summary
+    claims = await verified_summary(db, start, end)
+    ver, pend = claims.get("diverifikasi", {}), claims.get("diajukan", {})
     gov = [
         _kpi("G1", "Cakupan persetujuan data petani", _r(consented / petani_total * 100, 1) if petani_total else None, "%",
              "petani dengan persetujuan aktif ÷ petani aktif", "UU 27/2022 PDP Ps.20–22", "consents"),
@@ -223,8 +226,11 @@ async def esg_report(db: AsyncSession, start: datetime, end: datetime, label: st
              "lot dengan jejak custody ÷ lot dilaporkan", "Puro §3.8; ISO 22095", "custody_events"),
         _kpi("G5", "Perubahan parameter teraudit", pchg, "perubahan", "setiap perubahan asumsi wajib alasan",
              "IFRS S1 (pertimbangan & estimasi)", "parameter_changes"),
-        _kpi("G6", "Status verifikasi karbon", "estimasi internal", "", "belum diverifikasi pihak ketiga",
-             "Perpres 110/2025 (SRN-PPI); Puro / VM0044 / Global C-Sink", "—"),
+        _kpi("G6", "Klaim removal terverifikasi auditor internal", ver.get("count", 0), "klaim",
+             "klaim periode di dalam rentang laporan, diputus auditor (empat mata, snapshot SHA-256)",
+             "Perpres 110/2025 (SRN-PPI); Puro / VM0044 / Global C-Sink", "carbon_claims",
+             f"{ver.get('net_tco2e', 0):g} tCO₂e terverifikasi internal · {pend.get('count', 0)} menunggu. "
+             "Belum diverifikasi VVB/terdaftar SRN-PPI — bukan kredit karbon."),
     ]
     eff = await efficiency_overview(db, start, end)
     return {

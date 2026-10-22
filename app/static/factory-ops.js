@@ -42,6 +42,24 @@
         ${periodControls("fx-eff")}</div>
       <div id="fx-eff"><p class="muted">Memuat…</p></div></section>
 
+    <section class="card" aria-labelledby="fx-cc-title">
+      <div class="card-header"><div><h3 class="card-title" id="fx-cc-title">🧾 Klaim Removal Karbon</h3>
+        <p class="card-sub">Pabrik mengajukan dengan hasil lab; auditor (orang lain) memverifikasi. Serah-terima biochar dikunci
+          ke satu klaim, jadi tidak terhitung dua kali. Terverifikasi = verifikasi internal, <b>bukan kredit karbon</b>.</p></div></div>
+      ${role() === "pabrik" ? `<form id="fx-cc-form" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:8px;">
+        <div class="form-group"><label for="fx-cc-from">Bulan awal</label><input id="fx-cc-from" type="month" required value="${ym(new Date())}"></div>
+        <div class="form-group"><label for="fx-cc-to">Bulan akhir</label><input id="fx-cc-to" type="month" required value="${ym(new Date())}"></div>
+        <div class="form-group"><label for="fx-cc-corg">C-organik lab (% bk)</label><input id="fx-cc-corg" type="number" step="0.1" min="0.1" max="100" required inputmode="decimal"></div>
+        <div class="form-group"><label for="fx-cc-hc">Rasio H/C-org (molar)</label><input id="fx-cc-hc" type="number" step="0.01" min="0.01" max="2" required inputmode="decimal"></div>
+        <div class="form-group"><label for="fx-cc-lab">Nama laboratorium</label><input id="fx-cc-lab" required minlength="3" maxlength="120"></div>
+        <div class="form-group"><label for="fx-cc-no">No. laporan lab</label><input id="fx-cc-no" required minlength="2" maxlength="80"></div>
+        <div class="form-group"><label for="fx-cc-photo">Foto/scan laporan lab</label><input id="fx-cc-photo" type="file" accept="image/*" required></div>
+        <div class="form-group" style="align-self:end; display:flex; gap:8px;">
+          <button type="submit" class="btn btn-secondary btn-sm" data-mode="preview">🔎 Pratinjau</button>
+          <button type="submit" class="btn btn-primary btn-sm" data-mode="submit" id="fx-cc-submit" disabled>📤 Ajukan</button></div>
+      </form><div id="fx-cc-preview"></div>` : ""}
+      <div id="fx-cc"><p class="muted">Memuat…</p></div></section>
+
     <section class="card" aria-labelledby="fx-esg-title" id="fx-esg-card">
       <div class="card-header"><div><h3 class="card-title" id="fx-esg-title">🌍 Laporan ESG</h3>
         <p class="card-sub">Lingkungan · Sosial · Tata kelola dari data operasional. Emisi, penyimpanan karbon &amp; emisi dihindari dilaporkan terpisah.</p></div>
@@ -272,6 +290,99 @@
     } catch (e) { showToast("Gagal mengunduh: " + e.message, "❌"); }
   }
 
+  // ---------------------------------------------------------------- klaim removal karbon (F11)
+  const CC_BADGE = { diajukan: "badge-amber", diverifikasi: "badge-green", ditolak: "badge-red" };
+  let ccPhotoUrl = null;
+
+  async function ccBody() {
+    const f = $("fx-cc-photo").files[0];
+    if (!ccPhotoUrl && f) {                                     // unggah sekali; dipakai ulang saat ajukan
+      const blob = window.BiochainImage ? await BiochainImage.compress(f) : f;
+      ccPhotoUrl = (await photoUpload(blob)).url;
+    }
+    return { from: $("fx-cc-from").value, to: $("fx-cc-to").value, lab_c_org_pct: Number($("fx-cc-corg").value),
+             lab_h_corg_ratio: Number($("fx-cc-hc").value), lab_name: $("fx-cc-lab").value.trim(),
+             lab_report_no: $("fx-cc-no").value.trim(), lab_report_url: ccPhotoUrl };
+  }
+
+  async function ccSubmit(e) {
+    e.preventDefault();
+    const btn = e.submitter || $("fx-cc-form").querySelector("[data-mode=preview]");
+    const mode = btn.dataset.mode;
+    const box = $("fx-cc-preview");
+    return withBusy(btn, async () => {
+      try {
+        const body = await ccBody();
+        if (mode === "submit") {
+          const c = await api("/api/v1/factory/carbon-claims", { body });
+          showToast(`Klaim ${c.code} diajukan · ${num(c.net_removal_tco2e, 3)} tCO₂e menunggu auditor`, "🧾");
+          $("fx-cc-form").reset(); ccPhotoUrl = null; box.innerHTML = ""; $("fx-cc-submit").disabled = true;
+          return loadClaims();
+        }
+        const p = await api("/api/v1/factory/carbon-claims/preview", { body });
+        $("fx-cc-submit").disabled = p.blocking.length > 0;
+        box.innerHTML = `<div class="kpi-row">
+            <div class="kpi-tile"><div class="kpi-lbl">Biochar sampai lahan</div><div class="kpi-val">${num(p.end_use_kg, 0)}</div><div class="kpi-lbl">kg · ${p.redemption_count} serah-terima</div></div>
+            <div class="kpi-tile"><div class="kpi-lbl">Removal bruto</div><div class="kpi-val">${num(p.carbon_tco2e.biochar_sequestration, 3)}</div><div class="kpi-lbl">tCO₂e (C-org lab)</div></div>
+            <div class="kpi-tile"><div class="kpi-lbl">Removal bersih</div><div class="kpi-val">${num(p.net_tco2e, 3)}</div><div class="kpi-lbl">tCO₂e setelah emisi &amp; potongan</div></div></div>
+          ${p.blocking.map(b => `<div class="banner banner-error" role="alert">⛔ ${H(b)}</div>`).join("")}
+          ${p.warnings.map(w => `<div class="banner banner-warning" role="note">⚠️ ${H(w)}</div>`).join("")}
+          ${p.blocking.length ? "" : `<p class="kpi-lbl">Siap diajukan. Setelah diajukan, angka dibekukan &amp; serah-terima dikunci.</p>`}`;
+      } catch (err) { box.innerHTML = `<div class="banner banner-error" role="alert">⚠️ ${H(err.message)}</div>`; }
+    }, "⏳");
+  }
+
+  async function loadClaims() {
+    const box = $("fx-cc");
+    if (!box) return;
+    try {
+      const rows = await api(role() === "auditor" ? "/api/v1/auditor/carbon-claims" : "/api/v1/factory/carbon-claims");
+      box.innerHTML = rows.length ? `<div class="table-scroll"><table class="data-table"><thead><tr><th>Klaim</th><th>Periode</th>
+          <th class="num">Biochar ke lahan</th><th class="num">Removal bersih</th><th>Lab</th><th>Status</th></tr></thead><tbody>${rows.map(c => `<tr>
+          <td><b>${H(c.code)}</b><br><span class="kpi-lbl">${H(c.submitted_by)} · ${H(c.submitted_at.slice(0, 10))}</span></td>
+          <td>${H(c.period_start.slice(0, 7))} – ${H(c.period_end.slice(0, 10))}</td>
+          <td class="num">${num(c.end_use_kg, 0)} kg<br><span class="kpi-lbl">${Number(c.redemption_count)} serah-terima</span></td>
+          <td class="num"><b>${num(c.net_removal_tco2e, 3)}</b> tCO₂e</td>
+          <td class="kpi-lbl">C-org ${num(c.lab_c_org_pct, 1)}% · H/C ${num(c.lab_h_corg_ratio, 2)}<br>${H(c.lab_name)} · ${H(c.lab_report_no)}
+            <a href="${H(c.lab_report_url)}" target="_blank" rel="noopener" aria-label="Laporan lab ${H(c.code)}">📄</a></td>
+          <td><span class="badge ${CC_BADGE[c.status] || "badge-gray"}" title="${H(c.status_label)}">${H(c.status)}</span>
+            ${c.integrity.ok ? "" : `<br><span class="badge badge-red" title="Snapshot/kunci berubah setelah diajukan">integritas gagal</span>`}
+            ${c.decision_note ? `<br><span class="kpi-lbl">${H(c.verified_by)}: ${H(c.decision_note)}</span>` : ""}
+            ${role() === "auditor" && c.status === "diajukan" ? `<div style="display:flex; gap:4px; margin-top:4px;">
+              <button type="button" class="btn btn-primary btn-sm" data-fx-claim="${Number(c.id)}" data-to="diverifikasi" ${c.integrity.ok ? "" : "disabled"}>✅ Verifikasi</button>
+              <button type="button" class="btn btn-secondary btn-sm" data-fx-claim="${Number(c.id)}" data-to="ditolak">✖ Tolak</button></div>` : ""}
+          </td></tr>`).join("")}</tbody></table></div>
+          <p class="kpi-lbl">Celah metodologi tiap klaim tampil saat pratinjau dan tersimpan di snapshot (SHA-256).</p>`
+        : emptyState("🧾", "Belum ada klaim", "Klaim dibuat pabrik setelah ada serah-terima biochar ke lahan dan hasil lab C-org.");
+    } catch (e) { box.innerHTML = `<div class="banner banner-error" role="alert">⚠️ ${H(e.message)}</div>`; }
+  }
+
+  function askClaimNote(to) {
+    return new Promise(resolve => {
+      const d = document.createElement("dialog");
+      d.className = "ui-confirm";
+      d.innerHTML = `<form method="dialog"><h3>${to === "diverifikasi" ? "Verifikasi klaim" : "Tolak klaim"}</h3>
+        <p class="ui-confirm-body">${to === "diverifikasi" ? "Tulis apa yang Anda periksa (laporan lab, foto serah-terima, suhu batch)."
+          : "Tulis alasan penolakan. Serah-terima dilepas dan pabrik bisa mengajukan klaim perbaikan."}</p>
+        <div class="form-group"><label for="fx-cc-note">Catatan auditor</label>
+          <textarea id="fx-cc-note" required minlength="10" maxlength="2000" rows="3"></textarea></div>
+        <div class="ui-confirm-actions"><button value="no" class="btn btn-secondary" formnovalidate>Batal</button>
+          <button value="yes" class="btn btn-primary">Simpan putusan</button></div></form>`;
+      document.body.appendChild(d);
+      d.addEventListener("close", () => { resolve(d.returnValue === "yes" ? d.querySelector("#fx-cc-note").value.trim() : null); d.remove(); });
+      d.showModal();
+    });
+  }
+
+  async function decideClaim(id, to) {
+    const note = await askClaimNote(to);
+    if (!note) return;
+    try {
+      const c = await api(`/api/v1/auditor/carbon-claims/${id}/decision`, { body: { decision: to, note } });
+      showToast(`${c.code}: ${c.status}`, to === "diverifikasi" ? "✅" : "✖"); loadClaims();
+    } catch (e) { showToast(e.message, "❌"); }
+  }
+
   // ---------------------------------------------------------------- sambungan ke dashboard
   window.renderFactoryExtras = function (container) {
     if (!container || !["pabrik", "admin", "auditor"].includes(role())) return;
@@ -282,6 +393,12 @@
     $("fx-esg-print").onclick = () => { document.body.classList.add("print-esg"); window.print(); };
     window.addEventListener("afterprint", () => document.body.classList.remove("print-esg"), { once: false });
     if (canWrite()) loadRedemptions();
+    if ($("fx-cc-form")) {
+      $("fx-cc-form").addEventListener("submit", ccSubmit);
+      $("fx-cc-form").addEventListener("input", () => { $("fx-cc-submit").disabled = true; });   // ubah isian → pratinjau ulang
+      $("fx-cc-photo").addEventListener("change", () => { ccPhotoUrl = null; });
+    }
+    loadClaims();
     loadCharges();
     loadEfficiency(); loadEsg();
   };
@@ -298,6 +415,8 @@
         } catch (err) { showToast(err.message, "❌"); }
       }, "⏳");
     }
+    const cc = e.target.closest("[data-fx-claim]");
+    if (cc) return decideClaim(Number(cc.dataset.fxClaim), cc.dataset.to);
     const wv = e.target.closest("[data-fx-waive]");
     if (wv) return waiveCharge(Number(wv.dataset.fxWaive));
     const a = e.target.closest("[data-fx-adopt]");

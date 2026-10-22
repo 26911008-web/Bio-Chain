@@ -39,13 +39,14 @@ def f_perm(temp_c: float | None) -> tuple[float, str]:
 
 
 def scorecard(batches: list[dict], routes: list[dict], returns: list[dict], received_kg: float,
-              biochar_to_farmers_kg: float, biochar_end_use_kg: float = 0.0) -> dict:
+              biochar_to_farmers_kg: float, biochar_end_use_kg: float = 0.0, fc_override: float | None = None) -> dict:
     """batches: [{input_kg, moisture, ash, temp_c, outputs{p: kg}, losses{k: kg}, kwh}]
-    routes: [{co2e_wtw_kg, distance_source}] (rute selesai); returns: [{quantity_kg, disposition, status}]."""
+    routes: [{co2e_wtw_kg, distance_source}] (rute selesai); returns: [{quantity_kg, disposition, status}].
+    fc_override: fraksi C-org hasil lab (klaim F11) menggantikan parameter karbon.biochar_c_org_fraction."""
     gwp_ch4, gwp_n2o = P("karbon.gwp_ch4"), P("karbon.gwp_n2o")
     ef_burn = (P("karbon.open_burning_ch4_g_per_kg") * gwp_ch4 + P("karbon.open_burning_n2o_g_per_kg") * gwp_n2o) / 1e6
     share, cf = P("karbon.open_burning_share"), P("karbon.open_burning_combustion_factor")
-    fc = P("karbon.biochar_c_org_fraction")
+    fc = fc_override if fc_override is not None else P("karbon.biochar_c_org_fraction")
 
     husk_t = sum(b["input_kg"] for b in batches) / 1000
     dry_t = sum(b["input_kg"] * (1 - (b.get("moisture") or 0) / 100) for b in batches) / 1000
@@ -113,7 +114,7 @@ def scorecard(batches: list[dict], routes: list[dict], returns: list[dict], rece
             "status": "estimasi internal — belum diverifikasi pihak ketiga (bukan kredit karbon)",
             "claim_gaps": [g for g, bad in (
                 ("CH₄ reaktor belum diukur (karbon.pyrolysis_ch4_kg_per_t_biochar = 0)", ch4_rate == 0),
-                ("F_C & H/C_org masih parameter, belum uji lab per batch", True),
+                ("F_C & H/C_org masih parameter, belum uji lab per batch", fc_override is None),
                 ("Ada batch tanpa suhu pirolisis → F_perm 0", any(b.get("temp_c") is None for b in batches)),
                 ("Belum ada serah-terima biochar ke lahan pada periode ini", biochar_end_use_kg <= 0 and char_dry_t > 0),
             ) if bad],

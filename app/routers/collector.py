@@ -19,6 +19,7 @@ from ..models.trade import Bid, BidStatus, StockListing
 from ..models.factory_ops import DeliveryRequest
 from ..models.route import Route, RouteStatus, RouteStop
 from ..services import factory_ops, trade
+from ..services.qr_sign import new_qr_code
 from ..services.custody import find_replay, load_harvest, pct_diff, transition
 
 from ..security.url import EvidenceUrl
@@ -739,7 +740,7 @@ async def proxy_harvest(req: ProxyHarvestRequest, db: Annotated[AsyncSession, De
     h_uuid = str(_uuid.uuid4())
     # collector_id = pelapor: lot binaan langsung ditangani pengepul ini (juga syarat RLS harvests di PostgreSQL)
     h = Harvest(uuid=h_uuid, farmer_id=farmer.id, mill_id=req.mill_id, quantity_kg=req.quantity_kg, collector_id=uid,
-                status=HarvestStatus.REPORTED, qr_code=f"BIO-{h_uuid[:8].upper()}", photo_url=req.photo_url,
+                status=HarvestStatus.REPORTED, qr_code=new_qr_code(h_uuid), photo_url=req.photo_url,
                 farmer_moisture_est=req.moisture_est, farmer_grade_est=req.grade_est,
                 reported_at=trusted_device_time(req.client_recorded_at)[0])
     db.add(h)

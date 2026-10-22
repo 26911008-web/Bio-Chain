@@ -1,11 +1,13 @@
-"""Router: Auditor (🔍) — akses baca-saja ke chain-of-custody, mass balance, dan ledger biochar.
+"""Router: Auditor (🔍) — akses baca ke chain-of-custody, mass balance, dan ledger biochar.
 
-Tidak ada endpoint tulis di router ini; role auditor juga tidak ada di tabel TRANSITIONS.
+Satu-satunya tulisan auditor: keputusan atas klaim removal karbon (F11, empat mata). Role auditor tetap tidak ada
+di tabel TRANSITIONS — auditor tidak bisa mengubah status lot, timbangan, atau ledger.
 """
 
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -74,3 +76,24 @@ async def circular_summary(
         "flagged_harvests": flagged,
         "biochar_allocated_to_farmers_kg": round(float(allocated), 3),
     }
+
+
+@router.get("/carbon-claims")
+async def carbon_claims_list(db: Annotated[AsyncSession, Depends(get_db)], user: Annotated[User, Depends(_auditor)],
+                             status: str | None = None):
+    """Klaim removal karbon beserta cek integritas snapshot (hash) & kunci serah-terima."""
+    from ..services import carbon_claims
+    return await carbon_claims.list_claims(db, status)
+
+
+class ClaimDecision(BaseModel):
+    decision: str = Field(..., pattern="^(diverifikasi|ditolak)$")
+    note: str = Field(..., min_length=10, max_length=2000)
+
+
+@router.post("/carbon-claims/{claim_id}/decision")
+async def carbon_claim_decide(claim_id: int, req: ClaimDecision, db: Annotated[AsyncSession, Depends(get_db)],
+                              user: Annotated[User, Depends(require_role(UserRole.AUDITOR))]):
+    """Putusan auditor (bukan admin, bukan pengaju). Alasan wajib — juga saat diverifikasi (apa yang diperiksa)."""
+    from ..services import carbon_claims
+    return await carbon_claims.decide(db, user, claim_id, req.decision, req.note)

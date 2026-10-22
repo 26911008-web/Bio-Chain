@@ -57,6 +57,16 @@ Untuk petugas TI / admin sistem. Setiap prosedur ditulis langkah demi langkah da
 - Ganti `JWT_SECRET` (≥ 32 karakter acak; produksi menolak nilai default/pendek) → restart semua worker. **Semua pengguna harus login ulang** — umumkan ke pengepul/petani lebih dulu.
 - Mencabut sesi SATU akun (HP hilang/dicuri) tanpa memutus semua orang: Admin → reset password akun tersebut. `users.token_version` naik → semua token lama akun itu langsung ditolak; pemilik wajib mengganti password sementara (ditegakkan server).
 
+### 4.1a Kunci tanda tangan QR lot (F14)
+- Isi `QR_HMAC_KEY` (≥ 32 karakter acak, terpisah dari `JWT_SECRET`) **sebelum** QR pertama dicetak. Tanpa itu kunci diturunkan dari `JWT_SECRET`, sehingga rotasi JWT ikut membatalkan semua QR tercetak.
+- Mengganti `QR_HMAC_KEY` membuat QR bertanda tangan yang sudah tercetak ditolak "QR tidak sah". Lakukan hanya bila kunci bocor, lalu minta pengepul/petani menampilkan ulang QR lot yang belum diangkut dari aplikasi.
+- Masa transisi QR lama `BIO-XXXXXXXX` (nota/karung sebelum F14): parameter `logistik.qr_legacy_policy` = `terima_tandai` (diterima, pickup ditandai `QR_LAMA` untuk auditor). Ubah ke `tolak` setelah semua lot lama terangkut.
+
+### 4.1b Klaim removal karbon (F11)
+1. Pabrik: menu 🧾 Klaim Removal Karbon → pilih bulan, isi C-org & H/C-org dari laporan lab, foto laporan → **Pratinjau**. Penghalang (⛔) wajib nol sebelum **Ajukan**.
+2. Auditor (akun lain): periksa foto lab, serah-terima & suhu batch → Verifikasi/Tolak dengan catatan. Tombol Verifikasi mati bila badge "integritas gagal" muncul (snapshot berubah setelah diajukan → selidiki, lalu tolak).
+3. Ditolak → serah-terima dilepas; pabrik mengajukan klaim perbaikan. "Diverifikasi" = verifikasi internal, **bukan kredit karbon**; klaim publik perlu VVB (Puro/Verra) & SRN-PPI (Perpres 110/2025).
+
 ### 4.2 Header & CORS
 - **CSP diset aplikasi** (`app/security/headers.py`): skrip hanya dari server sendiri + CDN tepercaya, **tanpa `'unsafe-inline'`**; hash importmap dihitung otomatis dari `index.html` saat start. Header HSTS/nosniff/dll. juga di nginx include `/etc/nginx/biochain_security_headers.conf` (jangan tambah CSP kedua di nginx).
 - Kode halaman WAJIB di file `/static/*.js`. Tombol memakai `data-onclick="fungsi(arg)"` (argumen literal saja), bukan `onclick=` — handler inline akan diblokir browser.

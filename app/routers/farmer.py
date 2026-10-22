@@ -21,6 +21,7 @@ from ..models.ledger import BiocharLedgerEntry, CustodyEvent, CustodyStage
 from ..engines.incentive import calculate_incentive, DeliveryEvent, next_tier_xp
 from ..models.trade import StockListing
 from ..services import trade
+from ..services.qr_sign import new_qr_code
 from ..services.custody import find_replay, trusted_device_time, wallet_balance
 from ..security.url import EvidenceUrl
 
@@ -73,7 +74,7 @@ async def report_harvest(
         raise HTTPException(422, "mill_id tidak dikenal")
 
     h_uuid = str(uuid.uuid4())
-    qr = f"BIO-{h_uuid[:8].upper()}"
+    qr = new_qr_code(h_uuid)
 
     harvest = Harvest(
         uuid=h_uuid,

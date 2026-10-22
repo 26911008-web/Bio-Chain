@@ -56,6 +56,7 @@ ROUTE_POLICY: list[tuple[str, frozenset[str]]] = [
     ("/api/v1/factory/esg/report", _roles(R.PABRIK, R.ADMIN, R.AUDITOR)),     # laporan ESG: baca auditor
     ("/api/v1/factory/esg/report.csv", _roles(R.PABRIK, R.ADMIN, R.AUDITOR)),
     ("/api/v1/factory/efficiency", _roles(R.PABRIK, R.ADMIN, R.AUDITOR)),     # register penghematan: tulis pabrik/admin
+    ("/api/v1/factory/carbon-claims", _roles(R.PABRIK, R.ADMIN, R.AUDITOR)),  # F11: ajukan khusus pabrik; baca auditor
     ("/api/v1/factory/charges",    _roles(R.PABRIK, R.ADMIN, R.AUDITOR)),     # potongan logistik: baca auditor
     ("/api/v1/factory/settlements", _roles(R.PABRIK, R.ADMIN, R.AUDITOR)),   # tulis: khusus pabrik (require_role)
     ("/api/v1/factory/settlements/", _roles(R.PABRIK, R.ADMIN, R.AUDITOR)),

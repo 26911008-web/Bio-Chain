@@ -8,12 +8,14 @@ Menyediakan dataset demo realistis untuk hackathon & presentasi:
 - Log Konversi Pirolisis Biochar & Kredit Karbon ESG (IPCC Tier 2)
 """
 
+import hashlib
 from datetime import datetime, timezone, timedelta
 import random
 import uuid
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .services.qr_sign import new_qr_code
 from .data import MILLS, DEPOT
 from .models.user import User, UserRole, IncentiveTier
 from .models.harvest import Mill, Harvest, HarvestStatus, QualityGrade
@@ -320,7 +322,7 @@ async def seed_demo_data(db: AsyncSession, force_reset: bool = False) -> dict:
                 base_price_per_kg=sh["price_per_kg"],
                 incentive_multiplier=1.1 if sh["grade"] == QualityGrade.A else 1.0,
                 total_price=round(sh["qty"] * sh["price_per_kg"], 0),
-                qr_code=sh["qr"],
+                qr_code=new_qr_code(hashlib.sha256(sh["qr"].encode()).hexdigest()),   # F14: QR demo bertanda tangan
                 reported_at=h_date,
                 verified_at=h_date + timedelta(hours=3) if sh["grade"] else None,
                 collected_at=h_date + timedelta(hours=6) if sh["status"] in [HarvestStatus.COLLECTED, HarvestStatus.DELIVERED] else None,

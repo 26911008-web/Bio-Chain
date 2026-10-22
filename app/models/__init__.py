@@ -14,3 +14,4 @@ from .factory_ops import (BatchCost, BatchInput, BatchLoss, BatchOutput, Collect
                           ManufacturingBatch, NegotiationEvent, QCDecision, RequestStatus)
 from .compliance import Consent, DataRequest, FarmerDownPayment, FarmerPayment  # noqa: F401
 from .circular import BiocharRedemption, EfficiencyAction  # noqa: F401
+from .carbon import CarbonClaim, CarbonClaimItem  # noqa: F401

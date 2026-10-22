@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..engines.routing import plan_routes, road_km
 from ..params import P
+from .qr_sign import new_qr_code
 from ..models.harvest import Harvest, HarvestStatus, Mill
 from ..models.ledger import CustodyEvent, CustodyStage
 from ..models.trade import Bid, BidStatus, DeliveryScheme, ListingStatus, StockListing
@@ -228,7 +229,7 @@ async def _award_harvest(db: AsyncSession, farmer: User, listing: StockListing, 
     # 3. Kontrak menjadi harvest yang masuk alur custody (timbang → angkut → pabrik)
     h_uuid = str(uuid.uuid4())
     harvest = Harvest(uuid=h_uuid, farmer_id=farmer.id, mill_id=listing.mill_id, quantity_kg=qty_kg,
-                      status=HarvestStatus.REPORTED, qr_code=f"BIO-{h_uuid[:8].upper()}", collector_id=bid.collector_id,
+                      status=HarvestStatus.REPORTED, qr_code=new_qr_code(h_uuid), collector_id=bid.collector_id,
                       listing_id=listing.id, bid_id=bid.id, agreed_price_per_kg=bid.price_per_kg,
                       delivery_scheme=_v(bid.scheme), photo_url=listing.evidence_photo_url, reported_at=now)
     db.add(harvest)

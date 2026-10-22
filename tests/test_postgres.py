@@ -354,3 +354,56 @@ def test_twenty_concurrent_accepts_never_double_allocate(ids):
     assert rem >= -1e-6 and abs(rem - (1000 - total)) < 1e-6
     assert abs(sum(r["accepted_kg"] for r in acc) - total) < 1e-6
     assert len(acc) == sum(1 for w in won if w > 0) and len(acc) >= 3     # sebagian menang, sisanya ditolak rapi
+
+
+def test_carbon_claims_rls_only_auditor_decides_in_own_name(ids):
+    """F11: pabrik mengajukan tetapi tidak bisa memverifikasi; auditor tidak bisa mengajukan; putusan atas nama sendiri."""
+    async def go():
+        c = await asyncpg.connect(DSN)
+        out = {}
+        try:
+            async with c.transaction():
+                await as_identity(c, "pabrik", ids["pabrik_indmira"])
+                cid = await c.fetchval(
+                    "INSERT INTO carbon_claims (code, period_start, period_end, status, lab_c_org_pct, lab_h_corg_ratio, "
+                    "lab_name, lab_report_no, lab_report_url, end_use_kg, net_removal_tco2e, snapshot, snapshot_sha256, "
+                    "submitted_by_id) VALUES ('CLM-RLS-001', now() - interval '30 days', now(), 'diajukan', 40, 0.4, "
+                    "'Lab', 'X1', '/uploads/x.jpg', 100, 0.1, '{}', repeat('0', 64), $1) RETURNING id", ids["pabrik_indmira"])
+                for who, role, sql in (
+                    ("pabrik_self_verify", "pabrik", "UPDATE carbon_claims SET status='diverifikasi', verified_by_id=$2, "
+                                                     "decision_note='x' WHERE id=$1"),
+                    ("auditor_other_name", "auditor", "UPDATE carbon_claims SET status='diverifikasi', verified_by_id=$2, "
+                                                      "decision_note='x' WHERE id=$1"),
+                ):
+                    uid = ids["pabrik_indmira"] if role == "pabrik" else ids["auditor_esg"]
+                    await as_identity(c, role, uid)
+                    try:
+                        async with c.transaction():
+                            other = ids["admin"] if "admin" in ids else ids["petani_sugeng"]
+                            out[who] = await c.execute(sql, cid, other)
+                    except asyncpg.exceptions.InsufficientPrivilegeError:
+                        out[who] = "DENIED"
+                await as_identity(c, "auditor", ids["auditor_esg"])
+                try:
+                    async with c.transaction():
+                        await c.execute("INSERT INTO carbon_claims (code, period_start, period_end, lab_c_org_pct, "
+                                        "lab_h_corg_ratio, lab_name, lab_report_no, lab_report_url, end_use_kg, "
+                                        "net_removal_tco2e, snapshot, snapshot_sha256, submitted_by_id) VALUES "
+                                        "('CLM-RLS-002', now() - interval '1 day', now(), 40, 0.4, 'L', 'X', '/u', 1, 1, "
+                                        "'{}', repeat('0',64), $1)", ids["auditor_esg"])
+                        out["auditor_insert"] = "ALLOWED"
+                except asyncpg.exceptions.InsufficientPrivilegeError:
+                    out["auditor_insert"] = "DENIED"
+                out["auditor_decide"] = await c.execute(
+                    "UPDATE carbon_claims SET status='diverifikasi', verified_by_id=$2, decision_note='Lab dicek' WHERE id=$1",
+                    cid, ids["auditor_esg"])
+                raise asyncpg.exceptions.UniqueViolationError("rollback")
+        except asyncpg.exceptions.UniqueViolationError:
+            return out
+        finally:
+            await c.close()
+    out = run(go())
+    assert out["pabrik_self_verify"] == "DENIED"
+    assert out["auditor_other_name"] == "DENIED"
+    assert out["auditor_insert"] == "DENIED"
+    assert out["auditor_decide"] == "UPDATE 1"

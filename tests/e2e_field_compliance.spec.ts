@@ -44,7 +44,7 @@ test('petani tanpa HP: daftar → lapor → timbang → bayar → kuitansi BYR',
   await rep.locator('button[value="yes"]').click();
   await expect(page.locator('#modal-qr-title')).toContainText('Nota sekam');
   const qr = (await page.locator('#modal-qr-code').innerText()).trim();
-  expect(qr).toMatch(/^BIO-[0-9A-F]{8}$/);
+  expect(qr).toMatch(/^BIO-[0-9A-F]{8}-[A-Z2-7]{6}$/);         // F14: QR bertanda tangan
   await closeModal(page);
 
   // Timbang & uji lot tersebut di antrean

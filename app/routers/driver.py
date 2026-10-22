@@ -14,7 +14,7 @@ from ..models.user import User, UserRole
 from ..models.route import Route, RouteStop, RouteStatus, StopStatus
 from ..models.harvest import Harvest, HarvestStatus
 from ..models.ledger import CustodyStage
-from ..services import logistics
+from ..services import logistics, qr_sign
 from ..services.custody import find_replay, load_harvest, transition, trusted_device_time
 
 from ..security.url import EvidenceUrl
@@ -91,6 +91,12 @@ async def get_active_route(
         mills_result = await db.execute(select(Mill).where(Mill.id.in_(mill_ids)))
         mills_map = {m.id: m for m in mills_result.scalars().all()}
 
+    harvest_ids = [s.harvest_id for s in stops if s.harvest_id]
+    qr_map = {}
+    if harvest_ids:
+        qr_map = dict((await db.execute(select(Harvest.id, Harvest.qr_code)
+                                        .where(Harvest.id.in_(harvest_ids)))).all())
+
     stop_list = []
     for s in stops:
         mill_info = None
@@ -110,6 +116,8 @@ async def get_active_route(
             "stop_status": s.stop_status,
             "fail_reason": s.fail_reason,
             "pickup_at": s.pickup_at.isoformat() if s.pickup_at else None,
+            # F14: digest satu arah → HP supir mencocokkan QR di lokasi walau tanpa sinyal (kode QR tidak dikirim)
+            "qr_check": qr_sign.offline_check(qr_map.get(s.harvest_id), s.id) if s.harvest_id else None,
         })
 
     completed_stops = sum(1 for s in stops if s.stop_status != StopStatus.PENDING.value)
@@ -197,8 +205,17 @@ async def confirm_pickup(
                 geo_note = f"GEOFENCE: scan {geo_m} m dari titik penggilingan (batas {P('logistik.pickup_geofence_m'):g} m)"
     if stop.harvest_id:
         harvest = await load_harvest(db, stop.harvest_id)
-        if harvest.qr_code != req.qr_code:
+        verdict = qr_sign.check_scan(req.qr_code, harvest.qr_code)
+        if verdict == "tidak_sah":
+            raise HTTPException(400, "QR tidak sah: tanda tangan tidak cocok (QR palsu atau salah ketik). Scan ulang QR asli.")
+        if verdict == "beda_lot":
             raise HTTPException(400, "QR code tidak cocok dengan harvest")
+        if verdict == "ok_legacy":
+            from ..params import P
+            if P("logistik.qr_legacy_policy") == "tolak":
+                raise HTTPException(400, "QR lama (tanpa tanda tangan) tidak lagi diterima. Minta pengepul/petani "
+                                         "membuka lot ini di aplikasi dan menunjukkan QR baru.")
+            geo_note = "; ".join(filter(None, [geo_note, "QR_LAMA: QR tanpa tanda tangan (sebelum F14)"]))
         await transition(
             db, harvest.id, HarvestStatus.VERIFIED, HarvestStatus.COLLECTED, user, CustodyStage.DRIVER_PICKUP,
             weight_kg=picked_kg, client_event_id=req.client_event_id, client_recorded_at=req.client_recorded_at,
