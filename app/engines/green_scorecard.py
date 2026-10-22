@@ -4,10 +4,12 @@
 Neraca karbon (per periode, tCO₂e):
   + Pembakaran terbuka dihindari  = t sekam kering × porsi_dibakar × CF × (EF_CH4·GWP_CH4 + EF_N2O·GWP_N2O)
                                    (CO₂ pembakaran biomassa = biogenik → tidak dihitung; IPCC 2006 Vol.4 Ch.2)
-  + Sekuestrasi biochar           = t biochar (ke tanah) × F_C × F_perm(T) × 44/12   (IPCC 2019 Refinement Ap.4)
-                                   F_perm: 350–<450 °C 0,65 · 450–<600 °C 0,80 · ≥600 °C 0,89
-  − Emisi angkut                  = Σ CO₂e WTW rute (Engine ⑫, ISO 14083)
-  − Emisi listrik proses          = Σ kWh batch × faktor emisi grid
+  Removal (DAPAT DIKLAIM) = t biochar KERING yang terbukti diserahkan ke lahan × F_C × F̄_perm × 44/12
+                            − Scope 1 (solar/LPG batch) − CH₄ reaktor − listrik − angkut,  lalu × (1 − potongan ketidakpastian)
+  Potensi                 = seluruh biochar kering produksi × F_C × F̄_perm × 44/12  (informasi, BUKAN klaim)
+  F_perm (IPCC 2019 Ap.4): 350–<450 °C 0,65 · 450–<600 °C 0,80 · ≥600 °C 0,89 · suhu tak tercatat → 0 (tak boleh diklaim)
+  Emisi DIHINDARI (pembakaran terbuka) dilaporkan TERPISAH dan TIDAK PERNAH dijumlahkan ke removal
+  (Puro.earth = removal-only; VM0044 baseline sourcing = 0; GHG Protocol LSR).
   Bio-pellet yang dibakar BUKAN sekuestrasi (karbonnya kembali ke atmosfer) → tidak dihitung di sini; manfaat
   substitusi batu bara dilaporkan terpisah (Engine ⑦) agar tidak hitung ganda.
 
@@ -28,7 +30,7 @@ REFERENCES = [
 
 def f_perm(temp_c: float | None) -> tuple[float, str]:
     if temp_c is None:
-        return 0.80, "suhu batch tidak dicatat — dipakai 0,80 (450–600 °C, asumsi)"
+        return 0.0, "suhu batch tidak dicatat — F_perm 0 (tidak boleh diklaim)"
     if temp_c < 450:
         return 0.65, "350–<450 °C"
     if temp_c < 600:
@@ -37,7 +39,7 @@ def f_perm(temp_c: float | None) -> tuple[float, str]:
 
 
 def scorecard(batches: list[dict], routes: list[dict], returns: list[dict], received_kg: float,
-              biochar_to_farmers_kg: float) -> dict:
+              biochar_to_farmers_kg: float, biochar_end_use_kg: float = 0.0) -> dict:
     """batches: [{input_kg, moisture, ash, temp_c, outputs{p: kg}, losses{k: kg}, kwh}]
     routes: [{co2e_wtw_kg, distance_source}] (rute selesai); returns: [{quantity_kg, disposition, status}]."""
     gwp_ch4, gwp_n2o = P("karbon.gwp_ch4"), P("karbon.gwp_n2o")
@@ -48,15 +50,32 @@ def scorecard(batches: list[dict], routes: list[dict], returns: list[dict], rece
     husk_t = sum(b["input_kg"] for b in batches) / 1000
     dry_t = sum(b["input_kg"] * (1 - (b.get("moisture") or 0) / 100) for b in batches) / 1000
     avoided = dry_t * share * cf * ef_burn * 1000                     # t × (kg CO₂e/kg) → t CO₂e
-    seq, perm_notes = 0.0, set()
+    dry_char = 1 - P("karbon.biochar_moisture_pct") / 100
+    potential, perm_notes, char_dry_t, perm_weighted = 0.0, set(), 0.0, 0.0
     for b in batches:
         fp, note = f_perm(b.get("temp_c"))
         perm_notes.add(note)
-        seq += b["outputs"].get("biochar", 0) / 1000 * fc * fp * 44 / 12
+        t = b["outputs"].get("biochar", 0) / 1000 * dry_char
+        char_dry_t += t
+        perm_weighted += t * fp
+        potential += t * fc * fp * 44 / 12
+    fp_avg = perm_weighted / char_dry_t if char_dry_t > 0 else 0.0
+    # Hanya biochar yang TERBUKTI diserahkan ke lahan (serah-terima tercatat) yang boleh diklaim (Puro/VM0044 end-use)
+    end_use_dry_t = min(biochar_end_use_kg / 1000 * dry_char, char_dry_t) if char_dry_t > 0 else 0.0
+    seq = end_use_dry_t * fc * fp_avg * 44 / 12
     transport = sum(r.get("co2e_wtw_kg") or 0 for r in routes) / 1000
     kwh = sum(b.get("kwh") or 0 for b in batches)
     electricity = kwh * P("karbon.grid_ef_kg_co2_per_kwh") / 1000
-    net = avoided + seq - transport - electricity
+    from .emission import fuel_factors
+    diesel_l = sum(b.get("diesel_l") or 0 for b in batches)
+    lpg_kg = sum(b.get("lpg_kg") or 0 for b in batches)
+    scope1 = (diesel_l * fuel_factors()["wtw_kg_per_l"] + lpg_kg * P("karbon.lpg_ef_kg_co2e_per_kg")) / 1000
+    ch4_rate = P("karbon.pyrolysis_ch4_kg_per_t_biochar")
+    pyro_ch4 = char_dry_t * ch4_rate * gwp_ch4 / 1000
+    project = transport + electricity + scope1 + pyro_ch4
+    u = P("karbon.uncertainty_deduction_pct") / 100
+    net = (seq - project) * (1 - u) if seq - project > 0 else seq - project
+    net_potential = (potential - project) * (1 - u) if potential - project > 0 else potential - project
 
     products = sum(sum(b["outputs"].values()) for b in batches)
     input_kg = husk_t * 1000
@@ -77,14 +96,27 @@ def scorecard(batches: list[dict], routes: list[dict], returns: list[dict], rece
 
     return {
         "carbon_tco2e": {
-            "avoided_open_burning": round(avoided, 3),
-            "biochar_sequestration": round(seq, 3),
+            "avoided_open_burning": round(avoided, 3),          # dilaporkan terpisah, TIDAK masuk net
+            "biochar_sequestration": round(seq, 3),             # hanya biochar end-use terbukti
+            "biochar_sequestration_potential": round(potential, 3),
             "transport_emissions": round(-transport, 3),
             "process_electricity": round(-electricity, 3),
-            "net": round(net, 3),
+            "scope1_fuel": round(-scope1, 3),
+            "pyrolysis_ch4": round(-pyro_ch4, 3),
+            "uncertainty_deduction_pct": round(u * 100, 1),
+            "net": round(net, 3),                                # = removal bersih yang dapat diklaim
+            "net_potential": round(net_potential, 3),
             "net_kg_per_ton_husk": round(net * 1000 / husk_t, 1) if husk_t > 0 else None,
             "transport_kg_per_ton_husk": round(transport * 1000 / husk_t, 2) if husk_t > 0 else None,
+            "biochar_dry_t": round(char_dry_t, 3), "biochar_end_use_dry_t": round(end_use_dry_t, 3),
+            "f_perm_weighted": round(fp_avg, 3),
             "status": "estimasi internal — belum diverifikasi pihak ketiga (bukan kredit karbon)",
+            "claim_gaps": [g for g, bad in (
+                ("CH₄ reaktor belum diukur (karbon.pyrolysis_ch4_kg_per_t_biochar = 0)", ch4_rate == 0),
+                ("F_C & H/C_org masih parameter, belum uji lab per batch", True),
+                ("Ada batch tanpa suhu pirolisis → F_perm 0", any(b.get("temp_c") is None for b in batches)),
+                ("Belum ada serah-terima biochar ke lahan pada periode ini", biochar_end_use_kg <= 0 and char_dry_t > 0),
+            ) if bad],
         },
         "circularity": {
             "husk_processed_ton": round(husk_t, 3),
@@ -109,14 +141,17 @@ def scorecard(batches: list[dict], routes: list[dict], returns: list[dict], rece
         "computation_details": {
             "formulas": [
                 "dihindari = t_kering × porsi_dibakar × CF × (EF_CH4·GWP_CH4 + EF_N2O·GWP_N2O)",
-                "sekuestrasi = t_biochar × F_C × F_perm(T) × 44/12",
-                "neto = dihindari + sekuestrasi − angkut − listrik",
+                "removal = t_biochar_kering_end_use × F_C × F̄_perm × 44/12",
+                "proyek = angkut + listrik + Scope 1 (solar/LPG) + CH₄ reaktor × GWP",
+                "neto = (removal − proyek) × (1 − potongan ketidakpastian)  ·  emisi dihindari dilaporkan terpisah",
                 "E-factor padat = limbah padat ÷ produk silika",
             ],
             "parameters_used": ["karbon.open_burning_share", "karbon.open_burning_combustion_factor",
                                 "karbon.open_burning_ch4_g_per_kg", "karbon.open_burning_n2o_g_per_kg",
                                 "karbon.gwp_ch4", "karbon.gwp_n2o", "karbon.biochar_c_org_fraction",
-                                "karbon.grid_ef_kg_co2_per_kwh", "rendemen.sio2_fraction_of_ash"],
+                                "karbon.grid_ef_kg_co2_per_kwh", "rendemen.sio2_fraction_of_ash",
+                                "karbon.biochar_moisture_pct", "karbon.uncertainty_deduction_pct",
+                                "karbon.pyrolysis_ch4_kg_per_t_biochar", "karbon.lpg_ef_kg_co2e_per_kg"],
             "references": REFERENCES,
         },
     }

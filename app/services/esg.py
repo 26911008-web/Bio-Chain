@@ -49,18 +49,24 @@ async def scorecard_inputs(db: AsyncSession, start: datetime | None, end: dateti
     batches = (await db.execute(select(ManufacturingBatch).where(*_between(ManufacturingBatch.created_at, start, end))
                                 )).scalars().all()
     ids = [b.id for b in batches]
-    outs, losses, kwh = {}, {}, {}
+    outs, losses, kwh, diesel, lpg = {}, {}, {}, {}, {}
     if ids:
         for o in (await db.execute(select(BatchOutput).where(BatchOutput.batch_id.in_(ids)))).scalars():
             outs.setdefault(o.batch_id, {})[o.product] = o.quantity_kg
         for lo in (await db.execute(select(BatchLoss).where(BatchLoss.batch_id.in_(ids)))).scalars():
             losses.setdefault(lo.batch_id, {})[lo.kind] = lo.quantity_kg
         for c in (await db.execute(select(BatchCost).where(BatchCost.batch_id.in_(ids)))).scalars():
-            if (c.driver_unit or "").lower() == "kwh" and c.driver_qty:
+            unit, item = (c.driver_unit or "").lower(), (c.item or "").lower()
+            if unit == "kwh" and c.driver_qty:
                 kwh[c.batch_id] = kwh.get(c.batch_id, 0) + c.driver_qty
+            elif unit in ("l", "liter") and c.driver_qty and ("solar" in item or "diesel" in item or "bbm" in item):
+                diesel[c.batch_id] = diesel.get(c.batch_id, 0) + c.driver_qty   # Scope 1: genset/forklift/start-up
+            elif unit == "kg" and c.driver_qty and "lpg" in item:
+                lpg[c.batch_id] = lpg.get(c.batch_id, 0) + c.driver_qty
     rows = [{"input_kg": b.input_kg, "moisture": (b.economics or {}).get("input_quality", {}).get("moisture_avg"),
              "ash": (b.economics or {}).get("input_quality", {}).get("ash_avg"), "temp_c": b.pyrolysis_temp_c,
-             "outputs": outs.get(b.id, {}), "losses": losses.get(b.id, {}), "kwh": kwh.get(b.id)} for b in batches]
+             "outputs": outs.get(b.id, {}), "losses": losses.get(b.id, {}), "kwh": kwh.get(b.id),
+             "diesel_l": diesel.get(b.id), "lpg_kg": lpg.get(b.id)} for b in batches]
     route_objs = (await db.execute(select(Route).where(Route.status == RouteStatus.COMPLETED,
                                                        *_between(Route.completed_at, start, end)))).scalars().all()
     routes = [{"co2e_wtw_kg": r.co2e_wtw_kg, "distance_source": (r.emission_detail or {}).get("distance_source")}
@@ -74,13 +80,17 @@ async def scorecard_inputs(db: AsyncSession, start: datetime | None, end: dateti
     to_farmers = -float((await db.execute(select(func.coalesce(func.sum(FinishedGoodsMovement.quantity_kg), 0.0))
                                           .where(FinishedGoodsMovement.movement == "alokasi_petani",
                                                  *_between(FinishedGoodsMovement.created_at, start, end)))).scalar() or 0)
+    end_use = float((await db.execute(select(func.coalesce(func.sum(BiocharRedemption.kg), 0.0))
+                                      .where(BiocharRedemption.status == "diserahkan",
+                                             *_between(BiocharRedemption.handed_over_at, start, end)))).scalar() or 0)
     return {"batches": rows, "routes": routes, "route_objs": route_objs, "returns": returns,
-            "received_kg": recv + qc, "biochar_to_farmers_kg": to_farmers}
+            "received_kg": recv + qc, "biochar_to_farmers_kg": to_farmers, "biochar_end_use_kg": end_use}
 
 
 async def green_scorecard_for(db: AsyncSession, start: datetime | None, end: datetime | None = None) -> dict:
     d = await scorecard_inputs(db, start, end)
-    return scorecard(d["batches"], d["routes"], d["returns"], d["received_kg"], d["biochar_to_farmers_kg"])
+    return scorecard(d["batches"], d["routes"], d["returns"], d["received_kg"], d["biochar_to_farmers_kg"],
+                     d["biochar_end_use_kg"])
 
 
 def _kpi(code, name, value, unit, formula, standard, source, note=None):
@@ -95,7 +105,8 @@ def _r(x, n=2):
 async def esg_report(db: AsyncSession, start: datetime, end: datetime, label: str) -> dict:
     from .efficiency import efficiency_overview
     d = await scorecard_inputs(db, start, end)
-    sc = scorecard(d["batches"], d["routes"], d["returns"], d["received_kg"], d["biochar_to_farmers_kg"])
+    sc = scorecard(d["batches"], d["routes"], d["returns"], d["received_kg"], d["biochar_to_farmers_kg"],
+                   d["biochar_end_use_kg"])
     c = sc["carbon_tco2e"]
     husk_t = sum(b["input_kg"] for b in d["batches"]) / 1000
     biochar_t = sum(b["outputs"].get("biochar", 0) for b in d["batches"]) / 1000
@@ -104,9 +115,9 @@ async def esg_report(db: AsyncSession, start: datetime, end: datetime, label: st
     scope2 = kwh * P("karbon.grid_ef_kg_co2_per_kwh") / 1000
     scope3 = sum(r.get("co2e_wtw_kg") or 0 for r in d["routes"]) / 1000
     fc = P("karbon.biochar_c_org_fraction")
-    gross_c = biochar_t * fc * 44 / 12
-    durable = c["biochar_sequestration"]
-    project_em = scope2 + scope3
+    gross_c = c["biochar_dry_t"] * fc * 44 / 12          # massa KERING biochar (karbon.biochar_moisture_pct)
+    durable = c["biochar_sequestration"]                     # hanya biochar end-use terbukti (serah-terima)
+    project_em = scope2 + scope3 - c["scope1_fuel"] - c["pyrolysis_ch4"]
     received_t = d["received_kg"] / 1000
     waste_t = sum(sum(b["losses"].values()) for b in d["batches"]) / 1000
     credits = (await db.execute(select(func.coalesce(func.sum(CarbonCredit.emission_avoided_tco2), 0.0))
@@ -127,14 +138,19 @@ async def esg_report(db: AsyncSession, start: datetime, end: datetime, label: st
              "GHG Protocol Scope 3 kat.4; GRI 305-3", "routes.co2e_wtw_kg"),
         _kpi("E8", "Intensitas emisi per t sekam", _r((scope2 + scope3) * 1000 / husk_t, 1) if husk_t else None,
              "kgCO₂e/t sekam", "(E6+E7) ÷ E2", "GRI 305-4", "turunan"),
-        _kpi("E9", "Karbon tersimpan bruto di biochar", _r(gross_c, 3), "tCO₂e", "t biochar × F_C × 44/12",
-             "Puro Biochar Methodology 2025 v2 Eq.5.1", "batch_outputs; karbon.biochar_c_org_fraction",
-             "Sekam berabu tinggi: C-organik wajib diukur lab sebelum klaim."),
-        _kpi("E10", "Penyimpanan karbon tahan lama (removal)", _r(durable, 3), "tCO₂e", "E9 × F_perm(suhu) — IPCC 2019",
-             "IPCC 2019 Ref. Vol.4 Ap.4; GRI 102-9 (2027)", "engines/green_scorecard.py"),
-        _kpi("E11", "Removal bersih (removal − emisi proyek)", _r(durable - project_em, 3), "tCO₂e",
-             "E10 − (E6 + E7)", "Puro Eq.5.1; GHG Protocol LSR", "turunan",
-             "Indikasi internal; belum termasuk kebocoran & emisi Scope 1 BBM pabrik."),
+        _kpi("E9", "Karbon tersimpan bruto — POTENSI (seluruh biochar kering)", _r(gross_c, 3), "tCO₂e",
+             "t biochar × (1 − kadar air) × F_C × 44/12",
+             "Puro Biochar Methodology 2025 Eq.5.1", "batch_outputs; karbon.biochar_c_org_fraction, biochar_moisture_pct",
+             "Potensi, bukan klaim. Sekam berabu tinggi: C-organik wajib diukur lab sebelum klaim."),
+        _kpi("E10", "Removal tahan lama — biochar TERBUKTI sampai lahan", _r(durable, 3), "tCO₂e",
+             "t biochar kering diserahkan ke lahan × F_C × F̄_perm(suhu) × 44/12",
+             "Puro 2025 & VM0044 (end-use); IPCC 2019 Ap.4", "biochar_redemptions (diserahkan); engines/green_scorecard.py",
+             f"Potensi seluruh produksi: {c['biochar_sequestration_potential']} tCO₂e. Suhu tak tercatat → F_perm 0."),
+        _kpi("E11", "Removal bersih yang dapat diklaim", c["net"], "tCO₂e",
+             "(E10 − E6 − E7 − Scope 1 solar/LPG − CH₄ reaktor) × (1 − potongan ketidakpastian)",
+             "Puro Eq.5.1; VM0044; GHG Protocol LSR", "turunan",
+             "Indikasi internal pra-verifikasi. Celah: " + "; ".join(c["claim_gaps"]) if c["claim_gaps"] else
+             "Indikasi internal pra-verifikasi."),
         _kpi("E12", "Emisi DIHINDARI (pembakaran terbuka)", c["avoided_open_burning"], "tCO₂e",
              "t sekam kering × porsi dibakar × CF × (EF_CH4·GWP + EF_N2O·GWP)", "GRI 305-5; IFRS S2 ¶36",
              "engines/green_scorecard.py", "Dilaporkan terpisah — TIDAK boleh mengurangi emisi bruto."),

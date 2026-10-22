@@ -110,8 +110,8 @@ def calculate_carbon_reduction(inp: CarbonInput) -> CarbonResult:
         emission_avoided_tco2=round(emission_avoided, 4),
         transport_emission_tco2=round(transport_emission, 4),
         net_reduction_tco2=round(net, 4),
-        carbon_credit_equivalent=round(net, 4),
-        srn_ppi_eligible=net > 0,
+        carbon_credit_equivalent=0.0,   # bukan kredit: pengurangan Scope 1 milik pemakai pelet/boiler (klaim ganda)
+        srn_ppi_eligible=False,         # kelayakan SRN-PPI = metodologi terdaftar + validasi/verifikasi, bukan net > 0
         methodology="IPCC 2006 Tier 2 — Stationary Combustion (biomass co-firing)",
         carbon_price_per_tco2_rp=carbon_price,
         carbon_value_rp=carbon_value_rp,

@@ -2085,7 +2085,7 @@ async function renderPersonaDashboard(role) {
         <div class="kpi-tile"><div class="kpi-lbl">Emisi Karbon Dihindari</div><div class="kpi-val" id="f-co2">–</div><div class="kpi-lbl">tCO₂e (IPCC Tier 2)</div></div>
         <div class="kpi-tile kpi-amber"><div class="kpi-lbl">Output Biochar</div><div class="kpi-val" id="f-biochar">–</div><div class="kpi-lbl">Ton Biochar Terverifikasi</div></div>
         <div class="kpi-tile kpi-blue"><div class="kpi-lbl">Potensi Biosilika SiO₂</div><div class="kpi-val" id="f-sio2">–</div><div class="kpi-lbl">Ton · estimasi dari kadar abu</div></div>
-        <div class="kpi-tile kpi-purple"><div class="kpi-lbl">Status Sertifikasi</div><div class="kpi-val" style="font-size:var(--fs-lg);">SRN-PPI Eligible</div><div class="kpi-lbl">Perpres 110/2025 NEK</div></div>
+        <div class="kpi-tile kpi-purple"><div class="kpi-lbl">Status Sertifikasi</div><div class="kpi-val" style="font-size:var(--fs-lg);">Pra-verifikasi</div><div class="kpi-lbl">Belum terdaftar SRN-PPI · Perpres 110/2025</div></div>
       </div>
 
       ${renderAIEvaluationCard("pabrik")}

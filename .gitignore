@@ -40,3 +40,6 @@ app/static/uploads/*
 ~$*
 test-results/
 playwright-report/
+
+# Dokumen kredensial lokal (RAHASIA)
+docs/KREDENSIAL_*

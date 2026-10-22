@@ -497,10 +497,15 @@ def test_green_scorecard_uses_real_batches_routes_and_returns(env):
     sc = env.ok("auditor", "GET", "/factory/green-scorecard")
     c = sc["carbon_tco2e"]
     biochar_t = round(ys.outputs["biochar"] * kg, 1) / 1000
-    assert c["biochar_sequestration"] == pytest.approx(biochar_t * 0.49 * 0.80 * 44 / 12, rel=1e-3)
+    dry = 1 - 0.10                                           # karbon.biochar_moisture_pct bawaan
+    assert c["biochar_sequestration_potential"] == pytest.approx(biochar_t * dry * 0.49 * 0.80 * 44 / 12, rel=1e-3)
+    # belum ada serah-terima biochar ke lahan → tidak ada removal yang boleh diklaim (Puro/VM0044 end-use)
+    assert c["biochar_sequestration"] == 0
+    assert any("serah-terima" in g for g in c["claim_gaps"])
     assert c["avoided_open_burning"] > 0 and c["transport_emissions"] < 0 and c["process_electricity"] < 0
-    assert c["net"] == pytest.approx(c["avoided_open_burning"] + c["biochar_sequestration"]
-                                     + c["transport_emissions"] + c["process_electricity"], abs=1e-3)
+    # emisi dihindari TIDAK dijumlahkan ke removal bersih
+    assert c["net"] == pytest.approx(c["biochar_sequestration"] + c["transport_emissions"] + c["process_electricity"]
+                                     + c["scope1_fuel"] + c["pyrolysis_ch4"], abs=1e-3)
     assert "bukan kredit karbon" in c["status"]
     circ = sc["circularity"]
     assert 0 < circ["mass_valorization_pct"] <= 100 and circ["return_rate_pct"] > 0
