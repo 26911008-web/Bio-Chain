@@ -9,15 +9,21 @@ import hashlib
 import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..concurrency import run_cpu
+from ..config import settings
 from ..database import get_db
-from ..dependencies import create_access_token, get_current_user
+from ..dependencies import create_access_token, get_current_user, security
 from ..models.user import User, UserRole, IncentiveTier
 
 router = APIRouter()
+
+# Role yang boleh daftar sendiri. Admin & auditor hanya dibuat oleh administrator.
+SELF_SERVICE_ROLES = {UserRole.PETANI.value, UserRole.PENGEPUL.value, UserRole.DRIVER.value, UserRole.PABRIK.value}
 
 
 def hash_password(password: str) -> str:
@@ -29,6 +35,16 @@ def hash_password(password: str) -> str:
     iterations = 600_000
     h = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, iterations)
     return f"pbkdf2${iterations}${salt.hex()}${h.hex()}"
+
+
+_DUMMY_HASH: str | None = None
+
+
+def _dummy_hash() -> str:
+    global _DUMMY_HASH
+    if _DUMMY_HASH is None:
+        _DUMMY_HASH = hash_password(secrets.token_hex(8))
+    return _DUMMY_HASH
 
 
 def verify_password(password: str, password_hash: str) -> bool:
@@ -81,6 +97,7 @@ class LoginRequest(BaseModel):
     phone: str | None = None
     username: str | None = None
     password: str = Field(..., min_length=1)
+    expected_role: str | None = Field(None, description="Gerbang peran yang dipilih di halaman muka")
 
 
 class UserProfileResponse(BaseModel):
@@ -116,10 +133,10 @@ class TokenResponse(BaseModel):
 @router.post("/register", response_model=TokenResponse, status_code=201)
 async def register(req: RegisterRequest, db: Annotated[AsyncSession, Depends(get_db)]):
     """Registrasi user baru."""
-    valid_roles = {r.value for r in UserRole}
     role_val = req.role.lower()
-    if role_val not in valid_roles:
-        raise HTTPException(400, f"Role tidak valid. Pilihan: {', '.join(valid_roles)}")
+    if role_val not in SELF_SERVICE_ROLES:
+        raise HTTPException(403, f"Registrasi mandiri hanya untuk role: {', '.join(sorted(SELF_SERVICE_ROLES))}. "
+                                 "Akun admin/auditor dibuat oleh administrator.")
 
     # Cek duplikat
     conds = [User.phone == req.phone]
@@ -137,10 +154,11 @@ async def register(req: RegisterRequest, db: Annotated[AsyncSession, Depends(get
         username=req.username,
         email=req.email,
         phone=req.phone,
-        password_hash=hash_password(req.password),
+        password_hash=await run_cpu(hash_password, req.password),
         full_name=req.full_name,
         role=role_enum,
-        is_active=True,
+        # Petani langsung aktif; role operasional menunggu aktivasi admin (/admin/users/{id}/activate).
+        is_active=role_enum == UserRole.PETANI,
         kecamatan=req.kecamatan,
         kabupaten=req.kabupaten or "Sleman",
         lat=req.lat,
@@ -180,12 +198,23 @@ async def login(req: LoginRequest, db: Annotated[AsyncSession, Depends(get_db)])
         select(User).where(or_(User.phone == lookup, User.username == lookup))
     )
     user = result.scalar_one_or_none()
+    # Lepas koneksi DB sebelum hashing (~0,3 s) agar pool tidak habis saat badai login.
+    await db.commit()
 
-    if not user or not verify_password(req.password, user.password_hash):
+    # PBKDF2 di thread pool terbatas (event loop tetap responsif). User tak dikenal tetap
+    # di-hash dengan hash tiruan supaya waktu respons tidak membocorkan keberadaan akun.
+    stored = user.password_hash if user else _dummy_hash()
+    valid = await run_cpu(verify_password, req.password, stored)
+    if not user or not valid:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Username/nomor telepon atau password salah")
 
     if not user.is_active:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Akun belum aktif atau dinonaktifkan oleh admin")
+    actual_role = user.role.value if hasattr(user.role, "value") else str(user.role)
+    if req.expected_role and req.expected_role != actual_role:
+        # Gerbang peran: akun pabrik tidak bisa masuk lewat gerbang petani, dst.
+        raise HTTPException(status.HTTP_403_FORBIDDEN,
+                            f"Akun ini bukan akun {req.expected_role}. Silakan pilih gerbang yang sesuai.")
 
     role_str = user.role.value if hasattr(user.role, 'value') else str(user.role)
     token = create_access_token(user.id, role_str)
@@ -235,8 +264,14 @@ async def get_demo_accounts():
 
 
 @router.post("/reset-demo")
-async def reset_demo(db: Annotated[AsyncSession, Depends(get_db)]):
-    """Reset & isi ulang database dengan data demo Bio-Chain lengkap."""
+async def reset_demo(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
+):
+    """Reset & isi ulang database dengan data demo — hanya admin (operasi destruktif)."""
+    user = await get_current_user(credentials, db)
+    if user.role != UserRole.ADMIN:
+        raise HTTPException(403, "Reset data hanya untuk admin.")
     from ..seed import seed_demo_data
     result = await seed_demo_data(db, force_reset=True)
     return result

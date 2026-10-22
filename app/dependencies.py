@@ -16,6 +16,7 @@ from sqlalchemy import select
 from .config import settings
 from .database import get_db
 from .models.user import User, UserRole
+from .security.rls import apply_now, bind_identity
 
 security = HTTPBearer(auto_error=False)
 
@@ -42,6 +43,7 @@ async def get_current_user(
             algorithms=[settings.JWT_ALGORITHM],
         )
         user_id = int(payload["sub"])
+        token_role = payload.get("role")
     except (jwt.ExpiredSignatureError,):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token kedaluwarsa")
     except (jwt.InvalidTokenError, KeyError, ValueError):
@@ -51,6 +53,17 @@ async def get_current_user(
     user = result.scalar_one_or_none()
     if not user or not user.is_active:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User tidak ditemukan atau nonaktif")
+    role = user.role.value if hasattr(user.role, "value") else str(user.role)
+    if token_role != role:
+        # Role diubah admin setelah token terbit → token lama tidak boleh membawa hak lama.
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Peran akun berubah; silakan login ulang")
+
+    # RLS PostgreSQL: semua query berikutnya di request ini dibatasi ke identitas ini.
+    bind_identity(db, user.id, role)
+    await apply_now(db)
+    # Parameter asumsi yang diubah di proses worker lain terbaca dalam ≤ 30 detik
+    from .services.params_store import maybe_refresh
+    await maybe_refresh(db)
     return user
 
 

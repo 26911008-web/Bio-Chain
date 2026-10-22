@@ -12,6 +12,8 @@ Referensi:
 import math
 from pydantic import BaseModel, Field
 
+from ..params import P
+
 PRODUCTIVITY_TON_PER_HA = 5.3
 HUSK_RATIO = 0.20
 SEASONAL_AMPLITUDE = 0.40
@@ -43,8 +45,12 @@ def seasonal_factor(month: int) -> float:
 
     Factor = 1 + A × max(cos(2π(m-p₁)/12), cos(2π(m-p₂)/12))
     """
-    waves = [math.cos(2 * math.pi * (month - p) / 12) for p in PEAK_MONTHS]
-    return 1.0 + SEASONAL_AMPLITUDE * max(waves)
+    waves = [math.cos(2 * math.pi * (month - p) / 12) for p in _peaks()]
+    return 1.0 + P("proyeksi.seasonal_amplitude") * max(waves)
+
+
+def _peaks() -> list[int]:
+    return [int(P("proyeksi.peak_month_1")), int(P("proyeksi.peak_month_2"))]
 
 
 def forecast_supply(inp: ForecastInput) -> ForecastResult:
@@ -53,18 +59,20 @@ def forecast_supply(inp: ForecastInput) -> ForecastResult:
     Base: Annual_husk = area × productivity × husk_ratio
     Monthly = Annual / 12 × seasonal_factor
     """
-    annual_husk = inp.harvest_area_ha * PRODUCTIVITY_TON_PER_HA * HUSK_RATIO
+    PEAK_MONTHS = _peaks()
+    annual_husk = inp.harvest_area_ha * P("proyeksi.productivity_ton_per_ha") * P("proyeksi.husk_ratio")
     monthly_base = annual_husk / 12
 
     # Blend model dengan data historis jika tersedia
     if inp.historical_avg_ton is not None and inp.historical_avg_ton > 0:
-        monthly_base = 0.6 * inp.historical_avg_ton + 0.4 * monthly_base
+        wh = P("proyeksi.history_weight")
+        monthly_base = wh * inp.historical_avg_ton + (1 - wh) * monthly_base
 
     sf = seasonal_factor(inp.month)
     predicted = monthly_base * sf
 
-    ci_width = 0.15 if inp.historical_avg_ton else 0.25
-    is_peak = inp.month in PEAK_MONTHS or inp.month in [p + 1 for p in PEAK_MONTHS]
+    ci_width = P("proyeksi.ci_width_history") if inp.historical_avg_ton else P("proyeksi.ci_width_model")
+    is_peak = inp.month in PEAK_MONTHS or inp.month in [p % 12 + 1 for p in PEAK_MONTHS]
 
     if is_peak:
         rec = "🟢 Musim puncak panen. Siapkan kapasitas gudang & armada maksimal."

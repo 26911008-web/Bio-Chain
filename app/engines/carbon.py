@@ -11,6 +11,8 @@ Referensi:
 
 from pydantic import BaseModel, Field
 
+from ..params import P
+
 # Faktor emisi IPCC
 COAL_EF_KG_CO2_PER_GJ = 96.1        # Sub-bituminous coal
 BIOMASS_EF_KG_CO2_PER_GJ = 0.0      # Biogenic carbon = net zero
@@ -47,6 +49,9 @@ def calculate_carbon_reduction(inp: CarbonInput) -> CarbonResult:
       E_transport = M_biomass × D_km × EF_transport
       Net = E_avoided - E_transport
     """
+    RICE_HUSK_HHV_MJ_KG, BOILER_EFFICIENCY = P("karbon.husk_hhv_mj_kg"), P("karbon.boiler_efficiency")
+    COAL_HHV_MJ_KG, COAL_EF_KG_CO2_PER_GJ = P("karbon.coal_hhv_mj_kg"), P("karbon.coal_ef_kg_co2_per_gj")
+    TRANSPORT_EF_KG_CO2_PER_TONKM = P("karbon.transport_ef_kg_co2_per_tkm")
     dry_factor = 1 - inp.moisture_pct / 100
     biomass_energy_gj = (
         inp.biomass_ton * 1000          # kg

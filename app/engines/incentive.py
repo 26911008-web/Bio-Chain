@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 # M2 fix: Single canonical IncentiveTier from models.user
 from ..models.user import IncentiveTier
+from ..params import P
 
 
 TIER_THRESHOLDS = {
@@ -48,19 +49,21 @@ def calculate_incentive(event: DeliveryEvent) -> IncentiveResult:
     bonus_on_time = +20%
     bonus_paceklik = +50%
     """
-    grade_xp = {"A": 3.0, "B": 2.0, "C": 1.0, "TOLAK": 0.0}
+    grade_xp = {"A": P("insentif.xp_grade_A"), "B": P("insentif.xp_grade_B"), "C": P("insentif.xp_grade_C"),
+                "TOLAK": 0.0}
+    on_time, lean = P("insentif.bonus_on_time"), P("insentif.bonus_lean_season")
     base = int(event.quantity_ton * grade_xp.get(event.grade, 0) * 10)
 
     bonuses = []
     multiplier = 1.0
 
     if event.on_time:
-        multiplier += 0.20
-        bonuses.append("⏰ Bonus tepat waktu (+20% XP)")
+        multiplier += on_time
+        bonuses.append(f"⏰ Bonus tepat waktu (+{on_time:.0%} XP)")
 
     if event.is_peak_season:
-        multiplier += 0.50
-        bonuses.append("📦 Bonus pasokan musim paceklik (+50% XP)")
+        multiplier += lean
+        bonuses.append(f"📦 Bonus pasokan musim paceklik (+{lean:.0%} XP)")
 
     if event.grade == "A":
         bonuses.append("⭐ Kualitas Grade A — XP maksimum!")
@@ -68,19 +71,33 @@ def calculate_incentive(event: DeliveryEvent) -> IncentiveResult:
     xp_earned = max(0, int(base * multiplier))
     new_total = event.farmer_xp + xp_earned
 
-    tier = IncentiveTier.PEMULA
-    for t, (lo, hi) in TIER_THRESHOLDS.items():
-        if lo <= new_total <= hi:
-            tier = t
-            break
-    # Handle > max threshold
-    if new_total >= 1500:
-        tier = IncentiveTier.MITRA_PLATINUM
+    tier = tier_for(new_total)
 
     return IncentiveResult(
         xp_earned=xp_earned,
         new_total_xp=new_total,
         tier=tier,
-        price_multiplier=TIER_PRICE_BONUS[tier],
+        price_multiplier=tier_price_bonus(tier),
         bonus_notes=bonuses,
     )
+
+
+def tier_thresholds() -> list[tuple[IncentiveTier, int]]:
+    """Ambang XP aktif (menu Parameter → Insentif), urut naik."""
+    return [(IncentiveTier.PEMULA, 0), (IncentiveTier.PEMASOK_AKTIF, int(P("insentif.tier_aktif_xp"))),
+            (IncentiveTier.MITRA_EMAS, int(P("insentif.tier_emas_xp"))),
+            (IncentiveTier.MITRA_PLATINUM, int(P("insentif.tier_platinum_xp")))]
+
+
+def tier_for(xp: int) -> IncentiveTier:
+    return [t for t, lo in tier_thresholds() if xp >= lo][-1]
+
+
+def tier_price_bonus(tier: IncentiveTier) -> float:
+    return {IncentiveTier.PEMULA: 1.0, IncentiveTier.PEMASOK_AKTIF: P("insentif.bonus_price_aktif"),
+            IncentiveTier.MITRA_EMAS: P("insentif.bonus_price_emas"),
+            IncentiveTier.MITRA_PLATINUM: P("insentif.bonus_price_platinum")}[tier]
+
+
+def next_tier_xp(xp: int) -> int | None:
+    return next((lo for _, lo in tier_thresholds() if xp < lo), None)

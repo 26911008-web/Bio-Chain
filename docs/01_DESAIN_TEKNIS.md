@@ -28,7 +28,7 @@ Bio-Chain v2 dibangun dengan arsitektur **Edge-to-Cloud Closed Loop** yang mengh
 │  ② Quality & Yield Scorer   : Evaluasi kinetika proksimat (300-700°C)   │
 │  ③ Blending Optimizer       : Linear Programming (HiGHS SciPy)          │
 │  ④ Demand-Supply Matcher    : Mixed-Integer Linear Programming (MILP)   │
-│  ⑤ Route Optimizer          : Clarke-Wright Savings Heuristic + 2-Opt   │
+│  ⑤ Route Optimizer          : Exact DP (n≤10) / Savings + LS + ILS      │
 │  ⑥ Incentive Engine         : Gamifikasi XP kuadrilateral (Mitra Emas)  │
 │  ⑦ ESG Carbon Calculator    : IPCC 2006 Tier 2 & Perpres 110/2025 NEK   │
 └────────────────────────────────────┬────────────────────────────────────┘
@@ -137,10 +137,14 @@ $$\sum_{i=1}^n A_i \cdot x_i \le A_{\max} \cdot W_{\text{target}} \quad (\text{B
 $$\sum_{i=1}^n \text{FC}_i \cdot x_i \ge \text{FC}_{\min} \cdot W_{\text{target}} \quad (\text{Batas Minimal Fixed Carbon})$$
 $$0 \le x_i \le S_i \quad (\text{Ketersediaan Stok Bahan Baku } i)$$
 
-### 4.4 Engine ⑤: Route Optimizer (Clarke-Wright Savings + 2-Opt)
-Mengelompokkan dan mengurutkan titik penjemputan penggilingan padi ke dalam rute truk berkapasitas terbatas ($C_{\max} = 8\text{ ton}$):
-$$s_{ij} = d(0, i) + d(0, j) - d(i, j)$$
-Di mana $0$ adalah depot pabrik, $i$ dan $j$ adalah lokasi penggilingan. Rute kemudian dihaluskan menggunakan algoritma 2-Opt untuk mengeliminasi persilangan jalur.
+### 4.4 Engine ⑤: Route Optimizer (CVRP berbatas volume — Exact / Heuristic hibrida)
+Mengelompokkan dan mengurutkan titik penjemputan ke dalam rute truk berkapasitas **volume** $Q$ (m³; sekam ringan sehingga bak penuh sebelum batas tonase). Penggilingan dengan $V_i > Q$ dilayani trip penuh langsung; sisanya diselesaikan solver yang dipilih otomatis (`mode=auto`):
+
+- **Exact** ($n \le 10$, maks. 12 bila diminta): Held-Karp untuk biaya tur tiap subset layak, lalu DP set-partitioning
+  $F(M) = \min_{S \subseteq M,\ S \ni \min M,\ q(S) \le Q} C(S) + F(M \setminus S)$ — $O(2^n n^2 + 3^n)$, optimal terbukti.
+- **Heuristic** ($n > 10$): Clarke-Wright savings granular $s_{ij} = d(0,i) + d(0,j) - d(i,j)$ pada 100 tetangga terdekat → local search (relocate, swap, 2-opt; 20 tetangga) → iterated local search *ruin & recreate* (SISR) dengan threshold accepting, seluruhnya dalam anggaran `time_budget_ms` (default 250 ms).
+
+Setiap respons menyertakan `computation_details` (langkah, rumus, kompleksitas, waktu per tahap) dan batas bawah $LB = \max(2\sum_i V_i d_{0i}/Q,\ 2\max_i d_{0i},\ \text{MST})$ sehingga gap terhadap optimal selalu dapat diaudit. Tes: `tests/test_routing.py` (brute-force ground truth, invarian kapasitas, SLO latensi < 500 ms untuk 1000 titik).
 
 ### 4.5 Engine ⑥: Gamification & Incentive Engine
 Mendorong petani menjaga kebersihan dan kekeringan sekam melalui sistem Experience Points (XP) dan sertifikasi Mitra:

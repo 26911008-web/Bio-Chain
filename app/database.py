@@ -6,6 +6,7 @@ secara otomatis tanpa error. Jika PostgreSQL tidak aktif, otomatis fallback ke S
 
 import socket
 from pathlib import Path
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 
@@ -20,8 +21,49 @@ class Base(DeclarativeBase):
     pass
 
 
-def _is_postgres_available(host="localhost", port=5432) -> bool:
-    """Cek cepat (0.2s) apakah port PostgreSQL terbuka."""
+def _sqlite_engine(url: str):
+    """SQLite untuk demo: WAL + busy_timeout. SQLite hanya punya satu penulis; banyak koneksi justru
+    saling busy-wait (backoff tidur s/d 100 ms), jadi request diantrekan FIFO di pool berukuran kecil."""
+    eng = create_async_engine(url, echo=False, connect_args={"check_same_thread": False, "timeout": 10},
+                              pool_size=settings.SQLITE_POOL_SIZE, max_overflow=0,
+                              pool_timeout=settings.DB_POOL_TIMEOUT_S)
+
+    @event.listens_for(eng.sync_engine, "connect")
+    def _pragmas(dbapi_conn, _):
+        cur = dbapi_conn.cursor()
+        cur.execute("PRAGMA journal_mode=WAL")
+        cur.execute("PRAGMA busy_timeout=10000")
+        cur.execute("PRAGMA synchronous=NORMAL")
+        cur.close()
+
+    return eng
+
+
+def _postgres_engine(url: str):
+    connect_args = {"server_settings": {"statement_timeout": str(settings.DB_STATEMENT_TIMEOUT_MS),
+                                        "lock_timeout": str(settings.DB_STATEMENT_TIMEOUT_MS),
+                                        "idle_in_transaction_session_timeout": "30000"}}
+    if settings.PGBOUNCER:
+        connect_args["statement_cache_size"] = 0          # wajib untuk PgBouncer transaction pooling
+    if settings.DB_NULLPOOL:
+        # Koneksi asyncpg terikat ke event loop pembuatnya; harness tes membuat banyak loop (TestClient,
+        # asyncio.run). Produksi (1 loop per proses Uvicorn) tetap memakai pool.
+        from sqlalchemy.pool import NullPool
+        return create_async_engine(url, echo=False, poolclass=NullPool, connect_args=connect_args)
+    return create_async_engine(url, echo=False, pool_size=settings.DB_POOL_SIZE,
+                               max_overflow=settings.DB_MAX_OVERFLOW, pool_timeout=settings.DB_POOL_TIMEOUT_S,
+                               pool_pre_ping=True, pool_recycle=1800, connect_args=connect_args)
+
+
+def _is_postgres_available(url: str | None = None) -> bool:
+    """Cek cepat (0.2s) apakah host:port dari DATABASE_URL terbuka (bukan selalu localhost:5432 —
+    port itu bisa milik proyek lain di mesin yang sama)."""
+    from sqlalchemy.engine import make_url
+    try:
+        u = make_url(url or settings.DATABASE_URL)
+        host, port = u.host or "localhost", u.port or 5432
+    except Exception:
+        return False
     try:
         with socket.create_connection((host, port), timeout=0.2):
             return True
@@ -40,23 +82,10 @@ class DatabaseManager:
         self._init_engine()
 
     def _init_engine(self):
-        use_sqlite = ("sqlite" in settings.DATABASE_URL.lower()) or (not _is_postgres_available())
+        use_sqlite = ("sqlite" in settings.DATABASE_URL.lower()) or (not _is_postgres_available(settings.DATABASE_URL))
         self.active_db_url = SQLITE_URL if use_sqlite else settings.DATABASE_URL
         self.active_driver = "sqlite" if use_sqlite else "postgresql"
-        if use_sqlite:
-            self._engine = create_async_engine(
-                self.active_db_url,
-                echo=False,
-                connect_args={"check_same_thread": False},
-            )
-        else:
-            self._engine = create_async_engine(
-                self.active_db_url,
-                echo=False,
-                pool_size=10,
-                max_overflow=5,
-                pool_pre_ping=True,
-            )
+        self._engine = _sqlite_engine(self.active_db_url) if use_sqlite else _postgres_engine(self.active_db_url)
         self._sessionmaker = async_sessionmaker(
             self._engine,
             class_=AsyncSession,
@@ -80,11 +109,7 @@ class DatabaseManager:
                 pass
         self.active_driver = "sqlite"
         self.active_db_url = SQLITE_URL
-        self._engine = create_async_engine(
-            self.active_db_url,
-            echo=False,
-            connect_args={"check_same_thread": False},
-        )
+        self._engine = _sqlite_engine(self.active_db_url)
         self._sessionmaker = async_sessionmaker(
             self._engine,
             class_=AsyncSession,

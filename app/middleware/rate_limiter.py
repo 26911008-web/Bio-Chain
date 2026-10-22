@@ -16,6 +16,21 @@ from starlette.responses import JSONResponse
 from ..config import settings
 
 EXEMPT_PATHS = {"/health", "/ready", "/docs", "/openapi.json", "/redoc"}
+LOGIN_PATH = "/api/v1/auth/login"
+TRUSTED_PROXIES = {ip.strip() for ip in settings.TRUSTED_PROXIES.split(",") if ip.strip()}
+
+
+def client_ip(request: Request) -> str:
+    """IP klien asli. X-Forwarded-For hanya dipercaya bila request datang dari reverse proxy kita;
+    diambil entri paling kanan yang bukan proxy (entri kiri bisa dipalsukan klien)."""
+    peer = request.client.host if request.client else "unknown"
+    xff = request.headers.get("x-forwarded-for")
+    if peer not in TRUSTED_PROXIES or not xff:
+        return peer
+    for hop in reversed([h.strip() for h in xff.split(",") if h.strip()]):
+        if hop not in TRUSTED_PROXIES:
+            return hop
+    return peer
 
 
 def _is_redis_port_open(url: str) -> bool:
@@ -77,22 +92,23 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
             # Fail open: no Redis = no rate limiting, zero latency penalty
             return await call_next(request)
 
-        client_ip = request.client.host if request.client else "unknown"
-        key = f"rl:{client_ip}"
+        ip = client_ip(request)
+        is_login = request.url.path == LOGIN_PATH
         now = time.time()
+        member = f"{now}:{id(request)}"            # unik walau dua request di mikrodetik yang sama
 
         try:
             pipe = redis_client.pipeline()
-            # Remove old entries outside window
-            pipe.zremrangebyscore(key, 0, now - self.window)
-            # Add current request
-            pipe.zadd(key, {str(now): now})
-            # Count requests in window
-            pipe.zcard(key)
-            # Set expiry on key
-            pipe.expire(key, self.window)
+            prefix = f"{settings.REDIS_KEY_PREFIX}rl:"
+            for key in (f"{prefix}{ip}", f"{prefix}login:{ip}") if is_login else (f"{prefix}{ip}",):
+                pipe.zremrangebyscore(key, 0, now - self.window)
+                pipe.zadd(key, {member: now})
+                pipe.zcard(key)
+                pipe.expire(key, self.window)
             results = await pipe.execute()
             request_count = results[2]
+            if is_login and results[6] > settings.LOGIN_RATE_LIMIT:
+                request_count = self.max_requests + 1   # brute force login → 429 lebih awal
         except Exception:
             # Mark Redis as temporarily down and fail open
             self._redis_available = False

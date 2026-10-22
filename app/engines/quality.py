@@ -7,6 +7,9 @@ yang akan dikalibrasi ulang dengan data uji batch PT Indmira.
 
 from pydantic import BaseModel, Field
 
+from ..params import P, weights
+
+# Nilai di bawah = DEFAULT registry (app/params.py). Engine membaca nilai aktif via P() saat dijalankan.
 YIELD_300C = 57.13          # % basis kering
 YIELD_700C = 37.19
 REF_ASH = 18.0              # kadar abu sekam tipikal, % basis kering
@@ -41,35 +44,44 @@ def _linear_score(value: float, best: float, worst: float) -> float:
 
 def biochar_yield_db(temp_c: float, ash: float) -> float:
     """Prediksi rendemen biochar (% massa basis kering)."""
-    base = YIELD_300C - (YIELD_300C - YIELD_700C) * (temp_c - 300) / 400
-    return _clamp(base + ASH_YIELD_COEF * (ash - REF_ASH), 20, 75)
+    y300, y700 = P("rendemen.yield_300c"), P("rendemen.yield_700c")
+    base = y300 - (y300 - y700) * (temp_c - 300) / 400
+    return _clamp(base + P("rendemen.ash_yield_coef") * (ash - P("rendemen.ref_ash")), 20, 75)
 
 
-def yield_curve(ash: float = REF_ASH) -> list[dict]:
+def yield_curve(ash: float | None = None) -> list[dict]:
+    ash = P("rendemen.ref_ash") if ash is None else ash
     return [{"temp_c": t, "yield_pct": round(biochar_yield_db(t, ash), 2)} for t in range(300, 701, 25)]
 
 
 def score_sample(s: FeedstockSample) -> dict:
+    MOISTURE_REJECT, CONTAMINATION_REJECT = P("harga_mutu.moisture_reject"), P("harga_mutu.contamination_reject")
+    SIO2_FRACTION_OF_ASH = P("rendemen.sio2_fraction_of_ash")
+    GRADE_PRICE_MULTIPLIER = {"A": P("harga_mutu.mult_A"), "B": P("harga_mutu.mult_B"), "C": P("harga_mutu.mult_C"),
+                              "TOLAK": 0.0}
+    ash_lo, ash_hi = P("harga_mutu.ash_ideal_min"), P("harga_mutu.ash_ideal_max")
     warnings = []
     proximate_sum = s.ash + s.volatile_matter + s.fixed_carbon
     if abs(proximate_sum - 100) > 3:
         warnings.append(f"Abu + VM + FC = {proximate_sum:.1f}% (seharusnya ~100%). Cek ulang hasil uji proksimat.")
 
     components = {
-        "kadar_air": _linear_score(s.moisture, best=10, worst=MOISTURE_REJECT),
-        "kontaminasi": _linear_score(s.contamination, best=1, worst=CONTAMINATION_REJECT),
-        "kadar_abu": _clamp(100 - 10 * max(0, s.ash - 20, 14 - s.ash), 0, 100),
-        "fixed_carbon": _linear_score(s.fixed_carbon, best=17, worst=8),
+        "kadar_air": _linear_score(s.moisture, best=P("harga_mutu.moisture_best"), worst=MOISTURE_REJECT),
+        "kontaminasi": _linear_score(s.contamination, best=P("harga_mutu.contamination_best"), worst=CONTAMINATION_REJECT),
+        "kadar_abu": _clamp(100 - 10 * max(0, s.ash - ash_hi, ash_lo - s.ash), 0, 100),
+        "fixed_carbon": _linear_score(s.fixed_carbon, best=P("harga_mutu.fc_best"), worst=P("harga_mutu.fc_worst")),
     }
-    weights = {"kadar_air": 0.35, "kontaminasi": 0.30, "kadar_abu": 0.15, "fixed_carbon": 0.20}
-    score = sum(components[k] * w for k, w in weights.items())
+    w = weights("harga_mutu.w_")
+    score = (components["kadar_air"] * w["moisture"] + components["kontaminasi"] * w["contamination"]
+             + components["kadar_abu"] * w["ash"] + components["fixed_carbon"] * w["fc"])
 
     if s.moisture > MOISTURE_REJECT or s.contamination > CONTAMINATION_REJECT:
         grade = "TOLAK"
-        warnings.append("Melebihi batas penerimaan (air > 25% atau kontaminan > 10%). Perlu pengeringan/penyaringan.")
-    elif score >= 80:
+        warnings.append(f"Melebihi batas penerimaan (air > {MOISTURE_REJECT:g}% atau kontaminan > "
+                        f"{CONTAMINATION_REJECT:g}%). Perlu pengeringan/penyaringan.")
+    elif score >= P("harga_mutu.grade_A_min"):
         grade = "A"
-    elif score >= 60:
+    elif score >= P("harga_mutu.grade_B_min"):
         grade = "B"
     else:
         grade = "C"

@@ -1,6 +1,6 @@
 """SQLAlchemy ORM models — User table.
 
-Mendukung 5 role: petani, pengepul, driver, pabrik, admin.
+Mendukung 6 role: petani, pengepul, driver, pabrik, admin, auditor (read-only).
 Login via nomor telepon (cocok untuk petani literasi rendah).
 """
 
@@ -21,6 +21,7 @@ class UserRole(str, enum.Enum):
     DRIVER = "driver"
     PABRIK = "pabrik"
     ADMIN = "admin"
+    AUDITOR = "auditor"   # read-only: chain-of-custody, mass balance, ledger
 
 
 class IncentiveTier(str, enum.Enum):

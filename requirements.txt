@@ -17,10 +17,17 @@ numpy>=1.26
 # Auth
 PyJWT>=2.8
 
-# Rate limiting
-redis>=5.0
+# Rate limiting & antrean job
+redis>=5.0,<6
+arq>=0.28
+
+# Produksi (Linux): gunicorn -c deploy/gunicorn.conf.py app.main:app
+gunicorn>=22; sys_platform != "win32"
 
 # Password hashing (stdlib hashlib used, no extra dep needed)
+
+# Asisten AI: HTTPS memakai trust store OS (proxy/antivirus korporat)
+truststore>=0.10
 
 # Testing
 httpx>=0.27

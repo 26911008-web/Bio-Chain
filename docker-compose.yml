@@ -9,7 +9,7 @@ services:
       POSTGRES_USER: biochain
       POSTGRES_PASSWORD: biochain_dev_2026
     ports:
-      - "5432:5432"
+      - "5433:5432"         # 5432 sering dipakai PostgreSQL lain di mesin pengembang
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -22,13 +22,44 @@ services:
     image: redis:7-alpine
     container_name: biochain-redis
     ports:
-      - "6379:6379"
+      - "6381:6379"         # hindari bentrok dengan Redis lain
     command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 5
+
+  # PgBouncer transaction pooling: ribuan koneksi klien → puluhan koneksi Postgres.
+  # Aplikasi: DATABASE_URL=postgresql+asyncpg://biochain:...@localhost:6432/biochain dan PGBOUNCER=true
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    container_name: biochain-pgbouncer
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://biochain:biochain_dev_2026@postgres:5432/biochain
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: "2000"
+      DEFAULT_POOL_SIZE: "40"
+      RESERVE_POOL_SIZE: "10"
+      SERVER_IDLE_TIMEOUT: "60"
+      AUTH_TYPE: scram-sha-256
+    ports:
+      - "6432:5432"
+
+  # Worker job berat (optimasi rute). Skala: docker compose up -d --scale worker=3
+  worker:
+    build: .
+    command: arq app.worker.WorkerSettings
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      JOB_BACKEND: arq
+    depends_on:
+      redis:
+        condition: service_healthy
+    profiles: ["app"]
 
 volumes:
   pgdata:

@@ -9,8 +9,9 @@ Menyediakan dataset demo realistis untuk hackathon & presentasi:
 """
 
 from datetime import datetime, timezone, timedelta
+import random
 import uuid
-from sqlalchemy import select, func, delete
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .data import MILLS, DEPOT
@@ -18,7 +19,14 @@ from .models.user import User, UserRole, IncentiveTier
 from .models.harvest import Mill, Harvest, HarvestStatus, QualityGrade
 from .models.route import Route, RouteStop, RouteStatus
 from .models.conversion import Conversion, CarbonCredit, IncentiveEvent
+from .models.ledger import BiocharLedgerEntry, ConversionInput, CustodyEvent
+from .models.energy import EnergyMeterReading
+from .models.params import ParameterChange, SystemParameter
+from .models.factory_ops import (BatchCost, BatchInput, BatchLoss, BatchOutput, CollectorSettlement, DeliveryRequest,
+                                 InboundQC, ManufacturingBatch, NegotiationEvent, SettlementStatus)
+from .models.trade import Bid, StockListing, TrxSequence
 from .routers.auth import hash_password
+from .security.rls import SYSTEM_IDENTITY, apply_now, bind_identity
 
 
 # Daftar Akun Demo Resmi
@@ -84,6 +92,21 @@ DEMO_ACCOUNTS = [
         "lon": 110.335,
     },
     {
+        "username": "auditor_esg",
+        "phone": "081677889900",
+        "email": "auditor@biochain.id",
+        "password": "audit2026",
+        "full_name": "Auditor Rantai Pasok & ESG",
+        "role": UserRole.AUDITOR.value,
+        "role_label": "Auditor (Read-only)",
+        "icon": "🔍",
+        "description": "Audit jejak timbangan, susut, dan alokasi biochar ke petani — tanpa hak ubah",
+        "kabupaten": "Sleman",
+        "kecamatan": "Depok",
+        "lat": -7.770,
+        "lon": 110.380,
+    },
+    {
         "username": "petani_sugeng",
         "phone": "081544556677",
         "email": "sugeng@petani.id",
@@ -123,18 +146,25 @@ DEMO_ACCOUNTS = [
 async def seed_demo_data(db: AsyncSession, force_reset: bool = False) -> dict:
     """Isi database dengan data demo komprehensif."""
     now = datetime.now(timezone.utc)
+    bind_identity(db, *SYSTEM_IDENTITY)        # RLS PostgreSQL: seed berjalan sebagai 'system'
+    await apply_now(db)
 
     if force_reset:
         # Hapus data transaksi terlebih dahulu
-        await db.execute(delete(IncentiveEvent))
-        await db.execute(delete(CarbonCredit))
-        await db.execute(delete(Conversion))
-        await db.execute(delete(RouteStop))
-        await db.execute(delete(Route))
-        await db.execute(delete(Harvest))
-        await db.execute(delete(Mill))
-        await db.execute(delete(User))
+        if db.bind.dialect.name == "postgresql":   # lewati trigger append-only (migrasi 002)
+            await db.execute(text("SET LOCAL biochain.allow_reset = 'on'"))
+        # Urutan mengikuti graf foreign key (anak → induk). PostgreSQL menegakkan FK; SQLite tidak.
+        for model in (EnergyMeterReading, ParameterChange, SystemParameter,
+                      BiocharLedgerEntry, ConversionInput, CustodyEvent, IncentiveEvent, CarbonCredit,
+                      CollectorSettlement,
+                      BatchCost, BatchLoss, BatchOutput, BatchInput, ManufacturingBatch, InboundQC, NegotiationEvent,
+                      TrxSequence, RouteStop, Route,
+                      Harvest,                 # → delivery_requests, stock_listings, bids, conversions, mills
+                      DeliveryRequest, Bid, StockListing, Conversion, Mill, User):
+            await db.execute(delete(model))
         await db.commit()
+        from . import params
+        params.reset_cache()
 
     # 1. Seed Users
     seeded_users = {}
@@ -295,10 +325,23 @@ async def seed_demo_data(db: AsyncSession, force_reset: bool = False) -> dict:
                 verified_at=h_date + timedelta(hours=3) if sh["grade"] else None,
                 collected_at=h_date + timedelta(hours=6) if sh["status"] in [HarvestStatus.COLLECTED, HarvestStatus.DELIVERED] else None,
                 delivered_at=h_date + timedelta(hours=10) if sh["status"] == HarvestStatus.DELIVERED else None,
+                # Timbangan bertingkat agar mass balance demo konsisten (susut tipikal ~3% saat angkut)
+                verified_kg=sh["qty"] if sh["grade"] else None,
+                received_kg=round(sh["qty"] * 0.97, 1) if sh["status"] == HarvestStatus.DELIVERED else None,
+                shrinkage_kg=round(sh["qty"] * 0.03, 1) if sh["status"] == HarvestStatus.DELIVERED else None,
+                shrinkage_pct=3.0 if sh["status"] == HarvestStatus.DELIVERED else None,
             )
             db.add(h)
             await db.flush()
             seeded_harvests.append(h)
+            # Jalur rute yang sudah diterima pabrik selalu punya tagihan pengepul; harga jual demo belum diisi
+            factory_user = seeded_users.get("pabrik_indmira")
+            if h.received_kg is not None and h.collector_id and factory_user:
+                db.add(CollectorSettlement(
+                    collector_id=h.collector_id, source="rute", harvest_id=h.id,
+                    payable_kg=h.received_kg * (1 - (h.contamination or 0) / 100), moisture=h.moisture,
+                    status=SettlementStatus.PENDING_PRICE, created_by_id=factory_user.id, created_at=h.delivered_at,
+                    price_basis="menunggu harga: harga jual produk belum diisi di menu Parameter"))
 
     # 4. Seed Route untuk Driver
     driver_user = seeded_users.get("sopir_budi")
@@ -393,6 +436,7 @@ async def seed_demo_data(db: AsyncSession, force_reset: bool = False) -> dict:
         await db.flush()
 
     await db.commit()
+    await seed_energy_if_empty(db)
 
     # Hitung data ter-seed
     user_cnt = (await db.execute(select(func.count(User.id)))).scalar() or 0
@@ -427,12 +471,64 @@ async def seed_demo_data(db: AsyncSession, force_reset: bool = False) -> dict:
     }
 
 
+DEMO_FACILITY = "Pabrik Pirolisis Sleman"
+DEMO_OFFICE_AREA_M2 = 300.0      # kantor + lab ber-AC (dasar IKE); lantai proses dinilai dengan SEC
+
+
+def demo_energy_history(months: int = 24, end: datetime | None = None) -> list[dict]:
+    """Histori listrik bulanan sintetis (DEMO) dengan pola musim panen & dua kejadian pemborosan
+    tertanam: kebocoran udara tekan dan blower menyala saat libur produksi."""
+    end = end or datetime.now(timezone.utc)
+    rng = random.Random(7)
+    y, m = end.year, end.month
+    periods = []
+    for _ in range(months):
+        m -= 1
+        if m == 0:
+            y, m = y - 1, 12
+        periods.append((y, m))
+    periods.reverse()
+    rows = []
+    for i, (yy, mm) in enumerate(periods):
+        harvest = 1.0 + 0.25 * (mm in (3, 4, 8, 9)) - 0.15 * (mm in (12, 1))
+        ton = round(330 * harvest * rng.uniform(0.92, 1.08), 1)
+        kwh = (18_000 + 95 * ton) * rng.uniform(0.97, 1.03)
+        note = None
+        if i == months - 7:
+            kwh *= 1.22
+            note = "DEMO: kebocoran udara tekan (kompresor 24 jam)"
+        if i == months - 3:
+            kwh += 9_000
+            note = "DEMO: blower pengering menyala selama libur produksi"
+        hours = 26 * 16 * rng.uniform(0.95, 1.05)
+        building = DEMO_OFFICE_AREA_M2 * 12.0 * rng.uniform(0.93, 1.07)       # ≈ 12 kWh/m²/bulan → "Efisien"
+        rows.append({"facility": DEMO_FACILITY, "period": f"{yy:04d}-{mm:02d}", "kwh": round(kwh),
+                     "building_kwh": round(building),
+                     "production_ton": ton, "peak_kw": round(kwh / hours * 2.3, 1), "operating_hours": round(hours),
+                     "cost_rp": round(kwh * 1_444.7), "floor_area_m2": DEMO_OFFICE_AREA_M2,
+                     "building_type": "ac", "source": "demo", "note": note})
+    return rows
+
+
+async def seed_energy_if_empty(db: AsyncSession) -> bool:
+    cnt = (await db.execute(select(func.count(EnergyMeterReading.id)))).scalar() or 0
+    if cnt:
+        return False
+    db.add_all(EnergyMeterReading(**r) for r in demo_energy_history())
+    await db.commit()
+    return True
+
+
 async def seed_if_empty(db: AsyncSession) -> bool:
-    """Auto-seed saat startup jika tabel users kosong."""
+    """Auto-seed saat startup jika tabel users kosong; histori energi diisi terpisah bila kosong."""
+    bind_identity(db, *SYSTEM_IDENTITY)
     cnt = (await db.execute(select(func.count(User.id)))).scalar() or 0
+    seeded = False
     if cnt == 0:
         print("🌱 Database kosong. Menjalankan auto-seeding demo data Bio-Chain...")
         await seed_demo_data(db, force_reset=False)
         print("✅ Auto-seeding data demo selesai.")
-        return True
-    return False
+        seeded = True
+    if await seed_energy_if_empty(db):
+        print("⚡ Histori energi demo 24 bulan ditambahkan.")
+    return seeded

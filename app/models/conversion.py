@@ -40,6 +40,10 @@ class Conversion(Base):
     biochar_sio2_pct = Column(Double, nullable=True)
     biochar_hhv_mj = Column(Double, nullable=True)
 
+    # Ekonomi sirkular: porsi biochar yang dikembalikan ke petani pemasok (proporsional received_kg)
+    farmer_return_share = Column(Double, nullable=True)
+    allocated_biochar_kg = Column(Double, nullable=True)
+
     # Economics
     production_cost = Column(Double, nullable=True)
     selling_price = Column(Double, nullable=True)

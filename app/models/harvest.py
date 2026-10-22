@@ -13,10 +13,13 @@ from ..database import Base
 
 
 class HarvestStatus(str, enum.Enum):
+    """State machine: reported → verified → collected → delivered → converted;
+    reported/collected → rejected. Transisi hanya lewat `app.services.custody.transition`."""
     REPORTED = "reported"
     VERIFIED = "verified"
     COLLECTED = "collected"
     DELIVERED = "delivered"
+    CONVERTED = "converted"
     REJECTED = "rejected"
 
 
@@ -57,7 +60,7 @@ class Harvest(Base):
     mill_id = Column(Integer, ForeignKey("mills.id"), nullable=True)
     collector_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
 
-    quantity_kg = Column(Double, nullable=False)
+    quantity_kg = Column(Double, nullable=False)   # estimasi petani (bukan dasar pembayaran)
     status = Column(Enum(HarvestStatus, native_enum=False, values_callable=lambda x: [e.value for e in x]), default=HarvestStatus.REPORTED, index=True)
 
     # Quality assessment
@@ -77,6 +80,28 @@ class Harvest(Base):
     base_price_per_kg = Column(Double, nullable=True)
     incentive_multiplier = Column(Double, default=1.0)
     total_price = Column(Double, nullable=True)
+
+    # Mass balance: berat di tiap titik serah-terima. Timbangan pabrik = angka otoritatif.
+    verified_kg = Column(Double, nullable=True)     # timbangan pengepul → dasar harga ke petani
+    picked_up_kg = Column(Double, nullable=True)    # catatan supir (informatif, bukan otoritatif)
+    received_kg = Column(Double, nullable=True)     # timbangan pabrik
+    shrinkage_kg = Column(Double, nullable=True)    # verified_kg − received_kg
+    shrinkage_pct = Column(Double, nullable=True)
+    discrepancy_flag = Column(Boolean, default=False, nullable=False, index=True)
+    discrepancy_note = Column(Text, nullable=True)
+    rejected_reason = Column(Text, nullable=True)
+    rejected_at = Column(DateTime(timezone=True), nullable=True)
+    received_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    conversion_id = Column(Integer, ForeignKey("conversions.id"), nullable=True, index=True)
+    version = Column(Integer, default=1, nullable=False)   # dinaikkan setiap transisi (compare-and-swap)
+
+    # Asal pasar B2B: harga & skema hasil kesepakatan lelang (menggantikan harga dasar saat verifikasi)
+    listing_id = Column(Integer, ForeignKey("stock_listings.id"), nullable=True, index=True)
+    bid_id = Column(Integer, ForeignKey("bids.id"), nullable=True)
+    agreed_price_per_kg = Column(Double, nullable=True)
+    delivery_scheme = Column(String(10), nullable=True)
+    # Rantai ke pabrik: harvest dilampirkan pengepul pada Delivery Request → QC → batch → dompet biochar
+    delivery_request_id = Column(Integer, ForeignKey("delivery_requests.id"), nullable=True, index=True)
 
     reported_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     verified_at = Column(DateTime(timezone=True), nullable=True)

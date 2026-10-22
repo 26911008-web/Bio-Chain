@@ -8,7 +8,8 @@ import numpy as np
 from pydantic import BaseModel, Field
 from scipy.optimize import linprog
 
-from .quality import SIO2_FRACTION_OF_ASH, biochar_yield_db
+from ..params import P
+from .quality import biochar_yield_db
 
 
 class Feedstock(BaseModel):
@@ -35,24 +36,22 @@ class BlendRequest(BaseModel):
     pyrolysis_temp_c: float = Field(500, ge=300, le=700)
 
 
-# Nilai tipikal literatur & asumsi harga — WAJIB diganti data aktual Indmira saat Problem Owner Clinic.
-DEFAULT_FEEDSTOCKS = [
-    Feedstock(id="sekam", name="Sekam padi", cost_per_ton=400_000, stock_ton=120,
-              moisture=11, ash=18, fixed_carbon=15),
-    Feedstock(id="bonggol", name="Bonggol jagung", cost_per_ton=650_000, stock_ton=40,
-              moisture=12, ash=2, fixed_carbon=17),
-    Feedstock(id="serbuk", name="Serbuk kayu", cost_per_ton=550_000, stock_ton=30,
-              moisture=15, ash=1.5, fixed_carbon=16),
-    Feedstock(id="tempurung", name="Tempurung kelapa", cost_per_ton=2_000_000, stock_ton=15,
-              moisture=10, ash=1, fixed_carbon=22),
-]
+def default_feedstocks() -> list[Feedstock]:
+    """Feedstock pabrik dari menu Parameter (tabel `blending.feedstocks`)."""
+    return [Feedstock(**r) for r in P("blending.feedstocks")]
 
-PRODUCT_SPECS = {
-    "biochar_tanah": {"label": "Biochar pembenah tanah",
-                      "spec": ProductSpec(moisture_max=14, ash_max=16, fixed_carbon_min=15)},
-    "quick_light_charcoal": {"label": "Quick Light Charcoal",
-                             "spec": ProductSpec(moisture_max=12, ash_max=8, fixed_carbon_min=18)},
-}
+
+def product_specs() -> dict:
+    return {
+        "biochar_tanah": {"label": "Biochar pembenah tanah",
+                          "spec": ProductSpec(moisture_max=P("blending.biochar_tanah_moisture_max"),
+                                              ash_max=P("blending.biochar_tanah_ash_max"),
+                                              fixed_carbon_min=P("blending.biochar_tanah_fc_min"))},
+        "quick_light_charcoal": {"label": "Quick Light Charcoal",
+                                 "spec": ProductSpec(moisture_max=P("blending.qlc_moisture_max"),
+                                                     ash_max=P("blending.qlc_ash_max"),
+                                                     fixed_carbon_min=P("blending.qlc_fc_min"))},
+    }
 
 
 def _constraints(fs: list[Feedstock], spec: ProductSpec, target: float, skip: str | None = None):
@@ -116,6 +115,7 @@ def optimize_blend(req: BlendRequest) -> dict:
                              "fixed_carbon": round(mix("fixed_carbon"), 2)},
         "pred_biochar_yield_pct_db": round(y, 2),
         "pred_biochar_output_ton": round(biochar_ton, 2),
-        "pred_sio2_ton": round(target * (1 - blend_moisture / 100) * blend_ash / 100 * SIO2_FRACTION_OF_ASH, 2),
+        "pred_sio2_ton": round(target * (1 - blend_moisture / 100) * blend_ash / 100
+                               * P("rendemen.sio2_fraction_of_ash"), 2),
         "note": "Model rendemen dikalibrasi untuk sekam; untuk campuran bersifat aproksimasi.",
     }

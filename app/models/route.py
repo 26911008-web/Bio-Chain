@@ -4,7 +4,7 @@ import enum
 from datetime import datetime, timezone
 
 from sqlalchemy import (
-    Boolean, Column, DateTime, Double, Enum, ForeignKey, Integer, String,
+    Boolean, Column, DateTime, Double, Enum, ForeignKey, Index, Integer, String, text,
 )
 from sqlalchemy.orm import relationship
 
@@ -56,6 +56,11 @@ class Route(Base):
 
 class RouteStop(Base):
     __tablename__ = "route_stops"
+    __table_args__ = (
+        # Dua dispatch serentak untuk harvest yang sama → yang kedua IntegrityError → 409.
+        Index("uq_route_stops_harvest", "harvest_id", unique=True,
+              sqlite_where=text("harvest_id IS NOT NULL"), postgresql_where=text("harvest_id IS NOT NULL")),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     route_id = Column(Integer, ForeignKey("routes.id", ondelete="CASCADE"),
