@@ -17,3 +17,4 @@ from .circular import BiocharRedemption, EfficiencyAction  # noqa: F401
 from .carbon import CarbonClaim, CarbonClaimItem  # noqa: F401
 from .biomass import (BiomassParameter, CollectorWarehouse, FarmerGroup, IndustrialAshLedger,  # noqa: F401
                       WarehouseStockMovement)
+from .energy_ops import EnergyOperationLog  # noqa: F401

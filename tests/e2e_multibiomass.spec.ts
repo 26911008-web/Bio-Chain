@@ -165,3 +165,40 @@ test('prototipe 2: kartu energi riil & rute konversi', async ({ browser }) => {
   await expect(page.locator('#fx-cv-out .banner-info')).toContainText('Co-firing PLTU', { timeout: 10_000 });
   await context.close();
 });
+
+test('prototipe 3: impor log energi CSV → alarm & rekomendasi ISO 50001', async ({ browser }) => {
+  test.setTimeout(90_000);
+  const api = await pwRequest.newContext();
+  const pabrik = await login(api, 'pabrik_indmira', 'pabrik2026');
+  // 30 hari: beban parsial hari ke-20 (normal), bahan basah hari ke-24, lonjakan 35 % hari ke-27
+  const water = (t: number, mc: number) => { const dry = t * 0.9; return mc <= 10 ? 0 : dry * (mc / (100 - mc) - 10 / 90); };
+  const lines: string[] = [];
+  for (let i = 0; i < 30; i++) {
+    const util = i === 20 ? 0.4 : (i % 4 === 0 && i < 14 ? 0.6 : 0.9), mc = i === 24 ? 24 : 14, t = 16 * util;
+    let e = 400 * 8 + 250 * t + 3000 * water(t, mc);
+    if (i === 27) e *= 1.35;
+    e *= 1 + 0.015 * Math.sin(i * 1.7);
+    lines.push(`2026-09-${String(i + 1).padStart(2, '0')},${(e / 3.6).toFixed(1)},${(18 * t).toFixed(1)},0,0,8,${t.toFixed(2)},${mc},2`);
+  }
+  const fac = `Pabrik E2E ${Date.now() % 100000}`;
+  const { context, page } = await openAs(browser, pabrik);
+  await expect(page.locator('#fx-sec-title')).toBeVisible({ timeout: 20_000 });
+  await page.locator('#fx-sec-title').scrollIntoViewIfNeeded();
+  await page.locator('summary', { hasText: 'Input log energi' }).click();
+  await page.fill('#fx-sec-fac', fac);
+  await page.fill('#fx-sec-csv', 'tanggal,kwh\n' + lines.join('\n'));
+  await page.click('#fx-sec-import');
+  await expect(page.locator('#fx-sec-sel')).toContainText(fac, { timeout: 15_000 });
+  await page.selectOption('#fx-sec-sel', fac);
+  await page.selectOption('#fx-sec-feed', 'sekam_padi');
+  await page.click('#fx-sec-go');
+  const out = page.locator('#fx-sec-out');
+  await expect(out).toContainText('2026-09-28 H', { timeout: 15_000 });           // hari ke-27 (indeks 0)
+  await expect(out.locator('tr', { hasText: '2026-09-28 H' }).filter({ hasText: 'di atas model' })).toContainText('aksi');
+  await expect(out.locator('tr').filter({ hasText: /^\s*2026-09-21 H/ })).toHaveCount(0);   // beban parsial: tanpa alarm
+  await expect(out).not.toContainText('persisten');                                          // lonjakan tunggal ≠ drift
+  await expect(out).toContainText('Tekan kadar air bahan masuk');
+  await expect(out).toContainText('ISO 50001');
+  await expect(page.locator('#fx-sec-chart')).toBeVisible();
+  await context.close();
+});

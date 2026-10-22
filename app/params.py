@@ -290,6 +290,11 @@ DEFS: list[ParamDef] = [
     # ---------------- Energi & IKE
     _n("energi.tariff_rp_per_kwh", "Tarif listrik rata-rata", 1_444.7, "Rp/kWh", 1, 10_000),
     _n("energi.anomaly_z", "Ambang anomali (robust z)", 2.5, "z", 1, 10, source="Iglewicz & Hoaglin 1993"),
+    _n("energi.diesel_mj_per_l", "Nilai kalor neto solar", 36.0, "MJ/L", 30, 40,
+       source="IPCC 2006 Vol.2 Tabel 1.2: NCV gas/diesel oil 43,0 MJ/kg × densitas 0,84 kg/L"),
+    _n("energi.sec_window", "Prototipe 3: jendela rata-rata bergerak", 7.0, "log", 3, 60),
+    _n("energi.sec_sigma_warn", "Prototipe 3: batas peringatan", 2.0, "σ", 1, 6, source="Montgomery 2019 (Shewhart ±2σ peringatan)"),
+    _n("energi.sec_sigma_action", "Prototipe 3: batas aksi", 3.0, "σ", 1.5, 8, source="Montgomery 2019 (±3σ aksi)"),
     _n("energi.base_load_alert_share", "Ambang beban dasar tinggi", 0.30, "fraksi", 0, 1),
     _n("energi.ike_ac_1", "IKE AC: batas Sangat efisien", 8.5, "kWh/m²/bln", 0, 100, source="Permen ESDM 13/2012 (regulasi)"),
     _n("energi.ike_ac_2", "IKE AC: batas Efisien", 14.0, "kWh/m²/bln", 0, 100, source="Permen ESDM 13/2012 (regulasi)"),

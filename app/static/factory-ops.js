@@ -63,6 +63,36 @@
       <button type="button" class="btn btn-primary btn-sm" id="fx-cv-go">⚡ Hitung</button>
       <div id="fx-cv-out" style="margin-top:12px;"></div></section>
 
+    <section class="card" aria-labelledby="fx-sec-title">
+      <div class="card-header"><div><h3 class="card-title" id="fx-sec-title">📈 Prototipe 3 — Pemantauan SEC/IKE &amp; Deteksi Anomali</h3>
+        <p class="card-sub">SEC = energi (listrik + solar + biomassa) ÷ ton produk, dinormalisasi jam operasi, beban &amp; kadar air umpan (ISO 50006). Batas bergerak ±2σ/±3σ + CUSUM.</p></div></div>
+      ${canWrite() ? `<details><summary class="kpi-lbl">➕ Input log energi</summary>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:8px; margin-top:8px;">
+          <div class="form-group"><label for="fx-sec-fac">Fasilitas</label><input id="fx-sec-fac" value="Pabrik Utama" maxlength="100"></div>
+          <div class="form-group"><label for="fx-sec-date">Tanggal</label><input id="fx-sec-date" type="date"></div>
+          <div class="form-group"><label for="fx-sec-kwh">kWh total</label><input id="fx-sec-kwh" type="number" min="0" step="0.1"></div>
+          <div class="form-group"><label for="fx-sec-hm">kWh hammer mill</label><input id="fx-sec-hm" type="number" min="0" step="0.1"></div>
+          <div class="form-group"><label for="fx-sec-dsl">Solar (L)</label><input id="fx-sec-dsl" type="number" min="0" step="0.1" value="0"></div>
+          <div class="form-group"><label for="fx-sec-bio">Bahan bakar biomassa (kg)</label><input id="fx-sec-bio" type="number" min="0" step="1" value="0"></div>
+          <div class="form-group"><label for="fx-sec-h">Jam operasi</label><input id="fx-sec-h" type="number" min="0.5" max="24" step="0.5"></div>
+          <div class="form-group"><label for="fx-sec-t">Produk (ton)</label><input id="fx-sec-t" type="number" min="0.01" step="0.01"></div>
+          <div class="form-group"><label for="fx-sec-mc">MC umpan (%)</label><input id="fx-sec-mc" type="number" min="0" max="94" step="0.5"></div>
+          <div class="form-group"><label for="fx-sec-cap">Kapasitas (t/jam)</label><input id="fx-sec-cap" type="number" min="0.01" step="0.1"></div>
+        </div>
+        <button type="button" class="btn btn-primary btn-sm" id="fx-sec-add">Simpan log</button>
+        <div class="form-group" style="margin-top:8px;"><label for="fx-sec-csv">Atau tempel CSV: tanggal,kwh_total,kwh_hammer_mill,solar_l,biomassa_kg,jam,ton,mc_umpan,kapasitas_t_jam</label>
+          <textarea id="fx-sec-csv" rows="3" placeholder="2026-10-01,1650,260,0,0,8,14.4,14,2"></textarea></div>
+        <button type="button" class="btn btn-secondary btn-sm" id="fx-sec-import">Impor CSV</button></details>` : ""}
+      <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:8px; margin-top:8px;">
+        <div class="form-group"><label for="fx-sec-sel">Fasilitas dianalisis</label><select id="fx-sec-sel"></select></div>
+        <div class="form-group"><label for="fx-sec-idle">Daya idle terukur (kW, opsional)</label><input id="fx-sec-idle" type="number" min="0" step="0.1"></div>
+        <div class="form-group"><label for="fx-sec-feed">Bahan umpan (acuan MC)</label><select id="fx-sec-feed"><option value="">—</option></select></div>
+      </div>
+      <button type="button" class="btn btn-primary btn-sm" id="fx-sec-go">📈 Analisis</button>
+      <div id="fx-sec-out" style="margin-top:12px;"></div>
+      <div style="height:280px;"><canvas id="fx-sec-chart" aria-label="Residual energi terhadap batas bergerak" role="img"></canvas></div>
+    </section>
+
     <section class="card" aria-labelledby="fx-ash-title">
       <div class="card-header"><div><h3 class="card-title" id="fx-ash-title">🪨 Ledger Abu → Kelompok Tani</h3>
         <p class="card-sub">Abu boiler/pirolisis hanya boleh ke lahan bila lulus uji logam berat (Kepmentan 261/2019). Serah-terima wajib foto &amp; titik lahan.</p></div>
@@ -621,6 +651,95 @@
     }, "⏳");
   }
 
+  // ---------------------------------------------------------------- Prototipe 3: SEC/IKE & anomali
+  let secChart = null;
+  const today = () => new Date().toISOString().slice(0, 10);
+
+  async function initSec() {
+    if (!$("fx-sec-sel")) return;
+    if ($("fx-sec-date")) $("fx-sec-date").value = today();
+    $("fx-sec-feed").innerHTML = `<option value="">—</option>` + bmCache.map(b => `<option value="${H(b.code)}">${H(b.name)}</option>`).join("");
+    await loadSecFacilities();
+    $("fx-sec-go").onclick = runSec;
+    if ($("fx-sec-add")) { $("fx-sec-add").onclick = addSecLog; $("fx-sec-import").onclick = importSecCsv; }
+  }
+
+  async function loadSecFacilities() {
+    try {
+      const f = await api("/api/v1/factory/energy/ops-facilities");
+      $("fx-sec-sel").innerHTML = f.length ? f.map(x => `<option value="${H(x.facility)}">${H(x.facility)} (${Number(x.logs)} log)</option>`).join("")
+        : `<option value="">Belum ada log</option>`;
+    } catch { /* auditor tanpa data */ }
+  }
+
+  async function postSecLogs(facility, logs) {
+    const r = await apiMutation("/api/v1/factory/energy/ops-logs", { facility, logs }, `Log energi ${logs.length}`);
+    showToast(r.queued ? "Offline: log disimpan & dikirim saat ada sinyal." : `Tersimpan ${r.created} log${r.skipped.length ? ` · ${r.skipped.length} sudah ada` : ""}`, "📈");
+    loadSecFacilities();
+  }
+
+  function addSecLog() {
+    const v = (id) => numOrNull($(id).value);
+    if (!v("fx-sec-kwh") || !v("fx-sec-h") || !v("fx-sec-t")) return showToast("Isi kWh, jam operasi dan ton produk.", "⚠️");
+    return postSecLogs($("fx-sec-fac").value.trim(), [{ log_date: $("fx-sec-date").value, kwh_total: v("fx-sec-kwh"),
+      kwh_hammer_mill: v("fx-sec-hm"), diesel_l: v("fx-sec-dsl") || 0, biomass_fuel_kg: v("fx-sec-bio") || 0,
+      operating_hours: v("fx-sec-h"), product_ton: v("fx-sec-t"), feed_moisture_pct: v("fx-sec-mc"),
+      rated_capacity_t_h: v("fx-sec-cap"), client_event_id: `${$("fx-sec-fac").value.trim()}|${$("fx-sec-date").value}|H` }]);
+  }
+
+  function importSecCsv() {
+    const fac = $("fx-sec-fac").value.trim(), logs = [];
+    for (const line of $("fx-sec-csv").value.split(/\r?\n/).map(l => l.trim()).filter(Boolean)) {
+      const c = line.split(/[;,]/).map(x => x.trim());
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(c[0])) continue;                 // lewati header / baris rusak
+      const n = (i) => (c[i] === undefined || c[i] === "" ? null : Number(c[i]));
+      logs.push({ log_date: c[0], kwh_total: n(1), kwh_hammer_mill: n(2), diesel_l: n(3) || 0, biomass_fuel_kg: n(4) || 0,
+                  operating_hours: n(5), product_ton: n(6), feed_moisture_pct: n(7), rated_capacity_t_h: n(8),
+                  client_event_id: `${fac}|${c[0]}|H` });
+    }
+    if (!logs.length) return showToast("Tidak ada baris CSV yang valid.", "⚠️");
+    return postSecLogs(fac, logs);
+  }
+
+  async function runSec() {
+    const out = $("fx-sec-out"), fac = $("fx-sec-sel").value;
+    if (!fac) return showToast("Belum ada fasilitas dengan log.", "⚠️");
+    return withBusy($("fx-sec-go"), async () => {
+      try {
+        const qs = new URLSearchParams({ facility: fac });
+        if ($("fx-sec-idle").value) qs.set("idle_kw", $("fx-sec-idle").value);
+        if ($("fx-sec-feed").value) qs.set("feed_code", $("fx-sec-feed").value);
+        const r = await api(`/api/v1/factory/energy/ops-analysis?${qs}`);
+        const b = r.baseline, sm = r.summary;
+        out.innerHTML = `<div class="kpi-row">
+            <div class="kpi-tile"><div class="kpi-lbl">SEC mentah (median)</div><div class="kpi-val">${num(sm.sec_raw_mj_per_t_median, 0)}</div><div class="kpi-lbl">MJ/t produk</div></div>
+            <div class="kpi-tile"><div class="kpi-lbl">EnPI terakhir</div><div class="kpi-val">${num(sm.enpi_last, 3)}</div><div class="kpi-lbl">1 = sesuai baseline</div></div>
+            <div class="kpi-tile ${sm.alerts_action ? "kpi-danger" : sm.alerts_warning ? "kpi-warn" : ""}"><div class="kpi-lbl">Alarm</div><div class="kpi-val">${Number(sm.alerts_action)} · ${Number(sm.alerts_warning)}</div><div class="kpi-lbl">aksi · peringatan</div></div>
+            <div class="kpi-tile"><div class="kpi-lbl">Energi akibat bahan basah</div><div class="kpi-val">${num(sm.wet_feed_mj_total / 1000, 1)}</div><div class="kpi-lbl">GJ (dapat dikendalikan di hulu)</div></div></div>
+          <p class="kpi-lbl">Baseline: ${H(b.model)} · β jam ${num(b.beta_mj_per_hour, 0)} MJ/jam (${H(b.fixed_load_basis)}) · β ton ${num(b.beta_mj_per_ton, 0)} MJ/t · R² ${num(b.r2, 2)} · ${Number(b.n)} log acuan</p>
+          ${b.notes.map(n => `<div class="banner banner-warning" role="note">⚠️ ${H(n)}</div>`).join("")}
+          ${r.alerts.length ? `<div class="table-scroll"><table class="data-table"><thead><tr><th>Log</th><th>Tingkat</th><th>Indikasi</th></tr></thead><tbody>
+            ${r.alerts.map(a => `<tr><td>${H(a.label)}</td><td><span class="badge ${a.level === "aksi" ? "badge-red" : a.level === "peringatan" ? "badge-amber" : "badge-blue"}">${H(a.level)}</span></td>
+              <td class="kpi-lbl">${H(a.detail)}</td></tr>`).join("")}</tbody></table></div>` : `<p class="kpi-lbl">✅ Tidak ada anomali.</p>`}
+          <h4>🧭 Rekomendasi audit energi (ISO 50001)</h4>
+          ${r.recommendations.map(x => `<div class="card" style="padding:10px; margin:6px 0;"><b>${H(x.title)}</b> <span class="kpi-lbl">· ${H(x.iso50001)}</span>
+            <p style="margin:4px 0;">${H(x.action)}</p><span class="kpi-lbl">KPI: ${H(x.kpi)}</span></div>`).join("")}`;
+        if (typeof Chart === "undefined") return;
+        const labels = r.rows.map(x => x.label);
+        const cfg = { type: "line", data: { labels, datasets: [
+            { label: "Residual energi (%)", data: r.rows.map(x => x.residual_pct), yAxisID: "y", pointRadius: r.rows.map(x => (x.alert ? 5 : 2)) },
+            { label: "Batas peringatan +2σ", data: r.rows.map(x => x.band_warn_pct), yAxisID: "y", borderDash: [4, 4], pointRadius: 0 },
+            { label: "Batas aksi +3σ", data: r.rows.map(x => x.band_action_pct), yAxisID: "y", borderDash: [8, 4], pointRadius: 0 },
+            { label: "SEC mentah (MJ/t)", data: r.rows.map(x => x.sec_mj_per_t), yAxisID: "y2", pointRadius: 0 },
+            { label: "SEC ternormalisasi (MJ/t)", data: r.rows.map(x => x.sec_expected_mj_per_t), yAxisID: "y2", pointRadius: 0, borderDash: [2, 2] }] },
+          options: { maintainAspectRatio: false, interaction: { mode: "index", intersect: false },
+            scales: { y: { title: { display: true, text: "% di atas model" } }, y2: { position: "right", grid: { drawOnChartArea: false }, title: { display: true, text: "MJ/t" } } },
+            plugins: { legend: { position: "bottom" } } } };
+        if (secChart) { secChart.data = cfg.data; secChart.update(); } else secChart = new Chart($("fx-sec-chart"), cfg);
+      } catch (e) { out.innerHTML = `<div class="banner banner-error" role="alert">⚠️ ${H(e.message)}</div>`; }
+    }, "⏳");
+  }
+
   // ---------------------------------------------------------------- klaim removal karbon (F11)
   const CC_BADGE = { diajukan: "badge-amber", diverifikasi: "badge-green", ditolak: "badge-red" };
   let ccPhotoUrl = null;
@@ -730,7 +849,7 @@
       $("fx-cc-photo").addEventListener("change", () => { ccPhotoUrl = null; });
     }
     loadClaims();
-    loadBiomass().then(() => { initFuelBlend(); initConversion(); }); loadAsh();
+    loadBiomass().then(() => { initFuelBlend(); initConversion(); initSec(); }); loadAsh();
     if ($("fx-grp-new")) { $("fx-grp-new").onclick = newGroup; $("fx-ash-new").onclick = newAsh; }
     loadCharges();
     loadEfficiency(); loadEsg();

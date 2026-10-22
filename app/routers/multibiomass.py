@@ -378,3 +378,98 @@ async def conversion_analyse(req: ConversionRequest, db: DB, user: Annotated[Use
         fixed_carbon_pct_db=b.fixed_carbon_pct_db, chlorine_pct_db=b.chlorine_pct_db, sio2_pct_ash=b.sio2_pct_ash,
         k2o_pct_ash=b.k2o_pct_ash, na2o_pct_ash=b.na2o_pct_ash,
         operating_days_per_month=req.operating_days_per_month, distance_to_pltu_km=req.distance_to_pltu_km))
+
+
+# ---------------------------------------------------------------- Prototipe 3: SEC/IKE ternormalisasi (fase 4)
+class OpsLogIn(BaseModel):
+    log_date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
+    shift: str = Field("H", pattern="^(H|S1|S2|S3)$")
+    kwh_total: float = Field(..., ge=0, le=10_000_000)
+    kwh_dryer: float | None = Field(None, ge=0, le=10_000_000)
+    kwh_hammer_mill: float | None = Field(None, ge=0, le=10_000_000)
+    diesel_l: float = Field(0, ge=0, le=1_000_000)
+    biomass_fuel_kg: float = Field(0, ge=0, le=10_000_000)
+    biomass_fuel_code: str | None = Field(None, max_length=24)
+    operating_hours: float = Field(..., gt=0, le=24)
+    product_ton: float = Field(..., gt=0, le=100_000)
+    feed_moisture_pct: float | None = Field(None, ge=0, lt=95)
+    rated_capacity_t_h: float | None = Field(None, gt=0, le=10_000)
+    note: str | None = Field(None, max_length=500)
+    client_event_id: str | None = Field(None, max_length=64)
+
+
+class OpsLogBatch(BaseModel):
+    facility: str = Field(..., min_length=2, max_length=100, pattern=r"^[^<>\"'`]+$")
+    logs: list[OpsLogIn] = Field(..., min_length=1, max_length=500)
+
+
+@router.post("/factory/energy/ops-logs", status_code=201)
+async def ops_logs_ingest(req: OpsLogBatch, db: DB, user: Annotated[User, Depends(_operator)]):
+    """Input log energi harian/shift (kWh, solar, bahan bakar biomassa, jam, ton, kadar air umpan). Idempoten per
+    client_event_id; slot (fasilitas, tanggal, shift) yang sudah ada dilaporkan, tidak ditimpa."""
+    from sqlalchemy import select
+    from ..models.energy_ops import EnergyOperationLog
+    created, skipped = 0, []
+    for lg in req.logs:
+        if lg.biomass_fuel_code:
+            await svc.get_biomass(db, lg.biomass_fuel_code)
+        dup = lg.client_event_id and (await db.execute(select(EnergyOperationLog.id).where(
+            EnergyOperationLog.client_event_id == lg.client_event_id))).first()
+        slot = (await db.execute(select(EnergyOperationLog.id).where(
+            EnergyOperationLog.facility == req.facility, EnergyOperationLog.log_date == lg.log_date,
+            EnergyOperationLog.shift == lg.shift))).first()
+        if dup or slot:
+            skipped.append({"log_date": lg.log_date, "shift": lg.shift, "reason": "sudah tercatat"})
+            continue
+        db.add(EnergyOperationLog(facility=req.facility, recorded_by_id=user.id, **lg.model_dump()))
+        created += 1
+    await db.flush()
+    return {"created": created, "skipped": skipped}
+
+
+@router.get("/factory/energy/ops-facilities")
+async def ops_facilities(db: DB, user: Annotated[User, Depends(_operator_read)]):
+    from sqlalchemy import func, select
+    from ..models.energy_ops import EnergyOperationLog
+    rows = (await db.execute(select(EnergyOperationLog.facility, func.count(EnergyOperationLog.id),
+                                    func.min(EnergyOperationLog.log_date), func.max(EnergyOperationLog.log_date))
+                             .group_by(EnergyOperationLog.facility))).all()
+    return [{"facility": f, "logs": n, "from": a, "to": b} for f, n, a, b in rows]
+
+
+@router.get("/factory/energy/ops-analysis")
+async def ops_analysis(db: DB, user: Annotated[User, Depends(_operator_read)], facility: str,
+                       baseline_n: int = 14, idle_kw: float | None = None, feed_code: str | None = None):
+    """Prototipe 3: SEC aktual vs ternormalisasi (beban, kadar air), EnPI, batas bergerak ±2σ/±3σ, CUSUM,
+    indikator pengering bahan basah & hammer mill, rekomendasi ISO 50001."""
+    from collections import Counter
+    from fastapi import HTTPException
+    from sqlalchemy import select
+    from ..engines.fuel_blend import lhv_ar
+    from ..engines.sec_monitor import OpsAnalysisRequest, OpsLog, analyse
+    from ..models.energy_ops import EnergyOperationLog
+    from ..params import P
+    rows = (await db.execute(select(EnergyOperationLog).where(EnergyOperationLog.facility == facility)
+                             .order_by(EnergyOperationLog.log_date, EnergyOperationLog.shift))).scalars().all()
+    if len(rows) < 8:
+        raise HTTPException(422, f"Butuh minimal 8 log untuk baseline & pemantauan (ada {len(rows)}).")
+    fuel = Counter(r.biomass_fuel_code for r in rows if r.biomass_fuel_code and r.biomass_fuel_kg).most_common(1)
+    fuel_mj = 12.3
+    if fuel:
+        b = await svc.get_biomass(db, fuel[0][0])
+        fuel_mj = max(0.1, lhv_ar(b.lhv_db_mj_kg, b.moisture_typ_pct))
+    ref_mc = (await svc.get_biomass(db, feed_code)).moisture_ref_pct if feed_code else None
+    try:
+        out = analyse(OpsAnalysisRequest(
+            logs=[OpsLog(label=f"{r.log_date} {r.shift}", kwh_total=r.kwh_total, kwh_dryer=r.kwh_dryer,
+                         kwh_hammer_mill=r.kwh_hammer_mill, diesel_l=r.diesel_l, biomass_fuel_kg=r.biomass_fuel_kg,
+                         operating_hours=r.operating_hours, product_ton=r.product_ton, feed_moisture_pct=r.feed_moisture_pct,
+                         rated_capacity_t_h=r.rated_capacity_t_h) for r in rows],
+            baseline_n=min(max(6, baseline_n), len(rows) - 2), window=int(P("energi.sec_window")),
+            sigma_warn=P("energi.sec_sigma_warn"), sigma_action=P("energi.sec_sigma_action"),
+            diesel_mj_per_l=P("energi.diesel_mj_per_l"), biomass_fuel_mj_per_kg=fuel_mj,
+            reference_feed_moisture_pct=ref_mc, tariff_rp_per_kwh=P("energi.tariff_rp_per_kwh"),
+            drying_mj_per_kg_water=P("limbah.drying_mj_per_kg_water"), idle_kw=idle_kw))
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    return {"facility": facility, "biomass_fuel_mj_per_kg": round(fuel_mj, 2), **out}
