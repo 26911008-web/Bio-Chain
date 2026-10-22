@@ -98,10 +98,10 @@
   - Sub-module 1: `app/routers/collector_bidding.py` (457 lines) — Stock listing discovery, competitive bid placement, price negotiation advisor, and offers dashboard.
   - Sub-module 2: `app/routers/collector_logistics.py` (460 lines) — CVRP multi-stop pickup routing plan, bulk-density constraints, fleet scheduling, and biochar backhaul simulation.
   - Orchestrator: Retained `collector.py` as unified router mounting bidding and logistics sub-routers with full backward compatibility.
-- [ ] **God File 5: `app/static/factory-ops.js` (1,337 lines)**
-  - Sub-module 1: `app/static/js/modules/factory-qc-modal.js` — Weighbridge reception modal, tare subtraction, refraction deductions.
-  - Sub-module 2: `app/static/js/modules/factory-pyrolysis-calc.js` — Pyrolysis yield interactive calculator, bio-silica projection, ISO 50001 energy log.
-  - Orchestrator: Retain `factory-ops.js` as coordinator.
+- [x] **God File 5: `app/static/factory-ops.js` (1,337 lines -> 1,121 lines)**
+  - Sub-module 1: `app/static/js/modules/factory-qc-modal.js` (69 lines) — Biochar return dispatch modal, weighbridge verification dialogs.
+  - Sub-module 2: `app/static/js/modules/factory-pyrolysis-calc.js` (203 lines) — Pyrolysis yield interactive calculator, multi-biomass product optimization, and HiGHS allocation table renderer.
+  - Orchestrator: Retained `factory-ops.js` as unified factory frontend coordinator.
 
 ---
 
