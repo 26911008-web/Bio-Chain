@@ -165,3 +165,14 @@ def test_db_check_blocks_unsafe_ash_even_if_app_is_bypassed(env):
         await s.commit()
     with pytest.raises(IntegrityError):
         env.q(go)
+
+
+def test_master_update_is_typed_no_mass_assignment(env):
+    """Keamanan: perubahan master bertipe — string HTML ke kolom angka / kolom asing / nama berskrip ditolak."""
+    for changes in ({"base_price_per_kg": '"><img src=x onerror=alert(1)>'}, {"source": "x"}, {"code": "baru"},
+                    {"name": "<script>alert(1)</script>"}, {"lhv_db_mj_kg": None}, {}):
+        r = env.call("pabrik", "PUT", "/biomass/sekam_padi", {"changes": changes, "source": "uji keamanan"})
+        assert r.status_code == 422, (changes, r.text)
+    ok = env.ok("pabrik", "PUT", "/biomass/sekam_padi", {"changes": {"base_price_per_kg": 470, "name": "Sekam padi IR64"},
+                                                          "source": "uji keamanan"})
+    assert ok["base_price_per_kg"] == 470 and ok["name"] == "Sekam padi IR64"

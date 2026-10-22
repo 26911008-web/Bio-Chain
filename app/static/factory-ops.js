@@ -105,7 +105,7 @@
           <th class="num">kg</th><th>Sawah</th><th>Ambil di</th><th>Aksi</th></tr></thead><tbody>${rows.map(r => `<tr>
           <td>${Number(r.id)}<br><span class="kpi-lbl">${H((r.created_at || "").slice(0, 10))}</span></td><td>${H(r.farmer_name)}</td>
           <td class="num">${num(r.kg, 1)}</td><td>${r.land_area_ha ? `${num(r.land_area_ha, 2)} ha` : "-"}</td><td>${H(r.pickup_point)}</td>
-          <td style="white-space:nowrap;"><input type="number" class="btn btn-secondary btn-sm" id="fx-br-kg-${r.id}" value="${r.kg}" min="0.1" max="${r.kg}" step="0.1" style="width:90px;" aria-label="kg diserahkan permintaan #${r.id}">
+          <td style="white-space:nowrap;"><input type="number" class="btn btn-secondary btn-sm" id="fx-br-kg-${r.id}" value="${Number(r.kg)}" min="0.1" max="${Number(r.kg)}" step="0.1" style="width:90px;" aria-label="kg diserahkan permintaan #${r.id}">
             <button type="button" class="btn btn-primary btn-sm" data-fx-handover="${Number(r.id)}">Serahkan</button></td></tr>`).join("")}
           </tbody></table></div>`
         : emptyState("♻️", "Tidak ada pengajuan", "Pengajuan biochar dari petani muncul di sini.");
@@ -215,10 +215,10 @@
           <div class="form-group"><label for="fx-a-proc">Proses</label><select id="fx-a-proc" name="process">
             ${Object.entries(procs).map(([k, v]) => `<option value="${k}" ${k === p.process ? "selected" : ""}>${H(v)}</option>`).join("")}</select></div>
           <div class="form-group"><label for="fx-a-metric">Satuan KPI</label><input id="fx-a-metric" name="metric" maxlength="60" value="${H(p.unit || "")}"></div>
-          <div class="form-group"><label for="fx-a-base">Nilai sebelum</label><input id="fx-a-base" name="baseline_value" type="number" step="any" value="${p.actual ?? ""}"></div>
-          <div class="form-group"><label for="fx-a-cur">Nilai sesudah / target</label><input id="fx-a-cur" name="current_value" type="number" step="any" value="${p.target ?? ""}"></div>
-          <div class="form-group"><label for="fx-a-rp">Hemat (Rp/periode)</label><input id="fx-a-rp" name="saving_rp" type="number" min="0" step="1" value="${p.saving_rp ?? ""}"></div>
-          <div class="form-group"><label for="fx-a-co2">Kurang emisi (kgCO₂e)</label><input id="fx-a-co2" name="saving_co2e_kg" type="number" step="any" value="${p.saving_co2e_kg ?? ""}"></div>
+          <div class="form-group"><label for="fx-a-base">Nilai sebelum</label><input id="fx-a-base" name="baseline_value" type="number" step="any" value="${p.actual == null ? "" : Number(p.actual)}"></div>
+          <div class="form-group"><label for="fx-a-cur">Nilai sesudah / target</label><input id="fx-a-cur" name="current_value" type="number" step="any" value="${p.target == null ? "" : Number(p.target)}"></div>
+          <div class="form-group"><label for="fx-a-rp">Hemat (Rp/periode)</label><input id="fx-a-rp" name="saving_rp" type="number" min="0" step="1" value="${p.saving_rp == null ? "" : Number(p.saving_rp)}"></div>
+          <div class="form-group"><label for="fx-a-co2">Kurang emisi (kgCO₂e)</label><input id="fx-a-co2" name="saving_co2e_kg" type="number" step="any" value="${p.saving_co2e_kg == null ? "" : Number(p.saving_co2e_kg)}"></div>
         </div>
         <div class="form-group"><label for="fx-a-ev">Bukti (opsional)</label><input id="fx-a-ev" name="evidence" maxlength="1000" placeholder="link foto meter, nota BBM, laporan rute"></div>
       </div>
@@ -364,7 +364,7 @@
     const b = bmCache.find(x => x.code === code);
     if (!b) return;
     const f = (k, label, step = "0.1") => `<div class="form-group"><label for="fx-bm-${k}">${label}</label>
-      <input id="fx-bm-${k}" name="${k}" type="number" step="${step}" min="0" value="${b[k] ?? ""}" inputmode="decimal"></div>`;
+      <input id="fx-bm-${k}" name="${k}" type="number" step="${step}" min="0" value="${H(b[k] ?? "")}" inputmode="decimal"></div>`;
     dlg(`Ubah ${b.name}`, `${f("base_price_per_kg", "Harga dasar beli (Rp/kg)", "1")}${f("moisture_ref_pct", "Kadar air acuan harga (%)")}
       ${f("moisture_reject_pct", "Kadar air tolak (%)")}${f("contaminant_tol_pct", "Toleransi kotoran (%)")}
       ${f("ash_pct_db", "Abu hasil lab (% bk)")}${f("lhv_db_mj_kg", "LHV bk hasil lab (MJ/kg)")}${f("k2o_pct_ash", "K₂O dalam abu (%)")}
@@ -487,9 +487,9 @@
         <th class="num">Harga (Rp/kg)</th><th class="num">MC aktual (%)</th><th class="num">Porsi maks (%)</th></tr></thead><tbody>${bmCache.map(b => `<tr>
         <td><input type="checkbox" data-fb-use="${H(b.code)}" ${fbPresets.factory_stock_kg[b.code] ? "checked" : ""} aria-label="Pakai ${H(b.name)}"></td>
         <td>${H(b.name)}</td>
-        <td class="num"><input type="number" min="0" step="100" data-fb-kg="${H(b.code)}" value="${Math.round(fbPresets.factory_stock_kg[b.code] || 0)}" style="width:100px;"></td>
-        <td class="num"><input type="number" min="0" step="10" data-fb-price="${H(b.code)}" value="${b.base_price_per_kg ?? ""}" placeholder="wajib" style="width:90px;"></td>
-        <td class="num"><input type="number" min="0" max="94" step="0.5" data-fb-mc="${H(b.code)}" placeholder="${num(b.moisture_typ_pct, 0)}" style="width:70px;"></td>
+        <td class="num"><input type="number" min="0" step="100" data-fb-kg="${H(b.code)}" value="${Number(Math.round(fbPresets.factory_stock_kg[b.code] || 0))}" style="width:100px;"></td>
+        <td class="num"><input type="number" min="0" step="10" data-fb-price="${H(b.code)}" value="${H(b.base_price_per_kg ?? "")}" placeholder="wajib" style="width:90px;"></td>
+        <td class="num"><input type="number" min="0" max="94" step="0.5" data-fb-mc="${H(b.code)}" placeholder="${H(num(b.moisture_typ_pct, 0))}" style="width:70px;"></td>
         <td class="num"><input type="number" min="0" max="100" step="5" data-fb-max="${H(b.code)}" value="100" style="width:70px;"></td></tr>`).join("")}</tbody></table>
         ${fbPresets.drying_cost_rp_per_kg_water == null ? `<p class="kpi-lbl">⚠️ Biaya pengeringan belum diisi di menu Parameter — bahan basah (ampas tebu) akan tampak lebih murah dari kenyataan.</p>` : ""}`;
       $("fx-fb-go").onclick = runFuelBlend;

@@ -7,7 +7,7 @@ lapisan RoutePolicyMiddleware tetap berlaku; require_role tiap endpoint adalah l
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import get_db
@@ -32,14 +32,61 @@ async def biomass_list(db: DB, user: Annotated[User, Depends(get_current_user)],
     return await svc.list_biomass(db, active_only=not include_inactive)
 
 
+_Pct = Annotated[float | None, Field(None, ge=0, le=100)]
+
+
+class BiomassChanges(BaseModel):
+    """Kolom master yang boleh diubah — bertipe & berbatas (tidak ada penugasan bebas ke model)."""
+    model_config = ConfigDict(extra="forbid")
+    name: str | None = Field(None, min_length=2, max_length=80, pattern=r"^[^<>\"'`]+$")
+    is_active: bool | None = None
+    moisture_typ_pct: float | None = Field(None, ge=0, le=95)
+    moisture_min_pct: float | None = Field(None, ge=0, le=95)
+    moisture_max_pct: float | None = Field(None, ge=0, le=95)
+    moisture_ref_pct: float | None = Field(None, ge=0, le=95)
+    moisture_reject_pct: float | None = Field(None, ge=0, le=95)
+    contaminant_tol_pct: float | None = Field(None, ge=0, le=50)
+    ash_pct_db: float | None = Field(None, ge=0, lt=60)
+    volatile_pct_db: _Pct
+    fixed_carbon_pct_db: _Pct
+    hhv_db_mj_kg: float | None = Field(None, gt=5, lt=35)
+    lhv_db_mj_kg: float | None = Field(None, gt=5, lt=35)
+    bulk_density_kg_m3: float | None = Field(None, gt=0, le=2000)
+    carbon_pct_db: _Pct
+    hydrogen_pct_db: _Pct
+    nitrogen_pct_db: _Pct
+    sulfur_pct_db: _Pct
+    chlorine_pct_db: _Pct
+    sio2_pct_ash: _Pct
+    k2o_pct_ash: _Pct
+    na2o_pct_ash: _Pct
+    cao_pct_ash: _Pct
+    mgo_pct_ash: _Pct
+    fe2o3_pct_ash: _Pct
+    al2o3_pct_ash: _Pct
+    p2o5_pct_ash: _Pct
+    base_price_per_kg: float | None = Field(None, ge=0, le=100_000)
+
+
+_NOT_NULL = {"name", "is_active", "moisture_typ_pct", "moisture_ref_pct", "moisture_reject_pct", "contaminant_tol_pct",
+             "ash_pct_db", "lhv_db_mj_kg"}
+
+
 class BiomassUpdate(BaseModel):
-    changes: dict = Field(..., min_length=1)
+    changes: BiomassChanges
     source: str = Field(..., min_length=5, max_length=500, description="Dasar perubahan: no. laporan lab / sumber")
 
 
 @router.put("/biomass/{code}")
 async def biomass_update(code: str, req: BiomassUpdate, db: DB, user: Annotated[User, Depends(_operator)]):
-    return await svc.update_biomass(db, user, code, req.changes, req.source)
+    from fastapi import HTTPException
+    changes = req.changes.model_dump(exclude_unset=True)
+    if not changes:
+        raise HTTPException(422, "Tidak ada perubahan.")
+    nulls = sorted(k for k, v in changes.items() if v is None and k in _NOT_NULL)
+    if nulls:
+        raise HTTPException(422, f"Kolom wajib tidak boleh dikosongkan: {', '.join(nulls)}")
+    return await svc.update_biomass(db, user, code, changes, req.source)
 
 
 # ---------------------------------------------------------------- gudang pengepul
