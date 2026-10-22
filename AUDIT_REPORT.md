@@ -94,11 +94,10 @@
   - Sub-module 1: `app/routers/factory_inbound.py` (579 lines) — Gate reception, weighbridge QC, dynamic ramps, factory invoices, and TOP settlements.
   - Sub-module 2: `app/routers/factory_production.py` (489 lines) — Multi-ramp blend optimizer, commit execution, by-products ledger, and chemical heavy metal safety checks.
   - Orchestrator: Retained `factory.py` as unified router mounting inbound and production sub-routers with full backward compatibility.
-- [ ] **God File 4: `app/routers/collector.py` (1,933 lines)**
-  - Sub-module 1: `app/routers/collector_bidding.py` — Stock listing discovery, competitive bid placement, and price negotiation engine.
-  - Sub-module 2: `app/routers/collector_logistics.py` — CVRP multi-stop pickup routing plan, bulk-density checks, driver dispatch.
-  - Sub-module 3: `app/routers/collector_settlement.py` — Down payment tracking, logistics charges, warehouse inventory ledger.
-  - Orchestrator: Retain `collector.py` as unified router.
+- [x] **God File 4: `app/routers/collector.py` (1,933 lines -> 965 lines)**
+  - Sub-module 1: `app/routers/collector_bidding.py` (457 lines) — Stock listing discovery, competitive bid placement, price negotiation advisor, and offers dashboard.
+  - Sub-module 2: `app/routers/collector_logistics.py` (460 lines) — CVRP multi-stop pickup routing plan, bulk-density constraints, fleet scheduling, and biochar backhaul simulation.
+  - Orchestrator: Retained `collector.py` as unified router mounting bidding and logistics sub-routers with full backward compatibility.
 - [ ] **God File 5: `app/static/factory-ops.js` (1,337 lines)**
   - Sub-module 1: `app/static/js/modules/factory-qc-modal.js` — Weighbridge reception modal, tare subtraction, refraction deductions.
   - Sub-module 2: `app/static/js/modules/factory-pyrolysis-calc.js` — Pyrolysis yield interactive calculator, bio-silica projection, ISO 50001 energy log.
