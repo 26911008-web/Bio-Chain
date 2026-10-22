@@ -386,6 +386,7 @@ async def seed_demo_data(db: AsyncSession, force_reset: bool = False) -> dict:
                 planned_ton=sp["ton"],
                 actual_ton=sp["ton"] if sp["scanned"] else None,
                 qr_scanned=sp["scanned"],
+                stop_status="picked_up" if sp["scanned"] else "pending",   # ck_stop_pickup_consistent (PG)
                 pickup_at=now - timedelta(minutes=45 * (3 - sp["order"])) if sp["scanned"] else None,
             )
             db.add(st)

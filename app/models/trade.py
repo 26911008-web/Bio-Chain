@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import (
     Boolean, CheckConstraint, Column, DateTime, Double, Enum, ForeignKey, Index, Integer, String, Text,
-    UniqueConstraint, text,
+    UniqueConstraint, false, text,
 )
 
 from ..database import Base
@@ -82,7 +82,7 @@ class StockListing(Base):
     qc_status = Column(String(16), default="PENDING")                        # 'PENDING' | 'PASS' | 'REJECT'
     qc_rejection_reason = Column(Text, nullable=True)
     # Stock Locking (mencegah double-booking / ghost inventory antar pabrik)
-    is_locked = Column(Boolean, nullable=False, default=False, server_default=text("0"))
+    is_locked = Column(Boolean, nullable=False, default=False, server_default=false())
     locked_by_mill_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     locked_at = Column(DateTime(timezone=True), nullable=True)
     origin_qr_code = Column(String(100), nullable=True)

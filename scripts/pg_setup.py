@@ -29,7 +29,11 @@ MIGRATIONS = ["002_circular_mass_balance.sql", "003_concurrency_indexes.sql", "0
 
 
 def psql(sql_file: pathlib.Path | None = None, command: str | None = None) -> str:
-    args = ["docker", "exec", "-i", CONTAINER, "psql", "-U", "biochain", "-d", "biochain", "-v", "ON_ERROR_STOP=1", "-q"]
+    if os.getenv("BIOCHAIN_PG_HOST_PSQL") == "1" or os.getenv("GITHUB_ACTIONS") == "true":
+        # CI / server tanpa container bernama: pakai psql klien di host dengan URL owner
+        args = ["psql", OWNER_URL.replace("+asyncpg", ""), "-v", "ON_ERROR_STOP=1", "-q"]
+    else:
+        args = ["docker", "exec", "-i", CONTAINER, "psql", "-U", "biochain", "-d", "biochain", "-v", "ON_ERROR_STOP=1", "-q"]
     if command:
         args += ["-c", command]
     res = subprocess.run(args, input=sql_file.read_bytes() if sql_file else None, capture_output=True)
