@@ -352,3 +352,29 @@ async def fuel_blend_evaluate(req: FuelEvaluateRequest, db: DB, user: Annotated[
     if sum(shares) <= 0:
         raise HTTPException(422, "Porsi campuran masih kosong.")
     return evaluate(feeds, shares, req.product_moisture_pct)
+
+
+# ---------------------------------------------------------------- Prototipe 2: energi riil & rute konversi (fase 3)
+class ConversionRequest(BaseModel):
+    code: str = Field(..., max_length=24)
+    ton_per_month: float = Field(..., gt=0, le=1_000_000)
+    moisture_pct: float | None = Field(None, ge=0, lt=95, description="MC as-received aktual; kosong = tipikal master")
+    ash_pct_db: float | None = Field(None, ge=0, lt=60, description="Kosong = master")
+    distance_to_pltu_km: float | None = Field(None, ge=0, le=5000)
+    operating_days_per_month: float = Field(25, gt=0, le=31)
+
+
+@router.post("/factory/conversion/analyse")
+async def conversion_analyse(req: ConversionRequest, db: DB, user: Annotated[User, Depends(_operator_read)]):
+    """Prototipe 2: LHV as-received, energi termal & listrik (η 22/28/36 %), CO₂ dihindari (grid JAMALI) dan
+    pohon keputusan rute konversi (pirolisis/co-firing/pembakaran/gasifikasi)."""
+    from ..engines.conversion_energy import ConversionInput, analyse
+    b = await svc.get_biomass(db, req.code)
+    return analyse(ConversionInput(
+        code=b.code, name=b.name, ton_per_month=req.ton_per_month,
+        moisture_pct=req.moisture_pct if req.moisture_pct is not None else b.moisture_typ_pct,
+        ash_pct_db=req.ash_pct_db if req.ash_pct_db is not None else b.ash_pct_db,
+        lhv_db_mj_kg=b.lhv_db_mj_kg, hhv_db_mj_kg=b.hhv_db_mj_kg, volatile_pct_db=b.volatile_pct_db,
+        fixed_carbon_pct_db=b.fixed_carbon_pct_db, chlorine_pct_db=b.chlorine_pct_db, sio2_pct_ash=b.sio2_pct_ash,
+        k2o_pct_ash=b.k2o_pct_ash, na2o_pct_ash=b.na2o_pct_ash,
+        operating_days_per_month=req.operating_days_per_month, distance_to_pltu_km=req.distance_to_pltu_km))

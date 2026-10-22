@@ -42,6 +42,7 @@ ROUTE_POLICY: list[tuple[str, frozenset[str]]] = [
     ("/api/v1/factory/farmer-groups", _roles(R.PABRIK, R.ADMIN, R.AUDITOR)),   # tulis: pabrik/admin
     ("/api/v1/factory/ash",        _roles(R.PABRIK, R.ADMIN, R.AUDITOR)),     # ledger abu: baca auditor
     ("/api/v1/factory/ash/",       _roles(R.PABRIK, R.ADMIN)),
+    ("/api/v1/factory/conversion/analyse", _roles(R.PABRIK, R.ADMIN, R.AUDITOR)),   # Prototipe 2: baca auditor
     ("/api/v1/farmer/",            _roles(R.PETANI)),
     ("/api/v1/farmer/mills",       _roles(R.PETANI, R.PENGEPUL)),   # pengepul: lapor atas nama petani tanpa HP
     ("/api/v1/collector/",         _roles(R.PENGEPUL)),

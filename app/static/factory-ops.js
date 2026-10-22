@@ -51,6 +51,18 @@
       <div style="max-width:420px; margin:12px auto;"><canvas id="fx-fb-radar" aria-label="Radar mutu campuran terhadap batas spesifikasi" role="img"></canvas></div>
     </section>` : ""}
 
+    <section class="card" aria-labelledby="fx-cv-title">
+      <div class="card-header"><div><h3 class="card-title" id="fx-cv-title">⚡ Prototipe 2 — Energi Riil &amp; Rute Konversi</h3>
+        <p class="card-sub">Nilai kalor basis kadar air lapangan (ISO 18125), potensi listrik η 22/28/36 %, CO₂ dihindari (grid JAMALI) dan pohon keputusan teknologi.</p></div></div>
+      <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:8px;">
+        <div class="form-group"><label for="fx-cv-com">Komoditas</label><select id="fx-cv-com"></select></div>
+        <div class="form-group"><label for="fx-cv-t">Tonase / bulan (as received)</label><input id="fx-cv-t" type="number" min="1" step="10" value="500"></div>
+        <div class="form-group"><label for="fx-cv-mc">MC aktual (%)</label><input id="fx-cv-mc" type="number" min="0" max="94" step="0.5" placeholder="tipikal"></div>
+        <div class="form-group"><label for="fx-cv-km">Jarak ke PLTU (km, opsional)</label><input id="fx-cv-km" type="number" min="0" step="1"></div>
+      </div>
+      <button type="button" class="btn btn-primary btn-sm" id="fx-cv-go">⚡ Hitung</button>
+      <div id="fx-cv-out" style="margin-top:12px;"></div></section>
+
     <section class="card" aria-labelledby="fx-ash-title">
       <div class="card-header"><div><h3 class="card-title" id="fx-ash-title">🪨 Ledger Abu → Kelompok Tani</h3>
         <p class="card-sub">Abu boiler/pirolisis hanya boleh ke lahan bila lulus uji logam berat (Kepmentan 261/2019). Serah-terima wajib foto &amp; titik lahan.</p></div>
@@ -574,6 +586,41 @@
     };
   }
 
+  // ---------------------------------------------------------------- Prototipe 2: energi riil & rute konversi
+  function initConversion() {
+    if (!$("fx-cv-com")) return;
+    $("fx-cv-com").innerHTML = bmCache.map(b => `<option value="${H(b.code)}">${H(b.name)}</option>`).join("");
+    $("fx-cv-go").onclick = runConversion;
+  }
+
+  async function runConversion() {
+    const out = $("fx-cv-out");
+    return withBusy($("fx-cv-go"), async () => {
+      try {
+        const r = await api("/api/v1/factory/conversion/analyse", { body: { code: $("fx-cv-com").value,
+          ton_per_month: Number($("fx-cv-t").value), moisture_pct: numOrNull($("fx-cv-mc").value),
+          distance_to_pltu_km: numOrNull($("fx-cv-km").value) } });
+        const e = r.energy, el = e.electricity_mwh_per_month, co2 = e.co2_avoided_t_per_month;
+        out.innerHTML = `<div class="kpi-row">
+            <div class="kpi-tile"><div class="kpi-lbl">LHV as-received</div><div class="kpi-val">${num(e.lhv_ar_mj_kg, 2)}</div><div class="kpi-lbl">MJ/kg · ${num(e.lhv_ar_kcal_kg, 0)} kcal/kg (bk ${num(e.lhv_db_mj_kg, 1)})</div></div>
+            <div class="kpi-tile"><div class="kpi-lbl">Energi termal</div><div class="kpi-val">${num(e.thermal_gj_per_month, 0)}</div><div class="kpi-lbl">GJ/bulan</div></div>
+            <div class="kpi-tile"><div class="kpi-lbl">Listrik (η 22 % · 28 % · co-firing 36 %)</div><div class="kpi-val">${num(el.turbin_uap_kecil, 0)}</div>
+              <div class="kpi-lbl">· ${num(el.terintegrasi, 0)} · ${num(el.cofiring_pltu, 0)} MWh/bulan</div></div>
+            <div class="kpi-tile"><div class="kpi-lbl">CO₂ dihindari (η 22 %)</div><div class="kpi-val">${num(co2.turbin_uap_kecil, 0)}</div><div class="kpi-lbl">t/bulan · EF ${num(e.grid_ef_t_per_mwh, 2)} t/MWh</div></div></div>
+          <div class="banner banner-info" role="note">🧭 Rute terbaik: <b>${H(r.decision.label)}</b></div>
+          <ol class="kpi-lbl">${r.decision.path.map(p => `<li>${H(p.question)} → <b>${H(p.answer)}</b></li>`).join("")}</ol>
+          ${r.warnings.map(w => `<div class="banner banner-warning" role="alert">⚠️ ${H(w)}</div>`).join("")}
+          <div class="table-scroll"><table class="data-table"><thead><tr><th>Rute</th><th>Layak</th><th>Syarat</th><th class="num">Hasil / bulan</th></tr></thead>
+          <tbody>${r.routes.map(rt => `<tr><td><b>${H(rt.label)}</b></td><td>${rt.feasible ? "✅" : "—"}</td>
+            <td class="kpi-lbl">${rt.checks.map(c => `${c.ok ? "✅" : "⛔"} ${H(c.check)}: ${H(c.detail)}`).join("<br>")}</td>
+            <td class="num">${rt.electricity_mwh_per_month != null ? `${num(rt.electricity_mwh_per_month, 0)} MWh<br><span class="kpi-lbl">${num(rt.co2_avoided_t_per_month, 0)} tCO₂ · pengering ${num(rt.drying_gj_per_month, 0)} GJ</span>`
+              : rt.biochar_t_per_month != null ? `${num(rt.biochar_t_per_month, 1)} t ${H(rt.product)}${rt.bio_silica_potential_t_per_month ? `<br><span class="kpi-lbl">bio-silika ${num(rt.bio_silica_potential_t_per_month, 1)} t</span>` : ""}`
+              : `${num(rt.process_heat_gj_per_month, 0)} GJ panas`}</td></tr>`).join("")}</tbody></table></div>
+          <p class="kpi-lbl">${H(r.computation_details.note)}</p>`;
+      } catch (err) { out.innerHTML = `<div class="banner banner-error" role="alert">⚠️ ${H(err.message)}</div>`; }
+    }, "⏳");
+  }
+
   // ---------------------------------------------------------------- klaim removal karbon (F11)
   const CC_BADGE = { diajukan: "badge-amber", diverifikasi: "badge-green", ditolak: "badge-red" };
   let ccPhotoUrl = null;
@@ -683,7 +730,7 @@
       $("fx-cc-photo").addEventListener("change", () => { ccPhotoUrl = null; });
     }
     loadClaims();
-    loadBiomass().then(initFuelBlend); loadAsh();
+    loadBiomass().then(() => { initFuelBlend(); initConversion(); }); loadAsh();
     if ($("fx-grp-new")) { $("fx-grp-new").onclick = newGroup; $("fx-ash-new").onclick = newAsh; }
     loadCharges();
     loadEfficiency(); loadEsg();

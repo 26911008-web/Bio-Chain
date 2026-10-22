@@ -146,3 +146,22 @@ test('prototipe 1: optimasi blend + slider memicu peringatan terak', async ({ br
   await expect(page.locator('#fx-fb-warn')).toContainText('BAHAYA');
   await context.close();
 });
+
+test('prototipe 2: kartu energi riil & rute konversi', async ({ browser }) => {
+  test.setTimeout(60_000);
+  const api = await pwRequest.newContext();
+  const pabrik = await login(api, 'pabrik_indmira', 'pabrik2026');
+  const { context, page } = await openAs(browser, pabrik);
+  await expect(page.locator('#fx-cv-com option[value=serbuk_sengon]')).toHaveCount(1, { timeout: 20_000 });
+  await page.selectOption('#fx-cv-com', 'sekam_padi');
+  await page.fill('#fx-cv-t', '1000');
+  await page.click('#fx-cv-go');
+  await expect(page.locator('#fx-cv-out')).toContainText('Pirolisis lambat', { timeout: 10_000 });
+  await expect(page.locator('#fx-cv-out')).toContainText('MWh/bulan');
+  await page.selectOption('#fx-cv-com', 'serbuk_sengon');
+  await page.fill('#fx-cv-mc', '20');
+  await page.fill('#fx-cv-km', '40');
+  await page.click('#fx-cv-go');
+  await expect(page.locator('#fx-cv-out .banner-info')).toContainText('Co-firing PLTU', { timeout: 10_000 });
+  await context.close();
+});
