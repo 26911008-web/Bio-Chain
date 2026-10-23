@@ -150,3 +150,34 @@ def test_auto_default_prefers_configured_cloud_then_local(monkeypatch):
     assert P.resolve_default() == "mistral"
     monkeypatch.setattr(settings, "GEMINI_API_KEY", "y")
     assert P.resolve_default() == "gemini"
+
+
+def test_transient_provider_error_is_retried_once(monkeypatch):
+    """429/5xx sesaat diulang sekali (jeda acak singkat); kegagalan kedua tetap dilaporkan."""
+    import asyncio
+    from app.ai import providers as AP
+    monkeypatch.setattr(AP, "_backoff_s", lambda: 0)
+    calls = {"n": 0}
+
+    def flaky(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return httpx.Response(503, content=b"sibuk")
+        return httpx.Response(200, json={"model": "m", "usage": {}, "choices": [
+            {"message": {"content": "pulih"}, "finish_reason": "stop"}]})
+
+    p = next(iter(AP.PROVIDERS.values()))
+
+    async def go():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(flaky)) as c:
+            return await AP.chat(p, "m", [{"role": "user", "content": "hai"}], c)
+    assert asyncio.run(go())["content"] == "pulih" and calls["n"] == 2
+
+    calls["n"] = 0
+    always = lambda request: httpx.Response(503, content=b"sibuk")   # noqa: E731
+
+    async def go2():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(always)) as c:
+            return await AP.chat(p, "m", [{"role": "user", "content": "hai"}], c)
+    with pytest.raises(AP.AssistantError):
+        asyncio.run(go2())

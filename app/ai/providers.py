@@ -7,8 +7,10 @@ tidak pernah dikirim ke browser.
 
 from dataclasses import dataclass
 
+import asyncio
 import json
 import os
+import random
 import ssl
 import time
 
@@ -169,6 +171,14 @@ def _check_status(p: Provider, status: int, body: bytes | str = b"") -> None:
         raise AssistantError(f"{p.label} menolak permintaan (HTTP {status}){_upstream_message(body)}", 502)
 
 
+# Batas laju / gangguan sesaat provider: ulangi SEKALI dengan jeda acak (bukan untuk 4xx lain — itu permanen)
+RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
+
+
+def _backoff_s() -> float:
+    return 0.6 + random.random() * 0.6
+
+
 def total_timeout_s() -> float:
     """Batas total jawaban AI (detik); 0 = tanpa batas."""
     if settings.AI_TOTAL_TIMEOUT_S > 0:
@@ -184,33 +194,42 @@ async def chat_stream(p: Provider, model: str, messages: list[dict], client: htt
     body = _body(p, model, messages, stream=True)
     timeout = httpx.Timeout(connect=10, read=settings.AI_TIMEOUT_S, write=10, pool=10)
     deadline = time.monotonic() + total_timeout_s() if total_timeout_s() else None
-    try:
-        async with client.stream("POST", f"{_base_url(p)}/chat/completions", headers=_headers(p),
-                                 json=body, timeout=timeout) as r:
-            if r.status_code >= 400:
-                _check_status(p, r.status_code, await r.aread())
-            async for line in r.aiter_lines():
-                if not line.startswith("data:"):
+    for attempt in (1, 2):
+        try:
+            async with client.stream("POST", f"{_base_url(p)}/chat/completions", headers=_headers(p),
+                                     json=body, timeout=timeout) as r:
+                if r.status_code in RETRYABLE_STATUS and attempt == 1:
+                    await r.aread()
+                    await asyncio.sleep(_backoff_s())   # sebelum potongan pertama: aman diulang sekali
                     continue
-                data = line[5:].strip()
-                if data == "[DONE]":
-                    break
-                try:
-                    choice = json.loads(data)["choices"][0]
-                except (ValueError, KeyError, IndexError, TypeError):
-                    continue
-                if delta := (choice.get("delta") or {}).get("content"):
-                    yield delta
-                if choice.get("finish_reason") == "length":
-                    yield TRUNCATED_NOTE
-                if deadline and time.monotonic() > deadline:
-                    yield TRUNCATED_NOTE        # akhiri rapi sebelum platform memutus koneksi
-                    break
-    except httpx.ConnectError as e:
-        hint = " Pastikan Ollama berjalan (`ollama serve`)." if p.id == "ollama" else ""
-        raise AssistantError(f"Tidak bisa terhubung ke {p.label}.{hint}", 503) from e
-    except httpx.TimeoutException as e:
-        raise AssistantError(f"{p.label} berhenti merespons > {settings.AI_TIMEOUT_S:g} detik.", 504) from e
+                if r.status_code >= 400:
+                    _check_status(p, r.status_code, await r.aread())
+                async for line in r.aiter_lines():
+                    if not line.startswith("data:"):
+                        continue
+                    data = line[5:].strip()
+                    if data == "[DONE]":
+                        break
+                    try:
+                        choice = json.loads(data)["choices"][0]
+                    except (ValueError, KeyError, IndexError, TypeError):
+                        continue
+                    if delta := (choice.get("delta") or {}).get("content"):
+                        yield delta
+                    if choice.get("finish_reason") == "length":
+                        yield TRUNCATED_NOTE
+                    if deadline and time.monotonic() > deadline:
+                        yield TRUNCATED_NOTE        # akhiri rapi sebelum platform memutus koneksi
+                        break
+                return
+        except httpx.ConnectError as e:
+            if attempt == 1:
+                await asyncio.sleep(_backoff_s())
+                continue
+            hint = " Pastikan Ollama berjalan (`ollama serve`)." if p.id == "ollama" else ""
+            raise AssistantError(f"Tidak bisa terhubung ke {p.label}.{hint}", 503) from e
+        except httpx.TimeoutException as e:
+            raise AssistantError(f"{p.label} berhenti merespons > {settings.AI_TIMEOUT_S:g} detik.", 504) from e
 
 
 async def chat(p: Provider, model: str, messages: list[dict], client: httpx.AsyncClient) -> dict:
@@ -218,14 +237,22 @@ async def chat(p: Provider, model: str, messages: list[dict], client: httpx.Asyn
     if not model:
         raise AssistantError(f"Pilih model untuk {p.label} (atau isi {p.model_setting} di .env).", 422)
     body = _body(p, model, messages, stream=False)
-    try:
-        r = await client.post(f"{_base_url(p)}/chat/completions", headers=_headers(p), json=body,
-                              timeout=min(settings.AI_TIMEOUT_S, total_timeout_s() or settings.AI_TIMEOUT_S))
-    except httpx.ConnectError as e:
-        hint = " Pastikan Ollama berjalan (`ollama serve`)." if p.id == "ollama" else ""
-        raise AssistantError(f"Tidak bisa terhubung ke {p.label}.{hint}", 503) from e
-    except httpx.TimeoutException as e:
-        raise AssistantError(f"{p.label} tidak merespons dalam {settings.AI_TIMEOUT_S:g} detik.", 504) from e
+    for attempt in (1, 2):
+        try:
+            r = await client.post(f"{_base_url(p)}/chat/completions", headers=_headers(p), json=body,
+                                  timeout=min(settings.AI_TIMEOUT_S, total_timeout_s() or settings.AI_TIMEOUT_S))
+        except httpx.ConnectError as e:
+            if attempt == 1:
+                await asyncio.sleep(_backoff_s())
+                continue
+            hint = " Pastikan Ollama berjalan (`ollama serve`)." if p.id == "ollama" else ""
+            raise AssistantError(f"Tidak bisa terhubung ke {p.label}.{hint}", 503) from e
+        except httpx.TimeoutException as e:
+            raise AssistantError(f"{p.label} tidak merespons dalam {settings.AI_TIMEOUT_S:g} detik.", 504) from e
+        if r.status_code in RETRYABLE_STATUS and attempt == 1:
+            await asyncio.sleep(_backoff_s())
+            continue
+        break
     _check_status(p, r.status_code, r.content)
     try:
         data = r.json()
