@@ -20,6 +20,7 @@ from sqlalchemy import select, text, update
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..concurrency import run_cpu
 from ..engines.routing import plan_routes, road_km
 from ..params import P
 from .qr_sign import new_qr_code
@@ -427,10 +428,11 @@ async def bid_advice(db: AsyncSession, collector: User, listing_id: int, scheme:
                    "stock_ton": h.quantity_kg / 1000} for h, l in committed]
         depot = {"lat": collector.lat, "lon": collector.lon, "name": "Gudang pengepul"}
         req = RouteRequest(vehicle_m3=vehicle_m3, cost_per_km=cost_per_km, mode="auto", time_budget_ms=150)
-        base_km = plan_routes(depot, points, req)["summary"]["total_km"] if points else 0.0
+        # Solver CPU (~150 ms × 2) dijalankan di thread terbatas agar tidak membekukan event loop
+        base_km = (await run_cpu(plan_routes, depot, points, req))["summary"]["total_km"] if points else 0.0
         cand = {"id": f"L{listing.id}", "name": f"Listing #{listing.id}", "lat": l_lat, "lon": l_lon,
                 "stock_ton": qty / 1000}
-        with_plan = plan_routes(depot, points + [cand], req)
+        with_plan = await run_cpu(plan_routes, depot, points + [cand], req)
         marginal_km = max(0.0, with_plan["summary"]["total_km"] - base_km)
         logistic = marginal_km * cost_per_km / qty
         details.update({

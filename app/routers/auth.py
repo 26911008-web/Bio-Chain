@@ -6,6 +6,7 @@ Menyediakan daftar akun demo resmi dan utilitas reset data demo.
 
 from typing import Annotated
 import hashlib
+import re
 import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -95,6 +96,15 @@ class RegisterRequest(BaseModel):
     lon: float | None = None
 
     _phone = field_validator("phone")(require_phone)       # F6: +62/62/spasi/strip → 08…
+
+    @field_validator("username")
+    @classmethod
+    def _username_not_phone(cls, v: str | None) -> str | None:
+        # Username yang berupa nomor telepon bisa menabrak login berbasis HP milik orang lain.
+        if v is not None and re.fullmatch(r"[+\d][\d\s\-]*", v.strip()):
+            raise ValueError("Username tidak boleh berupa nomor telepon; gunakan huruf, mis. budi_sleman")
+        return v
+
     # F12: persetujuan pemrosesan data (UI wajib centang layanan_inti). Opsional di API demi klien lama;
     # tanpa ini /me/consents melaporkan needs_consent=true dan UI meminta persetujuan setelah login.
     consents: dict[str, bool] | None = None
@@ -172,15 +182,15 @@ async def register(req: RegisterRequest, db: Annotated[AsyncSession, Depends(get
         raise HTTPException(403, f"Registrasi mandiri hanya untuk role: {', '.join(sorted(SELF_SERVICE_ROLES))}. "
                                  "Akun admin/auditor dibuat oleh administrator.")
 
-    # Cek duplikat
-    conds = [User.phone == req.phone]
+    # Cek duplikat (termasuk silang: username baru = nomor HP lama, atau nomor HP baru = username lama)
+    conds = [User.phone == req.phone, User.username == req.phone]
     if req.username:
-        conds.append(User.username == req.username)
+        conds += [User.username == req.username, User.phone == req.username]
     if req.email:
         conds.append(User.email == req.email)
 
-    existing = await db.execute(select(User).where(or_(*conds)))
-    if existing.scalar_one_or_none():
+    existing = await db.execute(select(User.id).where(or_(*conds)).limit(1))
+    if existing.scalars().first() is not None:
         raise HTTPException(409, "Nomor telepon, username, atau email sudah terdaftar")
 
     role_enum = UserRole(role_val)
@@ -222,11 +232,14 @@ async def login(req: LoginRequest, db: Annotated[AsyncSession, Depends(get_db)])
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Username atau nomor telepon wajib diisi")
 
     phone_norm = normalize_phone(lookup)                 # "+62 812-…" sama dengan "0812…"
-    conds = [User.phone == lookup, User.username == lookup]
+    # Nomor HP dicocokkan lebih dulu, baru username — dua kueri terpisah. Dulu satu OR + scalar_one_or_none():
+    # bila orang lain mendaftar dengan username = nomor HP korban, login korban jadi 500 permanen.
+    phone_conds = [User.phone == lookup]
     if phone_norm and phone_norm != lookup:
-        conds.append(User.phone == phone_norm)
-    result = await db.execute(select(User).where(or_(*conds)))
-    user = result.scalar_one_or_none()
+        phone_conds.append(User.phone == phone_norm)
+    user = (await db.execute(select(User).where(or_(*phone_conds)).limit(1))).scalars().first()
+    if user is None:
+        user = (await db.execute(select(User).where(User.username == lookup).limit(1))).scalars().first()
     # Lepas koneksi DB sebelum hashing (~0,3 s) agar pool tidak habis saat badai login.
     await db.commit()
 

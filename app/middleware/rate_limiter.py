@@ -2,12 +2,15 @@
 
 Melindungi API dari abuse. Setiap IP dibatasi RATE_LIMIT_REQUESTS
 per RATE_LIMIT_WINDOW_SECONDS. Health check & docs dikecualikan.
-Fail-open: jika Redis down, request tetap diizinkan.
+Tanpa Redis (mis. Vercel tanpa Upstash, dev lokal): jatuh ke jendela geser in-memory per instance.
+Lebih lemah dari Redis (tiap instance menghitung sendiri) tetapi jauh lebih baik daripada tanpa batas
+sama sekali — dulu middleware ini fail-open sehingga login/registrasi/asisten AI di Vercel tak dibatasi.
 """
 
 import os
 import socket
 import time
+from collections import OrderedDict, deque
 from urllib.parse import urlparse
 
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -57,6 +60,7 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
         self._last_checked = 0.0
         self.max_requests = settings.RATE_LIMIT_REQUESTS
         self.window = settings.RATE_LIMIT_WINDOW_SECONDS
+        self._memory = _MemoryWindow()
 
     async def _get_redis(self):
         now = time.time()
@@ -92,17 +96,19 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
         if request.url.path == "/" or request.url.path.startswith("/static"):
             return await call_next(request)
 
-        redis_client = await self._get_redis()
-        if redis_client is None:
-            # Fail open: no Redis = no rate limiting, zero latency penalty
-            return await call_next(request)
-
         ip = client_ip(request)
         is_login = request.url.path == LOGIN_PATH
         # Request ber-token dihitung per PENGGUNA, bukan per IP: di desa puluhan petani berbagi satu wifi KUD
         # atau CGNAT operator seluler — kunci per IP membuat semuanya kena 429 bersamaan (mis. flush antrean pagi).
         bucket = _user_bucket(request.headers.get("authorization")) or ip
         now = time.time()
+
+        redis_client = await self._get_redis()
+        if redis_client is None:
+            request_count = self._memory.hit(bucket, now, self.window)
+            if is_login and self._memory.hit(f"login:{ip}", now, self.window) > settings.LOGIN_RATE_LIMIT:
+                request_count = self.max_requests + 1
+            return await self._respond(request, call_next, request_count)
         member = f"{now}:{id(request)}"            # unik walau dua request di mikrodetik yang sama
 
         try:
@@ -118,11 +124,15 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
             if is_login and results[6] > settings.LOGIN_RATE_LIMIT:
                 request_count = self.max_requests + 1   # brute force login → 429 lebih awal
         except Exception:
-            # Mark Redis as temporarily down and fail open
+            # Redis bermasalah: tandai down; request ini dihitung di memori (cek ulang Redis setelah 60 s)
             self._redis_available = False
+            self._redis = None
             self._last_checked = time.time()
-            return await call_next(request)
+            return await self._respond(request, call_next, self._memory.hit(bucket, now, self.window))
 
+        return await self._respond(request, call_next, request_count)
+
+    async def _respond(self, request: Request, call_next, request_count: int):
         if request_count > self.max_requests:
             return JSONResponse(
                 status_code=429,
@@ -140,6 +150,28 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
             max(0, self.max_requests - request_count)
         )
         return response
+
+
+class _MemoryWindow:
+    """Jendela geser per kunci di memori proses, dibatasi MAX_KEYS (kunci paling lama tak aktif dibuang)."""
+    MAX_KEYS = 20_000
+
+    def __init__(self) -> None:
+        self._hits: OrderedDict[str, deque[float]] = OrderedDict()
+
+    def hit(self, key: str, now: float, window: float) -> int:
+        q = self._hits.get(key)
+        if q is None:
+            q = self._hits[key] = deque()
+            if len(self._hits) > self.MAX_KEYS:
+                self._hits.popitem(last=False)
+        else:
+            self._hits.move_to_end(key)
+        cutoff = now - window
+        while q and q[0] <= cutoff:
+            q.popleft()
+        q.append(now)
+        return len(q)
 
 
 def _user_bucket(auth_header: str | None) -> str | None:

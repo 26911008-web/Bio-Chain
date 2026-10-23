@@ -61,4 +61,7 @@ def test_public_demo_refuses_to_start_without_strong_admin_password():
         Settings(PUBLIC_DEMO=True, DEMO_ADMIN_PASSWORD="")
     with pytest.raises(ValidationError, match="DEMO_ADMIN_PASSWORD"):
         Settings(PUBLIC_DEMO=True, DEMO_ADMIN_PASSWORD="admin2026")
-    assert Settings(PUBLIC_DEMO=True, DEMO_ADMIN_PASSWORD="x" * 20).PUBLIC_DEMO
+    # Demo publik juga wajib JWT_SECRET kuat (DEBUG=true di sana mematikan _validate_secrets)
+    with pytest.raises(ValidationError, match="JWT_SECRET"):
+        Settings(PUBLIC_DEMO=True, DEMO_ADMIN_PASSWORD="x" * 20, JWT_SECRET="biochain-dev-secret-change-in-production-2026")
+    assert Settings(PUBLIC_DEMO=True, DEMO_ADMIN_PASSWORD="x" * 20, JWT_SECRET="s" * 40).PUBLIC_DEMO

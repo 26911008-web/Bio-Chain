@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..ai import providers as P
+from ..config import settings
 from ..ai.context import build_context, optimization_prompt, system_prompt
 from ..database import get_db
 from ..dependencies import get_current_user
@@ -34,6 +35,18 @@ class EvaluateRequest(BaseModel):
     provider: str | None = None
     model: str | None = Field(None, max_length=200)
     focus: str | None = Field(None, max_length=200)
+
+
+def _pick_model(p: "P.Provider", requested: str | None, user: User) -> str:
+    """Admin bebas memilih model; peran lain hanya model default atau yang ada di AI_ALLOWED_MODELS."""
+    default = P.default_model(p)
+    if not requested or requested == default:
+        return default
+    role = user.role.value if hasattr(user.role, "value") else str(user.role)
+    allowed = {m.strip() for m in settings.AI_ALLOWED_MODELS.split(",") if m.strip()}
+    if role == "admin" or requested in allowed:
+        return requested
+    raise P.AssistantError("Model ini tidak diizinkan untuk akun Anda; gunakan model default.", 403)
 
 
 def _error(e: P.AssistantError) -> JSONResponse:
@@ -74,7 +87,7 @@ async def _prepare(req: ChatRequest, user: User, db: AsyncSession):
     messages = [{"role": "system", "content": system_prompt(role, ctx)}]
     messages += [t.model_dump() for t in req.history[-10:]]
     messages.append({"role": "user", "content": req.message})
-    return p, req.model or P.default_model(p), messages, ctx
+    return p, _pick_model(p, req.model, user), messages, ctx
 
 
 @router.post("/chat")
@@ -152,7 +165,7 @@ async def evaluate(req: EvaluateRequest, user: Annotated[User, Depends(get_curre
            "evaluation_markdown": insights.deterministic_markdown(ev)}
     try:
         p = P.get_provider(req.provider)
-        model = req.model or P.default_model(p)
+        model = _pick_model(p, req.model, user)
         res = await P.chat(p, model, _opt_messages(user, ev, req.focus), client)
         out.update(evaluation_markdown=res["content"], is_ai_generated=True, provider=p.label, model=res["model"])
     except P.AssistantError as e:
@@ -168,7 +181,7 @@ async def evaluate_stream(req: EvaluateRequest, user: Annotated[User, Depends(ge
     fallback = insights.deterministic_markdown(ev)
     try:
         p = P.get_provider(req.provider)
-        model = req.model or P.default_model(p)
+        model = _pick_model(p, req.model, user)
         if not model:
             raise P.AssistantError(f"Pilih model untuk {p.label} (atau isi {p.model_setting} di .env).", 422)
     except P.AssistantError as e:

@@ -10,7 +10,7 @@ Mengelompokkan notifikasi ke dalam 4 kategori status:
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select, true, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models.harvest import Harvest, HarvestStatus
@@ -87,6 +87,25 @@ async def record_notification(
     return notif
 
 
+_seed_checked = False
+
+
+def _visibility_filter(user: User) -> Any:
+    """Notifikasi yang boleh dilihat/ditandai seorang pengguna.
+
+    Notifikasi bertuan (user_id terisi) hanya untuk pemiliknya, walau target_role juga terisi: pemanggil
+    seperti farmer.py & custody.py mengisi keduanya, dan filter lama `user_id == me OR target_role == peran`
+    membuat setiap petani melihat laporan/penolakan petani lain (dan pengepul melihat tawaran pengepul lain).
+    Siaran (user_id kosong) tetap per peran. Admin & auditor melihat semua.
+    """
+    u_role = user.role.value if hasattr(user.role, "value") else str(user.role)
+    if u_role in ("admin", "auditor"):
+        return true()
+    return (Notification.user_id == user.id) | (
+        Notification.user_id.is_(None) & Notification.target_role.in_([u_role, "all"])
+    )
+
+
 async def get_persona_notifications(
     db: AsyncSession,
     user: User,
@@ -97,14 +116,7 @@ async def get_persona_notifications(
     await ensure_seed_notifications(db)
 
     u_role = user.role.value if hasattr(user.role, "value") else str(user.role)
-
-    # Filter kepemilikan / relevansi peran
-    role_filter = (
-        (Notification.user_id == user.id)
-        | (Notification.target_role.in_([u_role, "all"]))
-    )
-    if u_role in ("admin", "auditor"):
-        role_filter = True
+    role_filter = _visibility_filter(user)
 
     # Base query
     base_stmt = select(Notification).where(role_filter)
@@ -165,7 +177,7 @@ async def mark_notification_read(db: AsyncSession, notif_id: int, user: User) ->
     """Tandai satu notifikasi telah dibaca."""
     res = await db.execute(
         update(Notification)
-        .where(Notification.id == notif_id)
+        .where(Notification.id == notif_id, _visibility_filter(user))
         .values(is_read=True)
     )
     await db.commit()
@@ -174,13 +186,7 @@ async def mark_notification_read(db: AsyncSession, notif_id: int, user: User) ->
 
 async def mark_all_notifications_read(db: AsyncSession, user: User) -> int:
     """Tandai seluruh notifikasi persona aktif telah dibaca."""
-    u_role = user.role.value if hasattr(user.role, "value") else str(user.role)
-    role_filter = (
-        (Notification.user_id == user.id)
-        | (Notification.target_role.in_([u_role, "all"]))
-    )
-    if u_role in ("admin", "auditor"):
-        role_filter = True
+    role_filter = _visibility_filter(user)
 
     res = await db.execute(
         update(Notification)
@@ -193,10 +199,14 @@ async def mark_all_notifications_read(db: AsyncSession, user: User) -> int:
 
 async def ensure_seed_notifications(db: AsyncSession) -> None:
     """Mengisi notifikasi awal yang komprehensif bila tabel notifikasi masih kosong atau belum lengkap."""
+    global _seed_checked
+    if _seed_checked:            # dipanggil di setiap polling (25 s/pengguna): cukup sekali per proses
+        return
     cnt = (await db.execute(select(func.count(Notification.id)))).scalar() or 0
     existing_roles = (await db.execute(select(Notification.target_role).distinct())).scalars().all()
     all_needed = {"petani", "pengepul", "driver", "pabrik", "auditor"}
     if cnt >= 15 and all_needed.issubset(set(existing_roles)):
+        _seed_checked = True
         return
 
     now = _now()

@@ -12,6 +12,7 @@ Jalankan:
   py -m uvicorn app.main:app --reload     # API server
 """
 
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -115,9 +116,10 @@ app = FastAPI(
     version="2.0.0",
     lifespan=lifespan,
     # Peta API hanya dibuka di mode demo; produksi tidak mengiklankan seluruh permukaan serangan.
-    docs_url="/docs" if settings.DEBUG else None,
-    redoc_url="/redoc" if settings.DEBUG else None,
-    openapi_url="/openapi.json" if settings.DEBUG else None,
+    # Demo publik juga ditutup: DEBUG=true di sana hanya demi akun demo, bukan untuk membuka peta API.
+    docs_url="/docs" if settings.DEBUG and not settings.PUBLIC_DEMO else None,
+    redoc_url="/redoc" if settings.DEBUG and not settings.PUBLIC_DEMO else None,
+    openapi_url="/openapi.json" if settings.DEBUG and not settings.PUBLIC_DEMO else None,
 )
 
 # --- Middleware Stack ---
@@ -162,7 +164,13 @@ async def _forbidden(_: Request, exc: CustodyForbidden):
 
 
 @app.exception_handler(LookupError)
-async def _not_found(_: Request, exc: LookupError):
+async def _not_found(request: Request, exc: LookupError):
+    # Layanan memakai `raise LookupError("… tidak ditemukan")` untuk 404. KeyError/IndexError (subkelas
+    # LookupError) adalah bug kode — jangan disamarkan jadi 404 yang membocorkan nama kunci internal.
+    if isinstance(exc, (KeyError, IndexError)):
+        logging.getLogger("biochain.error").error("Unhandled %s on %s %s", type(exc).__name__,
+                                                  request.method, request.url.path, exc_info=exc)
+        return JSONResponse(status_code=500, content={"detail": "Kesalahan server. Coba lagi atau hubungi admin."})
     return JSONResponse(status_code=404, content={"detail": str(exc).strip("'\"")})
 
 
@@ -256,7 +264,10 @@ try:
     app.include_router(notifications_router.router, prefix="/api/v1/notifications", tags=["🔔 Notifikasi Transaksi"])
     print("✅ v2 persona routers loaded")
 except Exception as e:
-    print(f"⚠️  v2 routers not loaded ({e}). Legacy API still available.")
+    # Gagal keras: dulu app tetap hidup tanpa satu pun API persona (semua 404) sementara /health tetap "ok"
+    # — persis yang terjadi saat python-multipart hilang di deploy pertama (docs/28 §4).
+    print(f"❌ v2 routers gagal dimuat: {e!r}")
+    raise
 
 
 # ================================================================
@@ -278,9 +289,11 @@ async def readiness():
         async with db_module.engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
     except Exception as e:
+        # Endpoint publik: pesan driver DB bisa memuat host/user DB → hanya ke log server.
+        logging.getLogger("biochain.error").warning("readyz: database tidak siap: %r", e)
         return JSONResponse(
             status_code=503,
-            content={"status": "not_ready", "database": "error", "detail": str(e)},
+            content={"status": "not_ready", "database": "error"},
         )
 
     return {

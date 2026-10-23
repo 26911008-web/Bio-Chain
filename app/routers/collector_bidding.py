@@ -16,6 +16,7 @@ from ..models.harvest import Harvest, HarvestStatus, Mill
 from ..models.trade import Bid, BidStatus, StockListing, ListingStatus
 from ..models.circular import BiocharRequest, BiocharCircularRequest
 from ..services import trade
+from ..services.privacy import mask_phone
 
 router = APIRouter()
 
@@ -300,12 +301,12 @@ async def get_offers_dashboard(
             "status_badge": "Stok Gudang (Siap Delivery)",
             "farmer_name": farmer_name,
             "nama_petani": farmer_name,
-            "farmer_phone": f.phone if f else "-",
+            "farmer_phone": (mask_phone(f.phone) or "-") if f else "-",   # PDP: nomor penuh hanya via /harvests/{id}/contact (ber-log)
             "farmer_without_phone": getattr(f, "without_phone", False) if f else False,
             "farmer_kecamatan": kec,
             "kecamatan": kec,
-            "farmer_lat": f.lat if f and f.lat is not None else None,
-            "farmer_lon": f.lon if f and f.lon is not None else None,
+            "farmer_lat": round(f.lat, 2) if f and f.lat is not None else None,   # ±1 km, bukan titik rumah
+            "farmer_lon": round(f.lon, 2) if f and f.lon is not None else None,   # ±1 km, bukan titik rumah
             "commodity_code": h.commodity or "sekam_padi",
             "biomass_type": h.commodity or "sekam_padi",
             "biomass_name": (h.commodity or "sekam_padi").replace("_", " ").title(),
@@ -365,12 +366,12 @@ async def get_offers_dashboard(
             "status_badge": "Belum Ditimbang",
             "farmer_name": farmer_name,
             "nama_petani": farmer_name,
-            "farmer_phone": f.phone if f else "-",
+            "farmer_phone": (mask_phone(f.phone) or "-") if f else "-",   # PDP: nomor penuh hanya via /harvests/{id}/contact (ber-log)
             "farmer_without_phone": getattr(f, "without_phone", False) if f else False,
             "farmer_kecamatan": kec,
             "kecamatan": kec,
-            "farmer_lat": f.lat if f and f.lat is not None else None,
-            "farmer_lon": f.lon if f and f.lon is not None else None,
+            "farmer_lat": round(f.lat, 2) if f and f.lat is not None else None,   # ±1 km, bukan titik rumah
+            "farmer_lon": round(f.lon, 2) if f and f.lon is not None else None,   # ±1 km, bukan titik rumah
             "commodity_code": h.commodity or "sekam_padi",
             "biomass_type": h.commodity or "sekam_padi",
             "biomass_name": (h.commodity or "sekam_padi").replace("_", " ").title(),
@@ -442,12 +443,12 @@ async def get_offers_dashboard(
             "status_badge": "Lelang Aktif" if is_bidding else "Langsung",
             "farmer_name": farmer_name,
             "nama_petani": farmer_name,
-            "farmer_phone": f.phone if f else "-",
+            "farmer_phone": (mask_phone(f.phone) or "-") if f else "-",   # PDP: nomor penuh hanya via /harvests/{id}/contact (ber-log)
             "farmer_without_phone": getattr(f, "without_phone", False) if f else False,
             "farmer_kecamatan": kec,
             "kecamatan": kec,
-            "farmer_lat": f.lat if f and f.lat is not None else None,
-            "farmer_lon": f.lon if f and f.lon is not None else None,
+            "farmer_lat": round(f.lat, 2) if f and f.lat is not None else None,   # ±1 km, bukan titik rumah
+            "farmer_lon": round(f.lon, 2) if f and f.lon is not None else None,   # ±1 km, bukan titik rumah
             "commodity_code": l.commodity or "sekam_padi",
             "biomass_type": l.commodity or "sekam_padi",
             "biomass_name": (l.commodity or "sekam_padi").replace("_", " ").title(),

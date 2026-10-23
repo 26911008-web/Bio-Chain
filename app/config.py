@@ -64,6 +64,9 @@ class Settings(BaseSettings):
     AI_DEFAULT_PROVIDER: str = "auto"       # auto | ollama | gemini | mistral | groq | openai | openrouter
     AI_TIMEOUT_S: float = 60.0              # jeda maksimum antar potongan teks (streaming)
     AI_MAX_TOKENS: int = 600
+    # Model selain default yang boleh dipilih non-admin (dipisah koma). Kosong = non-admin selalu memakai model
+    # default provider — mencegah akun mana pun (termasuk demo publik) memilih model mahal atas biaya server.
+    AI_ALLOWED_MODELS: str = ""
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "llama3.2:latest"   # ringan untuk CPU; qwen2.5:14b lebih baik bila ada GPU
     GEMINI_API_KEY: str = ""
@@ -116,6 +119,12 @@ class Settings(BaseSettings):
         # Demo publik: password admin default (admin2026) tercantum di README → wajib diganti, gagal tertutup
         if self.PUBLIC_DEMO and len(self.DEMO_ADMIN_PASSWORD) < 12:
             raise ValueError("PUBLIC_DEMO=true wajib DEMO_ADMIN_PASSWORD minimal 12 karakter (bukan password demo default).")
+        # Server yang bisa dijangkau publik (demo publik / Vercel) berjalan dengan DEBUG=true, jadi pengecekan
+        # _validate_secrets tidak jalan. Tanpa ini env JWT_SECRET yang hilang/salah scope diam-diam memakai
+        # secret default yang tercantum di repo → siapa pun bisa memalsu token admin. Gagal tertutup.
+        if (self.PUBLIC_DEMO or os.getenv("VERCEL")) and (
+                self.JWT_SECRET.startswith("biochain-dev-secret") or len(self.JWT_SECRET) < 32):
+            raise ValueError("JWT_SECRET wajib diisi (≥32 karakter, bukan default) untuk server publik/Vercel.")
         return self
 
     @model_validator(mode="after")

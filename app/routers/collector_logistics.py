@@ -5,7 +5,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..params import P
@@ -86,7 +86,7 @@ class PickupPlanRequest(BaseModel):
 
 
 class ConsolidatedPickupPlanRequest(BaseModel):
-    harvest_ids: list[int] = Field(..., min_length=1)
+    harvest_ids: list[int] = Field(..., min_length=1, max_length=200)   # matriks jarak O(n²)
     vehicle_plate: str | None = "AB 8421 CS"
     truck_max_kg: float = Field(5000.0, gt=0)
     truck_max_m3: float = Field(30.0, gt=0)
@@ -246,7 +246,9 @@ async def consolidated_pickup_plan(
     Simulasi dinamis: muatan balik abu bottom ash diturunkan di petani sementara biomassa dimuat. Biochar diproduksi pabrik untuk material baterai.
     """
     harvests = (await db.execute(
-        select(Harvest).where(Harvest.id.in_(req.harvest_ids))
+        select(Harvest).where(Harvest.id.in_(req.harvest_ids),
+                              # hanya panen milik pengepul ini atau yang belum diklaim siapa pun
+                              or_(Harvest.collector_id == user.id, Harvest.collector_id.is_(None)))
     )).scalars().all()
     if not harvests:
         raise HTTPException(404, "Tidak ada harvest yang valid ditemukan")
@@ -294,7 +296,7 @@ async def consolidated_pickup_plan(
         })
 
     r_req = RouteRequest(vehicle_m3=req.truck_max_m3, cost_per_km=P("logistik.cost_per_km"), mode="auto", time_budget_ms=200)
-    route_sol = plan_routes(depot, points, r_req)
+    route_sol = await run_cpu(plan_routes, depot, points, r_req)   # solver CPU: jangan bekukan event loop
 
     pts_by_id = {pt["id"]: pt for pt in points}
     
