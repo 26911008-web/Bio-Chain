@@ -1,0 +1,24 @@
+# Konteks build hanya butuh requirements.txt, app/ dan deploy/ (lihat Dockerfile)
+.git
+.env
+.env.*
+!.env.example
+*.db
+*.db-shm
+*.db-wal
+app/static/uploads/*
+!app/static/uploads/.gitkeep
+**/__pycache__
+.pytest_cache
+node_modules
+videos
+docs
+tests
+test-results
+loadtest
+scratch
+.vercel
+.agents
+*.docx
+*.mp4
+*.webm

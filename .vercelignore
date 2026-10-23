@@ -9,3 +9,15 @@ scratch/
 *.db-shm
 *.db-wal
 .env
+# Audit 23 Okt 2026 (docs/29 D-6): pencegahan bila deploy lewat CLI dari folder kerja lokal
+.env.*
+!.env.example
+app/static/uploads/*
+!app/static/uploads/.gitkeep
+tests/
+scripts/
+.agents/
+.github/
+playwright.config.ts
+manual_demo.db*
+biochain.db*
