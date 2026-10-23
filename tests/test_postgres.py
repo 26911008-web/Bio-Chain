@@ -4,7 +4,12 @@ Dijalankan sebagai peran aplikasi `biochain_app` (NOSUPERUSER, NOBYPASSRLS) agar
 RLS (migrasi 004/005/007), trigger append-only (002/006/007), CHECK constraint, dan generator resi atomik
 benar-benar bekerja di mesin produksi — bukan hanya di SQLite.
 
-    DATABASE_URL=postgresql+asyncpg://biochain_app:...@localhost:5433/biochain AUTO_MIGRATE=false py -m pytest tests/test_postgres.py
+    py scripts/pg_setup.py --reset          # skema + migrasi 002-027
+    (seed data demo sekali: jalankan app dengan URL pemilik, mis. TestClient(app) dengan DATABASE_URL=...biochain:...)
+    DATABASE_URL=postgresql+asyncpg://biochain_app:...@localhost:5433/biochain AUTO_MIGRATE=false ALLOW_SQLITE_FALLBACK=false     BIOCHAIN_TEST_PG_OWNER_URL=postgresql+asyncpg://biochain:...@localhost:5433/biochain py -m pytest tests/test_postgres.py
+
+AUTO_MIGRATE=false & ALLOW_SQLITE_FALLBACK=false WAJIB: tanpa itu app (peran tanpa hak DDL) gagal start di PG lalu
+diam-diam memakai SQLite lokal — tes yang membandingkan API dengan view SQL lalu membandingkan dua database berbeda.
 """
 
 import asyncio
@@ -471,3 +476,23 @@ def test_multibiomass_rls_warehouse_isolation_and_ash_visibility(ids):
         assert out["foreign_sees"] == 0 and out["foreign_write"] == "DENIED"
     assert out["leader_ash"] == 1                       # hanya abu kelompoknya, bukan ASH-RLS-2
     assert out["auditor_insert"] == "DENIED"
+
+
+def test_notifications_rls_owner_and_role_broadcast_only(ids):
+    """Migrasi 027: notifikasi bertuan hanya terlihat pemiliknya; siaran hanya untuk peran sasaran."""
+    async def go():
+        conn = await asyncpg.connect(DSN)
+        try:
+            async with conn.transaction():
+                await as_identity(conn, "system")
+                await conn.execute("""INSERT INTO notifications (user_id, target_role, event_type, title, message,
+                    status_group, is_read, created_at) VALUES ($1, 'petani', 'T', 'milik sari', 'x', 'IN_PROGRESS', false, now()),
+                    (NULL, 'pengepul', 'T', 'siaran pengepul', 'x', 'IN_PROGRESS', false, now())""", ids["petani_sari"])
+            async with conn.transaction():
+                await as_identity(conn, "petani", ids["petani_sugeng"])
+                seen = {r["title"] for r in await conn.fetch("SELECT title FROM notifications")}
+            return seen
+        finally:
+            await conn.close()
+    seen = run(go())
+    assert "milik sari" not in seen and "siaran pengepul" not in seen

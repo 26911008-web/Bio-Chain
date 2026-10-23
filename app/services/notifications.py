@@ -10,12 +10,12 @@ Mengelompokkan notifikasi ke dalam 4 kategori status:
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import func, select, true, update
+from sqlalchemy import and_, exists, func, insert, or_, select, true, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models.harvest import Harvest, HarvestStatus
 from ..models.ledger import CustodyEvent
-from ..models.notification import Notification, NotificationStatusGroup
+from ..models.notification import Notification, NotificationRead, NotificationStatusGroup
 from ..models.user import User, UserRole
 
 _now = lambda: datetime.now(timezone.utc)
@@ -90,6 +90,17 @@ async def record_notification(
 _seed_checked = False
 
 
+def _val(x: Any) -> str:
+    return x.value if hasattr(x, "value") else str(x)
+
+
+def _read_by(user: User) -> Any:
+    """Sudah dibaca OLEH pengguna ini: milik sendiri → kolom is_read; lainnya → baris notification_reads."""
+    own = and_(Notification.user_id == user.id, Notification.is_read.is_(True))
+    other = exists().where(NotificationRead.notification_id == Notification.id, NotificationRead.user_id == user.id)
+    return or_(own, other)
+
+
 def _visibility_filter(user: User) -> Any:
     """Notifikasi yang boleh dilihat/ditandai seorang pengguna.
 
@@ -113,17 +124,18 @@ async def get_persona_notifications(
     limit: int = 60,
 ) -> dict[str, Any]:
     """Mengambil notifikasi relevan untuk persona aktif yang dikelompokkan berdasarkan status."""
-    await ensure_seed_notifications(db)
+    await ensure_seed_notifications(db, user)
 
     u_role = user.role.value if hasattr(user.role, "value") else str(user.role)
     role_filter = _visibility_filter(user)
 
     # Base query
-    base_stmt = select(Notification).where(role_filter)
+    read_col = _read_by(user).label("read_by_me")
+    base_stmt = select(Notification, read_col).where(role_filter)
     if status_group and status_group in STATUS_GROUP_LABELS:
         base_stmt = base_stmt.where(Notification.status_group == status_group)
 
-    items = (await db.execute(base_stmt.order_by(Notification.id.desc()).limit(limit))).scalars().all()
+    rows = (await db.execute(base_stmt.order_by(Notification.id.desc()).limit(limit))).all()
 
     # Hitung jumlah belum dibaca dan per grup status
     counts_by_group = {k: 0 for k in STATUS_GROUP_LABELS}
@@ -133,14 +145,14 @@ async def get_persona_notifications(
         if grp in counts_by_group:
             counts_by_group[grp] = cnt
 
-    unread_stmt = select(func.count(Notification.id)).where(role_filter, Notification.is_read == False)
+    unread_stmt = select(func.count(Notification.id)).where(role_filter, ~_read_by(user))
     unread_count = (await db.execute(unread_stmt)).scalar() or 0
 
     # Kelompokkan item
     grouped_items = {k: [] for k in STATUS_GROUP_LABELS}
     serialized_all = []
 
-    for n in items:
+    for n, read_by_me in rows:
         serialized = {
             "id": n.id,
             "title": n.title,
@@ -154,7 +166,7 @@ async def get_persona_notifications(
             "actor_name": n.actor_name,
             "action_type": n.action_type,
             "action_payload": n.action_payload,
-            "is_read": n.is_read,
+            "is_read": bool(read_by_me),
             "created_at": n.created_at.isoformat() if n.created_at else None,
         }
         serialized_all.append(serialized)
@@ -175,32 +187,47 @@ async def get_persona_notifications(
 
 async def mark_notification_read(db: AsyncSession, notif_id: int, user: User) -> bool:
     """Tandai satu notifikasi telah dibaca."""
-    res = await db.execute(
-        update(Notification)
-        .where(Notification.id == notif_id, _visibility_filter(user))
-        .values(is_read=True)
-    )
+    n = (await db.execute(select(Notification.id, Notification.user_id)
+                          .where(Notification.id == notif_id, _visibility_filter(user)))).first()
+    if n is None:
+        return False
+    if n.user_id == user.id:
+        await db.execute(update(Notification).where(Notification.id == notif_id).values(is_read=True))
+    else:
+        already = (await db.execute(select(NotificationRead.notification_id).where(
+            NotificationRead.notification_id == notif_id, NotificationRead.user_id == user.id))).first()
+        if already is None:
+            db.add(NotificationRead(user_id=user.id, notification_id=notif_id))
     await db.commit()
-    return res.rowcount > 0
+    return True
 
 
 async def mark_all_notifications_read(db: AsyncSession, user: User) -> int:
     """Tandai seluruh notifikasi persona aktif telah dibaca."""
     role_filter = _visibility_filter(user)
-
-    res = await db.execute(
+    own = await db.execute(
         update(Notification)
-        .where(role_filter, Notification.is_read == False)
+        .where(Notification.user_id == user.id, Notification.is_read.is_(False))
         .values(is_read=True)
     )
+    others = (await db.execute(
+        select(Notification.id).where(role_filter, or_(Notification.user_id.is_(None), Notification.user_id != user.id),
+                                      ~_read_by(user))
+    )).scalars().all()
+    if others:
+        await db.execute(insert(NotificationRead), [{"user_id": user.id, "notification_id": i} for i in others])
     await db.commit()
-    return res.rowcount or 0
+    return (own.rowcount or 0) + len(others)
 
 
-async def ensure_seed_notifications(db: AsyncSession) -> None:
+async def ensure_seed_notifications(db: AsyncSession, user: User | None = None) -> None:
     """Mengisi notifikasi awal yang komprehensif bila tabel notifikasi masih kosong atau belum lengkap."""
     global _seed_checked
     if _seed_checked:            # dipanggil di setiap polling (25 s/pengguna): cukup sekali per proses
+        return
+    # PostgreSQL ber-RLS (migrasi 027): pengguna biasa hanya melihat notifikasinya sendiri, sehingga hitungan di
+    # bawah akan selalu "kurang" dan seed terulang. Cek hanya dengan identitas yang melihat semua baris.
+    if db.bind.dialect.name == "postgresql" and user is not None and _val(user.role) not in ("admin", "auditor"):
         return
     cnt = (await db.execute(select(func.count(Notification.id)))).scalar() or 0
     existing_roles = (await db.execute(select(Notification.target_role).distinct())).scalars().all()

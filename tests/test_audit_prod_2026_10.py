@@ -132,3 +132,24 @@ def test_farmer_biomass_proposal_is_bounded_and_lab_fields_ignored(client):
     r = client.post("/api/v1/biomass", headers=hp, json={"name": name, "ash_pct_db": 59, "lhv_db_mj_kg": 30})
     assert r.status_code == 201, r.text
     assert r.json()["ash_pct_db"] != 59, "parameter lab dari petani diabaikan"
+
+
+# ------------------------------------------------------------------ status baca siaran per pengguna
+def test_broadcast_read_state_is_per_user(client):
+    pa, pb = _phone(), _phone()
+    assert _register_petani(client, pa).status_code == 201
+    assert _register_petani(client, pb).status_code == 201
+    ha, hb = _login(client, pa), _login(client, pb)
+
+    def unread(h):
+        return {it["id"] for it in client.get("/api/v1/notifications/", headers=h, params={"limit": 200}).json()["items"]
+                if not it["is_read"]}
+
+    before_b = unread(hb)
+    assert before_b, "petani melihat notifikasi siaran peran petani (seed)"
+    nid = next(iter(before_b & unread(ha)))
+    assert client.post(f"/api/v1/notifications/{nid}/read", headers=ha).status_code == 200
+    assert nid not in unread(ha), "A sudah membaca"
+    assert nid in unread(hb), "membaca siaran oleh A tidak menandai milik B"
+    assert client.post("/api/v1/notifications/read-all", headers=hb).status_code == 200
+    assert unread(hb) == set()

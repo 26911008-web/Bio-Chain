@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 import enum
 from sqlalchemy import (
-    Boolean, Column, DateTime, ForeignKey, Integer, String, Text
+    Boolean, Column, DateTime, ForeignKey, Integer, PrimaryKeyConstraint, String, Text
 )
 from sqlalchemy.orm import relationship
 
@@ -42,3 +42,16 @@ class Notification(Base):
     # Relationships
     user = relationship("User", foreign_keys=[user_id])
     harvest = relationship("Harvest", foreign_keys=[harvest_id])
+
+
+class NotificationRead(Base):
+    """Status baca per pengguna untuk notifikasi yang bukan miliknya (siaran per peran, atau dilihat admin/auditor).
+
+    Kolom `notifications.is_read` hanya untuk pemilik (user_id). Dulu satu kolom global: satu pengguna membuka
+    notifikasi siaran → tanda belum-dibaca hilang untuk seluruh pengguna peran itu."""
+    __tablename__ = "notification_reads"
+    __table_args__ = (PrimaryKeyConstraint("user_id", "notification_id", name="pk_notification_reads"),)
+
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    notification_id = Column(Integer, ForeignKey("notifications.id", ondelete="CASCADE"), nullable=False, index=True)
+    read_at = Column(DateTime(timezone=True), default=_now, nullable=False)
