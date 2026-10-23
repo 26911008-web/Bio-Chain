@@ -27,6 +27,7 @@ from pydantic import BaseModel, Field, model_validator
 from scipy.optimize import linprog
 
 from ..params import P
+from .green_scorecard import f_perm
 from .biomass_data import biochar_yield_estimate
 from .fuel_blend import KCAL_PER_MJ, LATENT
 
@@ -456,9 +457,11 @@ def evaluate_biochar_pathway(f: FeedstockItem, price_rp_kg: float | None = None)
     char_ash_pct = min(60.0, f.ash_pct_db / max(0.1, y_char_pct / 100.0))
     c_organic_pct = max(35.0, 100.0 - char_ash_pct - 15.0)
 
-    # Sekuestrasi karbon permanen (C-sink): ~2.2 tCO2e per ton biochar kering terkarbonisasi
-    # IPCC Tier 2 / European Biochar Certificate: C_sink = Biochar_ton * C_org% * F_perm (0.74 pada 100 tahun) * 44/12
-    carbon_removal_t = (biochar_produced_kg / 1000.0) * (c_organic_pct / 100.0) * 0.74 * (44.0 / 12.0)
+    # C-sink POTENSI (bukan klaim): biochar KERING × C_org × F_perm(suhu) × 44/12. F_perm sama dengan Engine ⑬
+    # (IPCC 2019 Refinement Vol.4 Ch.2 Ap.4, Tabel 4Ap.2); klaim removal hanya untuk biochar yang terbukti
+    # diaplikasikan ke tanah — lihat green_scorecard.scorecard.
+    fp, fp_basis = f_perm(temp_c)
+    carbon_removal_t = (char_in_product_kg / 1000.0) * (c_organic_pct / 100.0) * fp * (44.0 / 12.0)
 
     # SEC & Biaya
     kwh_elec = (biochar_produced_kg / 1000.0) * meta["default_kwh_per_ton_product"]
@@ -518,6 +521,9 @@ def evaluate_biochar_pathway(f: FeedstockItem, price_rp_kg: float | None = None)
             "pyrolysis_temp_c": temp_c,
             "standard_compliance": "EBC / IBI Standard",
             "carbon_sink_tco2e_per_ton": round(carbon_removal_t / max(0.001, biochar_produced_kg / 1000.0), 2),
+            "f_perm": fp,
+            "f_perm_basis": f"IPCC 2019 Ap.4 — {fp_basis}",
+            "carbon_sink_basis": "potensi (bukan klaim): biochar kering × C_org × F_perm × 44/12",
         },
         "energy_metrics": {
             "sec_kwh_per_ton_product": round(meta["default_kwh_per_ton_product"], 1),

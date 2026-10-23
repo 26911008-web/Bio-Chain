@@ -239,3 +239,17 @@ def test_optimization_endpoints(env):
     assert res_farmer.status_code == 403
 
 
+
+
+def test_biochar_carbon_sink_uses_same_f_perm_as_green_scorecard_and_dry_mass():
+    """Satu biochar = satu angka C-sink: F_perm dari IPCC 2019 Ap.4 (Engine ⑬), dihitung dari massa KERING."""
+    from app.engines.green_scorecard import f_perm
+    from app.engines.product_optimization import PRODUCT_META
+    c = evaluate_biochar_pathway(_make_item("sekam_padi"))
+    q = c["product_quality"]
+    expected_fp, _ = f_perm(PRODUCT_META["biochar"]["pyrolysis_temp_c"])
+    assert q["f_perm"] == expected_fp and q["f_perm_basis"].startswith("IPCC 2019")
+    # C-sink per ton produk (basah, kadar air target) < C_org × F_perm × 44/12 karena air tidak menyimpan karbon
+    upper = q["c_organic_pct"] / 100.0 * expected_fp * 44.0 / 12.0
+    assert 0 < q["carbon_sink_tco2e_per_ton"] < upper
+    assert "bukan klaim" in q["carbon_sink_basis"]
