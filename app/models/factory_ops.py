@@ -54,7 +54,7 @@ class DeliveryRequest(Base):
     status = Column(_enum(RequestStatus), nullable=False, default=RequestStatus.SUBMITTED, index=True)
     logistics_carrier = Column(String(30), default="FACTORY_FLEET", index=True)
     mill_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
-    biomass_type = Column(String(50), default="sekam_padi", nullable=False)
+    biomass_type = Column(String(50), default="sekam_padi", server_default="sekam_padi", nullable=False)
     pricing_mode = Column(String(20), default="AUCTION", nullable=False)
     note = Column(Text, nullable=True)
     version = Column(Integer, nullable=False, default=1)

@@ -69,7 +69,7 @@ class StockListing(Base):
     version = Column(Integer, nullable=False, default=1)
     
     # 022 Omni Extensions
-    transaction_mode = Column(String(16), nullable=False, default="DIRECT")  # 'DIRECT' | 'BIDDING'
+    transaction_mode = Column(String(16), nullable=False, default="DIRECT", server_default="DIRECT")  # 'DIRECT' | 'BIDDING'
     auction_status = Column(String(16), nullable=False, default="OPEN")      # 'OPEN' | 'ACCEPTED' | 'EXPIRED' | 'CANCELLED'
     auction_expiry = Column(DateTime(timezone=True), nullable=True)
     floor_price = Column(Double, nullable=True)

@@ -1,6 +1,9 @@
 -- ============================================================================
 -- MIGRATION 024: Omni E2E State-Machine, Atomic RPCs & Multi-Tenant RLS
 -- ============================================================================
+-- Rollback: migrations/024_omni_e2e_state_machine.rollback.sql
+
+BEGIN;
 
 -- 1. Heavy Metal Safety Thresholds in Biomass Parameters & By-Products
 ALTER TABLE biomass_parameters 
@@ -182,3 +185,5 @@ BEGIN
     END IF;
 END;
 $$;
+
+COMMIT;

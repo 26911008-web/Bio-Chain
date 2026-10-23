@@ -102,7 +102,7 @@ class Harvest(Base):
     version = Column(Integer, default=1, nullable=False)   # dinaikkan setiap transisi (compare-and-swap)
 
     # 022 Omni Extensions
-    transaction_mode = Column(String(16), nullable=False, default="DIRECT")
+    transaction_mode = Column(String(16), nullable=False, default="DIRECT", server_default="DIRECT")
     logistics_mode = Column(String(16), nullable=False, default="PICKUP")
     payment_status = Column(String(16), nullable=False, default="UNPAID")
     farmer_claimed_qty = Column(Double, nullable=True)

@@ -25,7 +25,10 @@ MIGRATIONS = ["002_circular_mass_balance.sql", "003_concurrency_indexes.sql", "0
               "011_collector_settlements.sql", "012_settlement_events_and_constraints.sql", "013_field_ops_green_logistics.sql",
               "014_field_compliance.sql", "015_farmer_feedback_circular.sql", "016_audit_hardening.sql",
               "017_carbon_claims.sql", "018_multi_biomass_ash.sql", "019_energy_operation_logs.sql", "020_audit_fixes.sql",
-              "000_app_role.sql"]
+              "021_concurrency_and_bom.sql", "022_omni_multi_mode_and_reverse_logistics.sql",
+              "023_gate_ramp_blending_and_financial.sql", "024_omni_e2e_state_machine.sql",
+              "025_omni_v_omega_state_machine.sql",
+              "000_app_role.sql", "026_audit_indexes_and_role_timeouts.sql"]   # 026 butuh peran biochain_app
 
 
 def psql(sql_file: pathlib.Path | None = None, command: str | None = None) -> str:

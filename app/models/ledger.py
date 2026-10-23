@@ -36,7 +36,7 @@ class CustodyEvent(Base):
     to_status = Column(String(20), nullable=False)
     weight_kg = Column(Double, nullable=True)
 
-    actor_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    actor_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)   # mig 026
     actor_role = Column(String(20), nullable=False)
 
     # Offline-first: kunci idempotensi dari perangkat + waktu kejadian di perangkat
@@ -81,7 +81,7 @@ class BiocharLedgerEntry(Base):
     farmer_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     conversion_id = Column(Integer, ForeignKey("conversions.id"), nullable=True, index=True)
     batch_id = Column(Integer, ForeignKey("manufacturing_batches.id"), nullable=True, index=True)
-    harvest_id = Column(Integer, ForeignKey("harvests.id"), nullable=True)
+    harvest_id = Column(Integer, ForeignKey("harvests.id"), nullable=True, index=True)   # mig 026
     entry_type = Column(String(20), nullable=False)   # allocation | redemption | adjustment
     amount_kg = Column(Double, nullable=False)
     note = Column(Text, nullable=True)

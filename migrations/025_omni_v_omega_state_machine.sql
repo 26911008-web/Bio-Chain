@@ -28,12 +28,13 @@ CREATE TABLE IF NOT EXISTS feedstock_parameters (
 );
 
 -- Seed parameter biomassa standar jika belum ada
-INSERT INTO feedstock_parameters (code, name, moisture_typical_pct, ash_typical_pct, lhv_typical_kcal_kg, bulk_density_kg_m3, sio2_pct_ash, k2o_pct_ash)
+-- Kolom ber-DEFAULT diisi eksplisit: tabel yang dibuat dari model ORM tidak punya DEFAULT di server
+INSERT INTO feedstock_parameters (code, name, moisture_typical_pct, ash_typical_pct, lhv_typical_kcal_kg, bulk_density_kg_m3, sio2_pct_ash, k2o_pct_ash, pb_max_ppm, cd_max_ppm, as_max_ppm, is_active, created_at)
 VALUES 
-    ('sekam_padi', 'Sekam Padi Mentah', 13.5, 17.5, 3450.0, 110.0, 92.0, 2.1),
-    ('tongkol_jagung', 'Tongkol Jagung Cacah', 14.0, 2.8, 4100.0, 180.0, 35.0, 15.0),
-    ('serbuk_sengon', 'Serbuk Gergaji Kayu Sengon', 28.0, 1.5, 3800.0, 220.0, 12.0, 8.5),
-    ('tempurung_kelapa', 'Tempurung Kelapa Pecah', 10.5, 2.2, 4600.0, 350.0, 18.0, 12.0)
+    ('sekam_padi', 'Sekam Padi Mentah', 13.5, 17.5, 3450.0, 110.0, 92.0, 2.1, 50.0, 2.0, 10.0, TRUE, NOW()),
+    ('tongkol_jagung', 'Tongkol Jagung Cacah', 14.0, 2.8, 4100.0, 180.0, 35.0, 15.0, 50.0, 2.0, 10.0, TRUE, NOW()),
+    ('serbuk_sengon', 'Serbuk Gergaji Kayu Sengon', 28.0, 1.5, 3800.0, 220.0, 12.0, 8.5, 50.0, 2.0, 10.0, TRUE, NOW()),
+    ('tempurung_kelapa', 'Tempurung Kelapa Pecah', 10.5, 2.2, 4600.0, 350.0, 18.0, 12.0, 50.0, 2.0, 10.0, TRUE, NOW())
 ON CONFLICT (code) DO NOTHING;
 
 -- ----------------------------------------------------------------------------
@@ -83,12 +84,12 @@ CREATE TABLE IF NOT EXISTS loading_ramps (
 CREATE INDEX IF NOT EXISTS idx_ramps_mill_type ON loading_ramps(mill_id, biomass_type, is_active);
 
 -- Seed Ramp Awal Jika Kosong
-INSERT INTO loading_ramps (ramp_code, name, biomass_type, max_capacity_kg, current_stock_kg, aggregate_mc, aggregate_ash, aggregate_lhv_kcal)
+INSERT INTO loading_ramps (ramp_code, name, biomass_type, max_capacity_kg, current_stock_kg, aggregate_mc, aggregate_ash, aggregate_lhv_kcal, is_active, created_at, updated_at)
 VALUES 
-    ('RAMP-01', 'Ramp Utama Sekam Padi', 'sekam_padi', 60000.0, 15000.0, 13.5, 17.0, 3450.0),
-    ('RAMP-02', 'Ramp Tongkol Jagung Cacah', 'tongkol_jagung', 45000.0, 8000.0, 14.0, 2.5, 4100.0),
-    ('RAMP-03', 'Ramp Serbuk Kayu Sengon', 'serbuk_sengon', 40000.0, 5000.0, 28.0, 1.5, 3800.0),
-    ('RAMP-04', 'Ramp Cangkang & Tempurung Kelapa', 'tempurung_kelapa', 50000.0, 12000.0, 10.5, 2.0, 4600.0)
+    ('RAMP-01', 'Ramp Utama Sekam Padi', 'sekam_padi', 60000.0, 15000.0, 13.5, 17.0, 3450.0, TRUE, NOW(), NOW()),
+    ('RAMP-02', 'Ramp Tongkol Jagung Cacah', 'tongkol_jagung', 45000.0, 8000.0, 14.0, 2.5, 4100.0, TRUE, NOW(), NOW()),
+    ('RAMP-03', 'Ramp Serbuk Kayu Sengon', 'serbuk_sengon', 40000.0, 5000.0, 28.0, 1.5, 3800.0, TRUE, NOW(), NOW()),
+    ('RAMP-04', 'Ramp Cangkang & Tempurung Kelapa', 'tempurung_kelapa', 50000.0, 12000.0, 10.5, 2.0, 4600.0, TRUE, NOW(), NOW())
 ON CONFLICT (ramp_code) DO NOTHING;
 
 -- ----------------------------------------------------------------------------

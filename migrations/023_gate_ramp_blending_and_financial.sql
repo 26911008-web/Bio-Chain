@@ -41,12 +41,13 @@ CREATE INDEX IF NOT EXISTS idx_ramps_biomass_mill
 ON loading_ramps (mill_id, biomass_type, is_active);
 
 -- Seed Ramp Awal Jika Kosong
-INSERT INTO loading_ramps (ramp_code, name, biomass_type, max_capacity_kg, current_stock_kg, aggregate_mc, aggregate_ash, aggregate_lhv_kcal)
+-- is_active/created_at eksplisit: tabel yang dibuat dari model ORM tidak punya DEFAULT di server
+INSERT INTO loading_ramps (ramp_code, name, biomass_type, max_capacity_kg, current_stock_kg, aggregate_mc, aggregate_ash, aggregate_lhv_kcal, is_active, created_at, updated_at)
 VALUES 
-    ('RAMP-01', 'Ramp Utama Sekam Padi', 'sekam_padi', 60000.0, 15000.0, 13.5, 17.0, 3450.0),
-    ('RAMP-02', 'Ramp Tongkol Jagung Cacah', 'tongkol_jagung', 45000.0, 8000.0, 14.0, 2.5, 4100.0),
-    ('RAMP-03', 'Ramp Serbuk Kayu Sengon', 'serbuk_sengon', 40000.0, 5000.0, 28.0, 1.5, 3800.0),
-    ('RAMP-04', 'Ramp Cangkang & Tempurung Kelapa', 'tempurung_kelapa', 50000.0, 12000.0, 10.5, 2.0, 4600.0)
+    ('RAMP-01', 'Ramp Utama Sekam Padi', 'sekam_padi', 60000.0, 15000.0, 13.5, 17.0, 3450.0, TRUE, NOW(), NOW()),
+    ('RAMP-02', 'Ramp Tongkol Jagung Cacah', 'tongkol_jagung', 45000.0, 8000.0, 14.0, 2.5, 4100.0, TRUE, NOW(), NOW()),
+    ('RAMP-03', 'Ramp Serbuk Kayu Sengon', 'serbuk_sengon', 40000.0, 5000.0, 28.0, 1.5, 3800.0, TRUE, NOW(), NOW()),
+    ('RAMP-04', 'Ramp Cangkang & Tempurung Kelapa', 'tempurung_kelapa', 50000.0, 12000.0, 10.5, 2.0, 4600.0, TRUE, NOW(), NOW())
 ON CONFLICT (ramp_code) DO NOTHING;
 
 -- ----------------------------------------------------------------------------
