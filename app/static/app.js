@@ -2315,7 +2315,7 @@ const PETANI_MARKET_HTML = `
       </div>
       <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
         <input type="text" id="listing-search" class="btn btn-secondary btn-sm" placeholder="🔍 Cari QR / No. List..." style="width:160px; text-align:left;">
-        <select id="listing-filter-status" class="btn btn-secondary btn-sm">
+        <select id="listing-filter-status" class="btn btn-secondary btn-sm" aria-label="Saring status listing">
           <option value="all">Semua Status</option>
           <option value="open">🟢 Aktif Ditawar</option>
           <option value="partially_awarded">🟡 Sebagian Deal</option>
@@ -4171,13 +4171,13 @@ function initFactoryPricingModule() {
       <tr data-commodity="${item.code}">
         <td><b>${esc(item.name)}</b><br><small class="muted" style="font-size:10px;">Kode: <code>${esc(item.code)}</code></small></td>
         <td>
-          <input type="text" class="btn btn-secondary btn-sm" style="font-size:11.5px; width:190px;" id="fp-fac-${idx}" value="${esc(item.factory)}">
+          <input type="text" class="btn btn-secondary btn-sm" style="font-size:11.5px; width:190px;" id="fp-fac-${idx}" aria-label="Nama pabrik baris ${idx + 1}" value="${esc(item.factory)}">
         </td>
         <td class="num">
-          <input type="number" class="btn btn-secondary btn-sm" style="font-size:11.5px; width:95px; text-align:right;" id="fp-buy-${idx}" value="${item.buyPrice}" data-onchange="recalcFactoryPricing(${idx})">
+          <input type="number" class="btn btn-secondary btn-sm" style="font-size:11.5px; width:95px; text-align:right;" id="fp-buy-${idx}" aria-label="Harga beli Rp/kg baris ${idx + 1}" value="${item.buyPrice}" data-onchange="recalcFactoryPricing(${idx})">
         </td>
         <td class="num">
-          <input type="number" class="btn btn-secondary btn-sm" style="font-size:12px; font-weight:700; width:110px; text-align:right; border-color:var(--primary);" id="fp-sell-${idx}" value="${item.sellPrice}" data-onchange="recalcFactoryPricing(${idx})">
+          <input type="number" class="btn btn-secondary btn-sm" style="font-size:12px; font-weight:700; width:110px; text-align:right; border-color:var(--primary);" id="fp-sell-${idx}" aria-label="Harga jual Rp/kg baris ${idx + 1}" value="${item.sellPrice}" data-onchange="recalcFactoryPricing(${idx})">
         </td>
         <td class="num" id="fp-margin-rp-${idx}">
           <b style="color:var(--primary);">+${rp(marginRp)}</b>

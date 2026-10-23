@@ -448,7 +448,7 @@
         <h4 style="margin:0;">🧾 Riwayat Transaksi &amp; Pelunasan Terpadu</h4>
         <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
           <input type="text" id="fo-pay-search" class="btn btn-secondary btn-sm" placeholder="🔍 Cari QR, Kuitansi, Komoditas..." style="width:230px; text-align:left;">
-          <select id="fo-pay-filter" class="btn btn-secondary btn-sm">
+          <select id="fo-pay-filter" class="btn btn-secondary btn-sm" aria-label="Saring status pembayaran">
             <option value="all">Semua Status</option>
             <option value="paid">✅ Sudah Lunas</option>
             <option value="waiting">⏳ Menunggu Pelunasan</option>
@@ -1306,7 +1306,7 @@
   // FASE 2: GERBANG PABRIK, QC TIMBANGAN JEMBATAN & LOADING RAMP UI
   // ================================================================
   const PABRIK_GATE_HTML = `
-    <section class="card" aria-labelledby="fo-gate-title" style="margin-top: 1.5rem; border: 1px solid var(--border-color, #2d3748);">
+    <section class="card" aria-labelledby="fo-gate-title" style="margin-top: 1.5rem; border: 1px solid var(--border-color, var(--surface-2));">
       <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
         <div>
           <h3 class="card-title" id="fo-gate-title" style="display:flex; align-items:center; gap:8px;">
@@ -1321,8 +1321,8 @@
       </div>
 
       <!-- Live Loading Ramp Monitoring -->
-      <div style="padding: 1rem 1.25rem; background: rgba(0,0,0,0.15); border-bottom: 1px solid var(--border-color, #2d3748);">
-        <h4 style="font-size:0.9rem; font-weight:600; margin-bottom:0.75rem; color:var(--text-muted, #a0aec0);">📊 STATUS REAL-TIME LOADING RAMP (MUTU REKURSIF):</h4>
+      <div style="padding: 1rem 1.25rem; background: rgba(0,0,0,0.15); border-bottom: 1px solid var(--border-color, var(--surface-2));">
+        <h4 style="font-size:0.9rem; font-weight:600; margin-bottom:0.75rem; color:var(--text-muted, var(--ink-muted));">📊 STATUS REAL-TIME LOADING RAMP (MUTU REKURSIF):</h4>
         <div id="gate-ramps-container" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px;">
           <p class="muted">Memuat loading ramp…</p>
         </div>
@@ -1330,7 +1330,7 @@
 
       <!-- Recent Gate Receptions Table -->
       <div style="padding: 1rem 1.25rem;">
-        <h4 style="font-size:0.9rem; font-weight:600; margin-bottom:0.75rem; color:var(--text-muted, #a0aec0);">📜 RIWAYAT PENERIMAAN GERBANG &amp; QC TIMBANGAN:</h4>
+        <h4 style="font-size:0.9rem; font-weight:600; margin-bottom:0.75rem; color:var(--text-muted, var(--ink-muted));">📜 RIWAYAT PENERIMAAN GERBANG &amp; QC TIMBANGAN:</h4>
         <div class="table-scroll">
           <table class="table" id="gate-receptions-table">
             <thead>
@@ -1364,16 +1364,16 @@
         return;
       }
       wrap.innerHTML = ramps.map(r => `
-        <div style="background:var(--card-bg, #1a202c); border:1px solid ${r.utilization_pct > 90 ? '#e53e3e' : '#4a5568'}; border-radius:8px; padding:10px 12px;">
+        <div style="background:var(--card-bg, var(--surface-1)); border:1px solid ${r.utilization_pct > 90 ? '#e53e3e' : 'var(--border-strong)'}; border-radius:8px; padding:10px 12px;">
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <strong style="color:var(--primary, #38a169); font-size:0.95rem;">${H(r.ramp_code)}</strong>
             <span class="badge ${r.utilization_pct > 90 ? 'badge-red' : 'badge-green'}" style="font-size:0.75rem;">${r.utilization_pct}% Kapasitas</span>
           </div>
           <div style="font-weight:600; font-size:0.85rem; margin-top:2px;">${H(r.name)}</div>
-          <div style="font-size:0.8rem; color:var(--text-muted, #a0aec0); margin-top:4px;">
+          <div style="font-size:0.8rem; color:var(--text-muted, var(--ink-muted)); margin-top:4px;">
             Stok: <strong>${num(r.current_stock_kg, 0)} kg</strong> / ${num(r.max_capacity_kg, 0)} kg
           </div>
-          <div style="font-size:0.75rem; margin-top:6px; padding-top:6px; border-top:1px dashed #4a5568; display:flex; justify-content:space-between;">
+          <div style="font-size:0.75rem; margin-top:6px; padding-top:6px; border-top:1px dashed var(--border-strong); display:flex; justify-content:space-between;">
             <span>💧 MC: <strong>${num(r.aggregate_mc, 1)}%</strong></span>
             <span>🔥 Ash: <strong>${num(r.aggregate_ash, 1)}%</strong></span>
             <span>⚡ LHV: <strong>${num(r.aggregate_lhv_kcal, 0)}</strong></span>
@@ -1438,7 +1438,7 @@
                   <code>${H(g.ticket_number)}</code>
                 </div>
               </td>
-              <td><strong>${H(g.vehicle_plate)}</strong><br><span style="font-size:0.8rem; color:#a0aec0;">${H(g.driver_name)}</span></td>
+              <td><strong>${H(g.vehicle_plate)}</strong><br><span style="font-size:0.8rem; color:var(--ink-muted);">${H(g.driver_name)}</span></td>
               <td><span class="badge ${g.carrier === 'FACTORY_FLEET' ? 'badge-blue' : 'badge-amber'}">${H(g.carrier === 'FACTORY_FLEET' ? '🚛 Armada Pabrik' : '🚜 Antar Mandiri')}</span></td>
               <td><span class="badge ${meta.badge}">${H(g.biomass_type)}</span></td>
               <td>
@@ -1500,7 +1500,7 @@
         </div>
 
         <!-- Section Timbangan Jembatan -->
-        <div style="background:rgba(0,0,0,0.2); padding:10px; border-radius:6px; margin-bottom:12px; border:1px solid #4a5568;">
+        <div style="background:rgba(0,0,0,0.2); padding:10px; border-radius:6px; margin-bottom:12px; border:1px solid var(--border-strong);">
           <h4 style="font-size:0.85rem; font-weight:600; margin-bottom:8px; color:#63b3ed;">⚖️ METROLOGI TIMBANGAN JEMBATAN (KG):</h4>
           <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;">
             <div class="form-group">
@@ -1513,13 +1513,13 @@
             </div>
             <div class="form-group">
               <label>Netto Terhitung</label>
-              <input type="text" id="gc-net-display" class="input" style="font-weight:bold; color:#68d391; background:#2d3748;" readonly value="0 kg">
+              <input type="text" id="gc-net-display" class="input" style="font-weight:bold; color:#68d391; background:var(--surface-2);" readonly value="0 kg">
             </div>
           </div>
         </div>
 
         <!-- Section Hasil Uji Mutu QC -->
-        <div style="background:rgba(0,0,0,0.2); padding:10px; border-radius:6px; margin-bottom:12px; border:1px solid #4a5568;">
+        <div style="background:rgba(0,0,0,0.2); padding:10px; border-radius:6px; margin-bottom:12px; border:1px solid var(--border-strong);">
           <h4 style="font-size:0.85rem; font-weight:600; margin-bottom:8px; color:#f6e05e;">🔬 PENGUJIAN MUTU SAMPEL (LAB LAPANGAN):</h4>
           <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(110px, 1fr)); gap:8px;">
             <div class="form-group">
@@ -1542,7 +1542,7 @@
         </div>
 
         <!-- Section Keputusan QC 3-State -->
-        <div style="background:rgba(0,0,0,0.2); padding:10px; border-radius:6px; margin-bottom:12px; border:1px solid #4a5568;">
+        <div style="background:rgba(0,0,0,0.2); padding:10px; border-radius:6px; margin-bottom:12px; border:1px solid var(--border-strong);">
           <h4 style="font-size:0.85rem; font-weight:600; margin-bottom:8px; color:#fc8181;">🚦 KEPUTUSAN QC GERBANG (3-STATE):</h4>
           <div style="display:flex; gap:10px; margin-bottom:10px;">
             <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
@@ -1586,7 +1586,7 @@
         </div>
 
         <!-- Section Skema Pembayaran & Invoice Otomatis -->
-        <div style="background:rgba(0,0,0,0.2); padding:10px; border-radius:6px; border:1px solid #4a5568;">
+        <div style="background:rgba(0,0,0,0.2); padding:10px; border-radius:6px; border:1px solid var(--border-strong);">
           <h4 style="font-size:0.85rem; font-weight:600; margin-bottom:8px; color:#48bb78;">💰 PEMICU INVOICE OTOMATIS:</h4>
           <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;">
             <div class="form-group">
@@ -1699,7 +1699,7 @@
   // ================================================================
   const PABRIK_BLENDING_HTML = `
     <!-- Mesin Blending Multi-Ramp -->
-    <section class="card" aria-labelledby="fo-blending-title" style="margin-top: 1.5rem; border: 1px solid var(--border-color, #2d3748);">
+    <section class="card" aria-labelledby="fo-blending-title" style="margin-top: 1.5rem; border: 1px solid var(--border-color, var(--surface-2));">
       <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
         <div>
           <h3 class="card-title" id="fo-blending-title" style="display:flex; align-items:center; gap:8px;">
@@ -1708,8 +1708,8 @@
           <p class="card-sub">Optimasi formulasi pakan reaktor multi-ramp untuk Biopellet, Biochar, Bio-Silika, dan Briket dengan simulasi margin laba &amp; emisi GHG Protocol.</p>
         </div>
         <div style="display:flex; align-items:center; gap:8px;">
-          <label for="blend-batch-size" style="font-size:0.85rem; color:var(--text-muted, #a0aec0);">Batch Size (kg):</label>
-          <input type="number" id="blend-batch-size" value="10000" min="500" max="500000" step="500" style="width:110px; padding:6px 10px; font-size:0.85rem; border-radius:6px; background:#1a202c; color:#fff; border:1px solid #4a5568;">
+          <label for="blend-batch-size" style="font-size:0.85rem; color:var(--text-muted, var(--ink-muted));">Batch Size (kg):</label>
+          <input type="number" id="blend-batch-size" value="10000" min="500" max="500000" step="500" style="width:110px; padding:6px 10px; font-size:0.85rem; border-radius:6px; background:var(--surface-1); color:var(--ink); border:1px solid var(--border-strong);">
           <button type="button" class="btn btn-primary btn-sm" id="btn-run-blending">⚡ Hitung Rekomendasi</button>
         </div>
       </div>
@@ -1722,9 +1722,9 @@
       </div>
 
       <!-- Riwayat Blending & By-Product Ledger -->
-      <div style="padding: 1rem 1.25rem; border-top:1px solid var(--border-color, #2d3748); background: rgba(0,0,0,0.15);">
+      <div style="padding: 1rem 1.25rem; border-top:1px solid var(--border-color, var(--surface-2)); background: rgba(0,0,0,0.15);">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
-          <h4 style="font-size:0.9rem; font-weight:600; color:var(--text-muted, #a0aec0);">📜 BUKU BESAR BATCH BLENDING &amp; HASIL SAMPING (CIRCULAR LEDGER):</h4>
+          <h4 style="font-size:0.9rem; font-weight:600; color:var(--text-muted, var(--ink-muted));">📜 BUKU BESAR BATCH BLENDING &amp; HASIL SAMPING (CIRCULAR LEDGER):</h4>
           <button type="button" class="btn btn-secondary btn-sm" id="btn-refresh-blends" style="font-size:0.75rem;">🔄 Refresh Blends</button>
         </div>
         <div class="table-scroll">
@@ -1747,7 +1747,7 @@
         </div>
 
         <!-- By-Products Inventory -->
-        <div style="margin-top:1rem; padding-top:0.75rem; border-top:1px dashed #4a5568;">
+        <div style="margin-top:1rem; padding-top:0.75rem; border-top:1px dashed var(--border-strong);">
           <h5 style="font-size:0.85rem; font-weight:600; color:#4fd1c5; margin-bottom:6px;">♻️ Inventaris Hasil Samping Sirkular (By-Products):</h5>
           <div id="byproducts-container" style="display:flex; gap:12px; flex-wrap:wrap;">
             <span class="muted" style="font-size:0.8rem;">Memuat inventaris by-product…</span>
@@ -1757,7 +1757,7 @@
     </section>
 
     <!-- Grouped Biomass Monitoring Dashboard -->
-    <section class="card" aria-labelledby="fo-biomass-grouped-title" style="margin-top: 1.5rem; border: 1px solid var(--border-color, #2d3748);">
+    <section class="card" aria-labelledby="fo-biomass-grouped-title" style="margin-top: 1.5rem; border: 1px solid var(--border-color, var(--surface-2));">
       <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
         <div>
           <h3 class="card-title" id="fo-biomass-grouped-title" style="display:flex; align-items:center; gap:8px;">
@@ -1793,7 +1793,7 @@
   `;
 
   const COLLECTOR_FEEDBACK_HTML = `
-    <section class="card" aria-labelledby="fo-feedback-title" style="margin-top: 1.5rem; border: 1px solid var(--border-color, #2d3748);">
+    <section class="card" aria-labelledby="fo-feedback-title" style="margin-top: 1.5rem; border: 1px solid var(--border-color, var(--surface-2));">
       <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
         <div>
           <h3 class="card-title" id="fo-feedback-title" style="display:flex; align-items:center; gap:8px;">
@@ -1839,7 +1839,7 @@
       }
       tbody.innerHTML = list.map(b => `
         <tr>
-          <td><strong>${H(b.display_name)}</strong><br><small style="color:#a0aec0;">${H(b.biomass_type)}</small></td>
+          <td><strong>${H(b.display_name)}</strong><br><small style="color:var(--ink-muted);">${H(b.biomass_type)}</small></td>
           <td><span class="badge badge-blue">${b.incoming_trips} trip</span></td>
           <td><strong>${num(b.total_incoming_kg, 0)} kg</strong></td>
           <td>
@@ -1856,7 +1856,7 @@
           </td>
           <td>
             <strong>${num(b.ramp_stock_kg, 0)} kg</strong>
-            ${b.ramp_capacity_kg > 0 ? `<br><small style="color:#a0aec0;">kap: ${num(b.ramp_capacity_kg, 0)} kg</small>` : ''}
+            ${b.ramp_capacity_kg > 0 ? `<br><small style="color:var(--ink-muted);">kap: ${num(b.ramp_capacity_kg, 0)} kg</small>` : ''}
           </td>
           <td>${rp(b.total_invoiced_rp)}</td>
           <td>
@@ -1888,7 +1888,7 @@
       }
 
       wrap.innerHTML = recs.map(r => {
-        let borderStyle = "1px solid #4a5568";
+        let borderStyle = "1px solid var(--border-strong)";
         if (r.is_most_profitable) borderStyle = "2px solid #d69e2e";
         else if (r.is_lowest_carbon) borderStyle = "2px solid #319795";
 
@@ -1897,36 +1897,36 @@
         ).join("");
 
         return `
-          <div style="background:var(--card-bg, #1a202c); border:${borderStyle}; border-radius:10px; padding:16px; display:flex; flex-direction:column; justify-content:space-between; position:relative;">
+          <div style="background:var(--card-bg, var(--surface-1)); border:${borderStyle}; border-radius:10px; padding:16px; display:flex; flex-direction:column; justify-content:space-between; position:relative;">
             <div>
               <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
-                <h4 style="font-size:1.05rem; font-weight:700; color:#fff; margin-bottom:4px;">${H(r.product_name)}</h4>
+                <h4 style="font-size:1.05rem; font-weight:700; color:var(--ink); margin-bottom:4px;">${H(r.product_name)}</h4>
                 <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
                   ${r.is_most_profitable ? `<span class="badge" style="background:#d69e2e; color:#1a202c; font-weight:700; font-size:0.7rem;">⭐ PALING UNTUNG</span>` : ''}
                   ${r.is_lowest_carbon ? `<span class="badge" style="background:#319795; color:#fff; font-weight:700; font-size:0.7rem;">🌱 LOW CARBON</span>` : ''}
                 </div>
               </div>
 
-              <div style="font-size:0.85rem; color:#a0aec0; margin-top:4px;">
+              <div style="font-size:0.85rem; color:var(--ink-muted); margin-top:4px;">
                 Input: <strong>${num(r.total_input_kg, 0)} kg</strong> ➔ Output: <strong style="color:#48bb78;">${num(r.estimated_output_kg, 0)} kg</strong> (Rendemen ${r.yield_pct}%)
               </div>
 
               <!-- Ramp allocation -->
               <div style="margin-top:10px; padding:8px; background:rgba(0,0,0,0.25); border-radius:6px;">
-                <div style="font-size:0.75rem; color:#a0aec0; margin-bottom:4px; font-weight:600;">ALOKASI LOADING RAMP:</div>
+                <div style="font-size:0.75rem; color:var(--ink-muted); margin-bottom:4px; font-weight:600;">ALOKASI LOADING RAMP:</div>
                 <div style="display:flex; flex-wrap:wrap; gap:4px;">${allocSummary}</div>
               </div>
 
               <!-- Mutu Prediksi -->
               <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; margin-top:10px; font-size:0.75rem; text-align:center;">
-                <div style="background:#2d3748; padding:4px 6px; border-radius:4px;">💧 MC: <strong>${r.final_mc_pct}%</strong></div>
-                <div style="background:#2d3748; padding:4px 6px; border-radius:4px;">🔥 Ash: <strong>${r.final_ash_pct}%</strong></div>
-                <div style="background:#2d3748; padding:4px 6px; border-radius:4px;">⚡ LHV: <strong>${num(r.final_lhv_kcal, 0)}</strong></div>
+                <div style="background:var(--surface-2); padding:4px 6px; border-radius:4px;">💧 MC: <strong>${r.final_mc_pct}%</strong></div>
+                <div style="background:var(--surface-2); padding:4px 6px; border-radius:4px;">🔥 Ash: <strong>${r.final_ash_pct}%</strong></div>
+                <div style="background:var(--surface-2); padding:4px 6px; border-radius:4px;">⚡ LHV: <strong>${num(r.final_lhv_kcal, 0)}</strong></div>
               </div>
 
               <!-- Indeks Alkali & Slagging Risk + WtE Drying Penalty -->
               <div style="margin-top:8px; display:flex; flex-direction:column; gap:4px;">
-                <div style="display:flex; justify-content:space-between; align-items:center; background:#2d3748; padding:4px 8px; border-radius:4px; font-size:0.75rem;">
+                <div style="display:flex; justify-content:space-between; align-items:center; background:var(--surface-2); padding:4px 8px; border-radius:4px; font-size:0.75rem;">
                   <span>🧪 Indeks Alkali (Miles): <strong>${num(r.alkali_index || 0, 3)} kg/GJ</strong></span>
                   <span class="badge ${r.slagging_verdict === 'AMAN' ? 'badge-green' : (r.slagging_verdict === 'WASPADA' ? 'badge-amber' : 'badge-red')}" style="font-size:0.7rem;">
                     ${r.slagging_verdict || 'AMAN'}
@@ -1944,7 +1944,7 @@
               </div>
 
               <!-- Margin Finansial & Karbon -->
-              <div style="margin-top:12px; padding-top:8px; border-top:1px dashed #4a5568; font-size:0.85rem;">
+              <div style="margin-top:12px; padding-top:8px; border-top:1px dashed var(--border-strong); font-size:0.85rem;">
                 <div style="display:flex; justify-content:space-between;">
                   <span>HPP: <strong>${rp(r.hpp_per_kg)}/kg</strong></span>
                   <span>Jual: <strong>${rp(r.target_selling_price_per_kg)}/kg</strong></span>
@@ -2042,7 +2042,7 @@
                 <td colspan="7" style="padding: 10px 14px; font-weight: 700; color: #81e6d9;">
                   <div style="display:flex; justify-content:space-between; align-items:center;">
                     <span>${H(title)}</span>
-                    <span style="font-size:0.8rem; font-weight:normal; color:#e2e8f0;">
+                    <span style="font-size:0.8rem; font-weight:normal; color:var(--ink);">
                       ${lotCount} Batch | Total Input: <strong>${num(totalKg, 0)} kg</strong> | Karbon: <strong style="color:#4fd1c5;">+${num(totalTco2, 2)} tCO2e</strong>
                     </span>
                   </div>
@@ -2085,15 +2085,15 @@
             if (isRejected) statusBadge = `<span class="badge badge-red" style="font-size:0.7rem;">⛔ DIKARANTINA B3</span>`;
 
             return `
-              <div style="background:#2d3748; padding:8px 12px; border-radius:8px; font-size:0.8rem; display:flex; flex-direction:column; gap:6px; border:1px solid #4a5568;">
-                <div style="display:flex; justify-content:space-between; align-items:center;">
+              <div style="background:var(--surface-2); padding:8px 12px; border-radius:8px; font-size:0.8rem; display:flex; flex-direction:column; gap:6px; border:1px solid var(--border-strong); flex:1 1 260px; min-width:0; max-width:100%;">
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
                   <div style="display:flex; align-items:center; gap:8px;">
                     <span class="badge ${bp.by_product_type === 'WOOD_VINEGAR' ? 'badge-amber' : (bp.by_product_type === 'BIOCHAR' ? 'badge-green' : 'badge-gray')}">${H(bp.by_product_type)}</span>
                     <strong>${num(bp.quantity_kg, 1)} kg</strong>
                   </div>
                   ${statusBadge}
                 </div>
-                <div style="font-size:0.75rem; color:#a0aec0;">${H(bp.notes || '-')}</div>
+                <div style="font-size:0.75rem; color:var(--ink-muted);">${H(bp.notes || '-')}</div>
                 ${isTested ? `
                   <div style="font-size:0.72rem; color:#81e6d9; background:rgba(49,151,149,0.15); padding:4px 6px; border-radius:4px;">
                     🧪 Lab: <strong>${H(bp.lab_cert_no || 'Uji Internal')}</strong> | Pb: <strong>${num(bp.pb_ppm, 2)}</strong>, Cd: <strong>${num(bp.cd_ppm, 2)}</strong>, As: <strong>${num(bp.as_ppm, 2)}</strong> ppm
@@ -2179,7 +2179,7 @@
             <td colspan="8" style="padding: 10px 14px; font-weight: 700; color: #81e6d9;">
               <div style="display:flex; justify-content:space-between; align-items:center;">
                 <span>${H(title)}</span>
-                <span style="font-size:0.8rem; font-weight:normal; color:#e2e8f0;">
+                <span style="font-size:0.8rem; font-weight:normal; color:var(--ink);">
                   ${lotCount} Pengiriman | Net: <strong>${num(totalNet, 0)} kg</strong> | Diterima: <strong style="color:#48bb78;">${num(totalAcc, 0)} kg</strong> | Ditolak: <strong style="color:#fc8181;">${num(totalRej, 0)} kg</strong>
                 </span>
               </div>
@@ -2199,7 +2199,7 @@
                   <span>🏭 ${H(g.ticket_number)}</span>
                   <button type="button" class="btn btn-secondary btn-sm" style="padding:1px 5px; font-size:9px; height:18px;" data-onclick="openModal('Tiket Pabrik', '${H(g.ticket_number)}', 'Tiket Umpan Balik Mutu Gerbang Pabrik')">📱 QR</button>
                 </div>
-                <small style="color:#a0aec0; font-size:10px;">${formatDateTime(g.created_at)}</small>
+                <small style="color:var(--ink-muted); font-size:10px;">${formatDateTime(g.created_at)}</small>
               </td>
               <td><strong>${H(g.biomass_type)}</strong></td>
               <td>${num(g.net_weight_kg, 0)} kg</td>

@@ -676,10 +676,10 @@
         <th class="num">Harga (Rp/kg)</th><th class="num">MC aktual (%)</th><th class="num">Porsi maks (%)</th></tr></thead><tbody>${bmCache.map(b => `<tr>
         <td><input type="checkbox" data-fb-use="${H(b.code)}" ${fbPresets.factory_stock_kg[b.code] ? "checked" : ""} aria-label="Pakai ${H(b.name)}"></td>
         <td>${H(b.name)}</td>
-        <td class="num"><input type="number" min="0" step="100" data-fb-kg="${H(b.code)}" value="${Number(Math.round(fbPresets.factory_stock_kg[b.code] || 0))}" style="width:100px;"></td>
+        <td class="num"><input type="number" min="0" step="100" data-fb-kg="${H(b.code)}" aria-label="Stok kg ${H(b.name || b.code)}" value="${Number(Math.round(fbPresets.factory_stock_kg[b.code] || 0))}" style="width:100px;"></td>
         <td class="num"><input type="number" min="0" step="10" data-fb-price="${H(b.code)}" value="${H(b.base_price_per_kg ?? "")}" placeholder="wajib" style="width:90px;"></td>
         <td class="num"><input type="number" min="0" max="94" step="0.5" data-fb-mc="${H(b.code)}" placeholder="${H(num(b.moisture_typ_pct, 0))}" style="width:70px;"></td>
-        <td class="num"><input type="number" min="0" max="100" step="5" data-fb-max="${H(b.code)}" value="100" style="width:70px;"></td></tr>`).join("")}</tbody></table>
+        <td class="num"><input type="number" min="0" max="100" step="5" data-fb-max="${H(b.code)}" aria-label="Porsi maksimum % ${H(b.name || b.code)}" value="100" style="width:70px;"></td></tr>`).join("")}</tbody></table>
         ${fbPresets.drying_cost_rp_per_kg_water == null ? `<p class="kpi-lbl">⚠️ Biaya pengeringan belum diisi di menu Parameter — bahan basah (ampas tebu) akan tampak lebih murah dari kenyataan.</p>` : ""}`;
       $("fx-fb-go").onclick = runFuelBlend;
     } catch (e) { $("fx-fb-feeds").innerHTML = `<div class="banner banner-error" role="alert">⚠️ ${H(e.message)}</div>`; }
@@ -1067,8 +1067,11 @@
     if ($("fx-eff-go")) $("fx-eff-go").onclick = loadEfficiency;
     if ($("fx-esg-go")) $("fx-esg-go").onclick = loadEsg;
     if ($("fx-esg-csv")) $("fx-esg-csv").onclick = downloadEsgCsv;
-    if ($("fx-esg-print")) $("fx-esg-print").onclick = () => { document.body.classList.add("print-esg"); window.print(); };
-    window.addEventListener("afterprint", () => document.body.classList.remove("print-esg"), { once: false });
+    if ($("fx-esg-print")) $("fx-esg-print").onclick = () => {
+      // Didaftarkan per klik (once) — dulu didaftarkan di setiap render dashboard dan menumpuk di window
+      window.addEventListener("afterprint", () => document.body.classList.remove("print-esg"), { once: true });
+      document.body.classList.add("print-esg"); window.print();
+    };
     if (canWrite()) {
       loadRedemptions();
       loadBiocharDispatches();

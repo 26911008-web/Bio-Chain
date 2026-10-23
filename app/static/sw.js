@@ -7,7 +7,7 @@
  * - Background Sync (Chrome/Edge Android): saat sinyal kembali, SW membangunkan halaman yang terbuka untuk
  *   mengirim antrean. Safari/Firefox tidak mendukung → halaman memakai event 'online' & interval.
  */
-const VERSION = "biochain-shell-v19";         // v19: kolom aksi tabel penawaran beku di HP, job inline (serverless)
+const VERSION = "biochain-shell-v20";         // v20: navigasi lompat-bagian, form tidak melebar di HP, nav 5xx tidak di-cache
 const SHELL = ["/", "/static/tokens.css", "/static/components.css", "/static/app.js", "/static/ui-enhance.js", "/static/field-ops.js",
                "/static/factory-ops.js", "/static/excel-filter.js"];  // three.js sengaja tidak di-precache
 
@@ -29,8 +29,10 @@ self.addEventListener("fetch", event => {
 
   if (req.mode === "navigate") {
     event.respondWith(fetch(req).then(res => {
-      const copy = res.clone();
-      caches.open(VERSION).then(c => c.put("/", copy));
+      if (res.ok) {                              // halaman error 5xx jangan jadi shell offline
+        const copy = res.clone();
+        caches.open(VERSION).then(c => c.put("/", copy));
+      }
       return res;
     }).catch(() => caches.match("/")));
     return;
