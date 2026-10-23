@@ -46,6 +46,8 @@ test('lelang: konfirmasi tawaran → terima → timbang dengan stepper → resi 
   const ctxP = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const pg = await ctxP.newPage();
   await openAs(pg, 'pengepul');
+  // Dashboard penawaran bertab: lot skema jemput masuk tab Lelang (default tab = Langsung)
+  await pg.locator('#btn-tab-lelang').click();
   const price = pg.locator(`#bp-${listingId}`);
   await expect(price).toBeVisible({ timeout: 20_000 });
   await price.fill('460');

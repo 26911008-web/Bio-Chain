@@ -7,7 +7,7 @@
  * - Background Sync (Chrome/Edge Android): saat sinyal kembali, SW membangunkan halaman yang terbuka untuk
  *   mengirim antrean. Safari/Firefox tidak mendukung → halaman memakai event 'online' & interval.
  */
-const VERSION = "biochain-shell-v18";         // v18: dynamic table pagination, 10/20/all filters, and top scroll navigation
+const VERSION = "biochain-shell-v19";         // v19: kolom aksi tabel penawaran beku di HP, job inline (serverless)
 const SHELL = ["/", "/static/tokens.css", "/static/components.css", "/static/app.js", "/static/ui-enhance.js", "/static/field-ops.js",
                "/static/factory-ops.js", "/static/excel-filter.js"];  // three.js sengaja tidak di-precache
 

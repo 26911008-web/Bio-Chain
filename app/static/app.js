@@ -3526,7 +3526,9 @@ function renderOfferRowsHtml(items, tab) {
         `;
       }
     } else {
-      const curBid = it.my_active_bid;
+      // offers-dashboard mengirim tawaran aktif di bidding_details.my_bid (price_per_kg)
+      const myBid = it.my_active_bid || (it.bidding_details && it.bidding_details.my_bid);
+      const curBid = myBid ? { price: myBid.price_per_kg ?? myBid.price } : null;
       actionHtml = `
         <div style="display:flex; gap:4px; align-items:center; flex-wrap:wrap;">
           <input id="bp-${it.listing_id || fId}" type="number" class="btn btn-secondary btn-sm" style="width:85px;" value="${curBid ? curBid.price : (pHrg || 450)}" placeholder="Rp/kg" aria-label="Harga tawaran Rp/kg lot #${it.listing_id || fId}">
@@ -3611,7 +3613,7 @@ function renderOfferRowsHtml(items, tab) {
             <button type="button" class="btn btn-secondary btn-sm" style="font-size:11px; padding:3px 7px;" data-onclick="viewOfferDetailModal(${fId}, '${tab}')">🔍 Detail</button>
           </div>
         </td>
-        <td>${actionHtml}</td>
+        <td class="col-actions">${actionHtml}</td>
       </tr>
     `;
   }).join("");
@@ -3742,7 +3744,7 @@ function renderOffersTable() {
         <!-- Tabel Detail Data Per Bulan -->
         <div id="month-detail-${mKey}" style="display:${isExpanded ? 'block' : 'none'};">
           <div class="table-scroll">
-            <table class="data-table" style="margin:0;">
+            <table class="data-table offers-table" style="margin:0;">
               <thead>
                 <tr>
                   <th>No. QR Code Ketelusuran</th>
@@ -3755,7 +3757,7 @@ function renderOffersTable() {
                   <th>Pilihan Kirim</th>
                   <th class="num">Harga/kg</th>
                   <th>Detail Petani</th>
-                  <th>Aksi Finalisasi</th>
+                  <th class="col-actions">Aksi Finalisasi</th>
                 </tr>
               </thead>
               <tbody>
@@ -5994,6 +5996,8 @@ $("btn-run-route") && ($("btn-run-route").onclick = e => withBusy(e.currentTarge
 // sehingga layar tetap bisa dipakai selama perhitungan berat berjalan di worker.
 async function runJob(path, body, onStatus) {
   const job = await api(path, { body });
+  if (job.status === "done") return job.result;     // backend inline (serverless): hasil langsung di respons
+  if (job.status === "failed") throw new Error(job.error || "Perhitungan gagal");
   const started = Date.now();
   let delay = 250;
   onStatus("Dalam antrean…");

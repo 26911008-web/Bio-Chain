@@ -2385,3 +2385,21 @@ details.demo-hint-box > div { margin-top: 8px; }
 
 
 
+
+/* Tabel penawaran pengepul di HP: 11 kolom (±2.200 px) di layar ±320 px. Kolom aksi (Setujui / Uji Mutu)
+   dibekukan di kanan agar selalu terjangkau jempol tanpa menggeser jauh; kolom pertama tidak dibekukan
+   di tabel ini supaya kedua kolom beku tidak saling menutupi tombol. */
+@media (max-width: 720px) {
+  table.data-table.offers-table th:first-child,
+  table.data-table.offers-table td:first-child { position: static !important; box-shadow: none !important; }
+  table.data-table.offers-table th.col-actions,
+  table.data-table.offers-table td.col-actions {
+    position: sticky; right: 0; z-index: 6;
+    background: var(--surface-1);
+    box-shadow: -3px 0 8px -2px rgba(0, 0, 0, 0.25);
+    border-left: 1px solid var(--border);
+    padding: 10px 8px;
+  }
+  table.data-table.offers-table th.col-actions { z-index: 11; background: var(--surface-2); }
+  table.data-table.offers-table td.col-actions .btn { white-space: normal !important; max-width: 132px; line-height: 1.25; }
+}

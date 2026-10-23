@@ -126,7 +126,7 @@ test.describe('Fase 7: Full-Lifecycle E2E Supply Chain & Closed-Loop Biochar (V-
         harvest_ids: [harvestDealId, hDirect.id],
         vehicle_plate: 'AB 8421 CS',
         truck_max_kg: 5000.0,
-        truck_max_m3: 30.0,
+        truck_max_m3: 40.0,   // 4.300 kg sekam ÷ ±120 kg/m³ ≈ 35,8 m³ → truk 30 m³ memang (benar) ditolak
       },
     });
     expect(planRes.status()).toBe(200);
@@ -206,6 +206,13 @@ test.describe('Fase 7: Full-Lifecycle E2E Supply Chain & Closed-Loop Biochar (V-
     // =========================================================================
     // STEP 5: GERBANG PABRIK, TIMBANGAN JEMBATAN QC & INVOICE TOP
     // =========================================================================
+    // Seperti UI pabrik: pilih ramp sekam dari daftar ramp (id tidak dikarang)
+    const rampsRes = await api.get(`${BASE}/api/v1/factory/loading-ramps`, { headers: auth(pabrik.access_token) });
+    expect(rampsRes.status()).toBe(200);
+    const rampsBody = await rampsRes.json();
+    const rampList = Array.isArray(rampsBody) ? rampsBody : (rampsBody.ramps || rampsBody.items || []);
+    const sekamRamp = rampList.find((r: any) => r.biomass_type === 'sekam_padi') || rampList[0];
+    expect(sekamRamp, 'ramp sekam tersedia').toBeTruthy();
     const gateRes = await api.post(`${BASE}/api/v1/factory/gate-receptions`, {
       headers: auth(pabrik.access_token),
       data: {
@@ -223,7 +230,7 @@ test.describe('Fase 7: Full-Lifecycle E2E Supply Chain & Closed-Loop Biochar (V-
         qc_decision: 'ACCEPTED',
         accepted_qty_kg: 2450.0,
         rejected_qty_kg: 0.0,
-        allocated_ramp_id: 1,
+        allocated_ramp_id: sekamRamp.id,
         unit_price_rp: 600.0,
         payment_scheme: 'TOP',
         due_days: 14,
