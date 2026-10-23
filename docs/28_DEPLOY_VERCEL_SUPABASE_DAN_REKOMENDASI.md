@@ -53,38 +53,42 @@ Menjalankan migrasi baru (contoh 021): sambung sebagai `biochain_owner` lewat se
 
 Catatan CI: `.github/workflows/ci.yml` sengaja tidak diubah karena token `gh` tidak punya scope `workflow`. Deteksi CI dilakukan di `pg_setup.py` lewat `GITHUB_ACTIONS=true`.
 
-## 5. Batasan mode demo (harus diketahui sebelum dibagikan)
+## 5. Batasan mode demo — status setelah perbaikan 23 Okt 2026
 
-1. **Siapa pun bisa login sebagai admin.** Kredensial demo ditampilkan di halaman login (`/auth/demo-accounts`), dan admin bisa mereset data. Jangan masukkan data lapangan sungguhan.
-2. **Foto bukti tidak permanen.** Foto disimpan di `/tmp` instance serverless dan hilang saat instance berganti.
-3. **Rate limit per instance** (in-memory), bukan global.
-4. **Job latar berjalan lokal per instance.** Mode produksi butuh Redis + worker arq yang tidak bisa jalan di Vercel.
-5. 4 tes Playwright gagal, dan **sudah gagal sebelum perubahan deploy** (diverifikasi pada commit `3aecca7`): `01_farmer_collector_isolation` TC1.2, `e2e_csp_offline_photo` foto offline, `e2e_field_ux` lelang/stepper, `full_circular_lifecycle`.
+| Batasan semula | Status | Perbaikan |
+|---|---|---|
+| Siapa pun bisa login sebagai admin & mereset data | ✅ selesai | `PUBLIC_DEMO=true`: admin disembunyikan dari halaman login; password admin acak dari `DEMO_ADMIN_PASSWORD` (sudah diterapkan ke DB live, `admin2026` ditolak); reset/seed ulang dimatikan; akun demo bersama tidak bisa diganti password-nya atau dihapus. App menolak start bila `PUBLIC_DEMO` tanpa password admin ≥12 karakter (`app/security/demo_guard.py`, `app/config.py`) |
+| Foto bukti hilang (disimpan di `/tmp`) | ✅ selesai | Bucket privat Supabase Storage `bukti` (`app/services/file_store.py`); URL `/uploads/<sha256>.<ext>` tetap sama, kunci `sb_secret_` hanya di server |
+| Rate limit per instance | ✅ sebagian | Aturan **Vercel WAF** global: 20 percobaan login per menit per IP (terbukti memblokir percobaan ke-21). Batas umum per-instance di app tetap ada |
+| Job latar lokal per instance (polling bisa ke instance lain) | ✅ selesai | `JOB_BACKEND=inline`: optimasi rute dihitung di request submit dan hasil dikirim langsung (`status: done`) |
+| 4 tes Playwright gagal | ✅ selesai | (1) tes lelang & isolasi: UI pindah ke tab Lelang — tes diperbarui; **bug nyata**: tawaran aktif pengepul tidak tampil (frontend membaca field yang salah) — diperbaiki; (2) foto offline: **bug UX nyata** — di HP tombol aksi berada ±1.800 px di luar layar dan tertutup kolom beku → kolom aksi kini beku di kanan; (3) siklus penuh: data tes fisik tak layak (35,8 m³ ke truk 30 m³ — app benar menolak) & ID ramp dikarang — tes diperbaiki |
+
+Password admin demo tersimpan lokal di `.vercel/demo-admin-password.txt` (folder diabaikan git) dan di env Vercel `DEMO_ADMIN_PASSWORD` (Sensitive).
 
 ## 6. Rekomendasi (prioritas)
 
 Item bertanda **[perlu verifikasi]** belum dicek ke dokumen primer.
 
 ### P0 — segera
-1. **Lindungi demo publik.** Mengatasi batasan §5.1.
+1. ✅ **Selesai — Lindungi demo publik** (lihat §5). Mengatasi batasan §5.1.
    - Aktifkan Vercel Deployment Protection, atau ganti password admin demo lewat env.
    - Matikan endpoint reset di demo publik.
    - Tambahkan rate limit Vercel Firewall (WAF).
    - Rujukan: OWASP ASVS 5.0 (2025); OWASP API Security Top 10 2023 (API4 Unrestricted Resource Consumption, API5 Broken Function Level Authorization).
    - Skill: `vercel:vercel-firewall`, `vercel:access-protected-vercel-deployment`, `security-review`.
-2. **Satukan faktor permanensi karbon.**
+2. ✅ **Selesai — Satukan faktor permanensi karbon.** `product_optimization.py` kini memakai `green_scorecard.f_perm` (IPCC 2019 Tabel 4Ap.2) dan massa biochar **kering**; output diberi label "potensi (bukan klaim)".
    - Masalahnya: `green_scorecard.py` memakai F_perm berbasis suhu (gaya IPCC 2019), sementara `product_optimization.py` (sekitar baris 459–460) meng-hardcode 0,74 dan ~2,2 tCO2e/t. Satu biochar menghasilkan dua angka.
    - Pusatkan ke satu fungsi di `app/params.py` dan wajibkan input lab (suhu puncak, C_org, H/C_org).
    - Rujukan: IPCC 2019 Refinement Vol. 4 Ch. 2 Ap. 4; Woolf et al. 2021, *Environ. Sci. Technol.*, doi:10.1021/acs.est.1c02425.
-3. **Pisahkan emisi terhindar dari carbon removal.**
+3. ✅ **Sudah benar sebelumnya — Pisahkan emisi terhindar dari carbon removal.** Dicek ulang: `carbon.py` sudah mengeluarkan `carbon_credit_equivalent=0` dan `srn_ppi_eligible=False`; Engine ⑬ melaporkan emisi dihindari terpisah dari removal.
    - Masalahnya: `carbon.py` menghitung substitusi batu bara tetapi memberi label `carbon_credit_equivalent`. Ini kategori yang berbeda dari kredit removal biochar dan berisiko double counting.
    - Rujukan: Puro.earth Biochar Methodology Edition 2025; Verra VM0044 v1.2 (2025).
-4. **Simpan foto bukti di Supabase Storage**, dengan bucket privat, policy RLS di `storage.objects`, dan signed URL. Pertahankan pembersihan EXIF. Skill: `vercel:vercel-storage`.
+4. ✅ **Selesai — Simpan foto bukti di Supabase Storage**, dengan bucket privat, policy RLS di `storage.objects`, dan signed URL. Pertahankan pembersihan EXIF. Skill: `vercel:vercel-storage`.
 
 ### P1 — berikutnya
-5. **Job latar.** Pakai Vercel Cron untuk rekap berkala dan Vercel Queues (Python SDK masih beta) untuk CVRP/HiGHS. Untuk produksi di Indonesia, alternatifnya adalah arq + Upstash Redis + worker di VM. Buat abstraksi `enqueue()`. Skill: `vercel:queues`, `vercel:workflow`.
+5. ✅ **Sebagian — Job latar.** Backend `inline` untuk serverless sudah aktif; Vercel Queues/Cron belum diperlukan untuk demo. Pakai Vercel Cron untuk rekap berkala dan Vercel Queues (Python SDK masih beta) untuk CVRP/HiGHS. Untuk produksi di Indonesia, alternatifnya adalah arq + Upstash Redis + worker di VM. Buat abstraksi `enqueue()`. Skill: `vercel:queues`, `vercel:workflow`.
 6. **Cold start.** Lazy-import `ortools`/`scipy` di dalam handler engine, lalu ukur lewat runtime logs. Skill: `vercel:vercel-functions`.
-7. **Perbaiki 4 tes e2e yang gagal**, karena menyentuh RLS dan bukti offline. Skill: `engineering:testing-strategy`, `engineering:debug`.
+7. ✅ **Selesai — Perbaiki 4 tes e2e yang gagal**, karena menyentuh RLS dan bukti offline. Skill: `engineering:testing-strategy`, `engineering:debug`.
 8. **MRV per batch.**
    - Simpan hasil lab per batch: C_org, H/C_org, logam berat, dan PAH.
    - Pasang *quality gate* EBC sebelum biochar/abu dialokasikan ke petani [perlu verifikasi versi EBC yang berlaku].
