@@ -262,6 +262,12 @@ Metode:
 | A-6 pecah berkas besar | **Selesai sebagian besar.** `app.js` 6.328 → 5.549 baris: modul `qr-tools.js`, `engine-lab.js`, `engine-lab-product.js`. `factory.py` 1.990 → 1.071 baris: `factory_esg.py`, `factory_optimization.py`, `factory_supply.py`. `farmer.py` 1.208 → 680 baris: `farmer_market.py`, `farmer_feedback.py`. Operasi OpenAPI pabrik+petani **identik** sebelum/sesudah (116 operasi). |
 | Pagination, `response_model`, Sentry | Belum (lihat §7). Sentry perlu DSN akun. |
 
+**Status deploy tahap 3 (23 Okt 2026):** `main` = `7a73f6b`, aset v22 live. Migrasi 027 diterapkan ke live dalam dua bagian:
+- Bagian A (tabel) sebelum deploy, agar kode baru langsung menemukan `notification_reads`.
+- Bagian B (RLS) setelah deploy. Dengan begitu kode lama tidak sempat mengisi ulang seed notifikasi di bawah RLS.
+
+Verifikasi live: RLS `notifications` aktif (FORCE, 5 policy); petani, pengepul dan pabrik masing-masing melihat siaran perannya; `/traceability/recent` tanpa login → 401; `/readyz` 200. Hasil uji: pytest 593 lulus; Playwright 38/38; PostgreSQL 17/17.
+
 **Pekerjaan sisi akun yang dicoba:**
 - **Upstash Redis.** Diprovisikan lewat `vercel integration add upstash/upstash-kv` (free, `bom1`). CLI berhenti di `userActionRequired`: pemilik akun harus menyetujui syarat Upstash di <https://vercel.com/mm-op/~/integrations/accept-terms/upstash?source=cli>. Setelah itu jalankan ulang perintah `next[]`. Aplikasi membaca `REDIS_URL`; bila integrasi memberi nama lain (mis. `KV_URL`), set `REDIS_URL` ke nilai `rediss://` tersebut.
 - **`QR_HMAC_KEY`.** Sengaja **tidak** diisi. Mengisinya dengan kunci baru membatalkan semua QR yang sudah tercetak (saat ini kunci diturunkan dari `JWT_SECRET`). Isi hanya sebelum mencetak QR produksi sungguhan, dan setelah itu jangan rotasi `JWT_SECRET` tanpa rencana.
