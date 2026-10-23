@@ -21,6 +21,7 @@ from ..models.harvest import Harvest, HarvestStatus
 from ..models.industrial import GateReception
 from ..models.ledger import BiocharLedgerEntry, CustodyEvent
 from ..models.user import User
+from .privacy import mask_phone
 
 
 COMMODITY_LABELS = {
@@ -125,8 +126,8 @@ async def resolve_harvest(db: AsyncSession, identifier: str) -> Harvest | None:
         if h:
             return h
 
-    # Fallback jika query mirip origin_qr
-    h = (await db.execute(select(Harvest).where(Harvest.origin_qr_code.ilike(f"%{clean_id}%")))).scalars().first()
+    # Fallback: kode QR asal persis (tanpa ILIKE %…% — wildcard dari input publik memungkinkan enumerasi lot)
+    h = (await db.execute(select(Harvest).where(Harvest.origin_qr_code == clean_id))).scalars().first()
     return h
 
 
@@ -228,9 +229,11 @@ async def get_circular_traceability(db: AsyncSession, identifier: str) -> dict[s
         "actor": {
             "role": "petani",
             "name": farmer.full_name if farmer else "Petani Mitra",
-            "phone": farmer.phone if farmer else "-",
+            # Endpoint ini PUBLIK (scan QR konsumen): nomor HP disamarkan & koordinat dibulatkan ±1 km (UU PDP)
+            "phone": (mask_phone(farmer.phone) or "-") if farmer else "-",
             "location": f"Kec. {farmer.kecamatan or 'Godean'}, Kab. {farmer.kabupaten or 'Sleman'}" if farmer else "Sleman",
-            "coordinates": {"lat": farmer.lat if farmer else -7.765, "lon": farmer.lon if farmer else 110.295},
+            "coordinates": {"lat": round(farmer.lat, 2) if farmer and farmer.lat is not None else -7.77,
+                            "lon": round(farmer.lon, 2) if farmer and farmer.lon is not None else 110.3},
         },
         "commodity": {
             "code": h.commodity,
@@ -260,7 +263,7 @@ async def get_circular_traceability(db: AsyncSession, identifier: str) -> dict[s
         "actor": {
             "role": "pengepul",
             "name": collector.full_name if collector else "Pak Surya (KUD Sleman Timur)",
-            "phone": collector.phone if collector else "-",
+            "phone": (mask_phone(collector.phone) or "-") if collector else "-",
             "warehouse": f"Gudang Agregasi {collector.kecamatan or 'Sleman'}" if collector else "Gudang Pengepul",
         },
         "measurements": {

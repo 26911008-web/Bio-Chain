@@ -9,6 +9,7 @@ Prinsip:
 - `client_event_id` membuat setiap aksi idempoten untuk antrean offline di perangkat.
 """
 
+import logging
 from datetime import datetime, timezone
 
 from sqlalchemy import func, select, update
@@ -158,61 +159,64 @@ async def transition(
     db.add(event)
     await db.flush()
 
-    # Trigger Notifikasi Perubahan Transaksi Otomatis
+    # Trigger Notifikasi Perubahan Transaksi Otomatis — dalam SAVEPOINT: di PostgreSQL flush yang gagal
+    # membatalkan seluruh transaksi, sehingga kegagalan notifikasi tidak boleh menggagalkan transisi custody.
+    # Notifikasi bertuan ke petani pemilik (dulu "all": kode WR & nama driver tampil ke semua pengguna).
     try:
         from .notifications import record_notification
-        h_obj = await load_harvest(db, harvest_id)
-        wr_code = h_obj.origin_qr_code or h_obj.qr_code or f"WR-HV-{h_obj.id:04d}"
-        t_to = _val(to_status)
-        a_name = actor.full_name or actor.username
+        async with db.begin_nested():
+            h_obj = await load_harvest(db, harvest_id)
+            wr_code = h_obj.origin_qr_code or h_obj.qr_code or f"WR-HV-{h_obj.id:04d}"
+            t_to = _val(to_status)
+            a_name = actor.full_name or actor.username
 
-        if t_to == "verified":
-            await record_notification(
-                db, event_type="OFFER_VERIFIED",
-                title=f"✓ Verifikasi Qty & Harga Disetujui ({wr_code})",
-                message=f"{a_name} memverifikasi {weight_kg or h_obj.verified_kg or h_obj.quantity_kg:g} kg. Menunggu penjemputan armada.",
-                status_group="IN_PROGRESS", target_role="petani", user_id=h_obj.farmer_id,
-                harvest_id=harvest_id, transaction_code=code or wr_code,
-                actor_role=_val(actor.role), actor_name=a_name,
-            )
-        elif t_to == "collected":
-            await record_notification(
-                db, event_type="DRIVER_PICKUP",
-                title=f"🚛 Biomassa Diangkut Armada ({wr_code})",
-                message=f"Driver {a_name} telah memuat {weight_kg or h_obj.picked_up_kg or h_obj.verified_kg:g} kg biomassa. Dalam perjalanan menuju pabrik.",
-                status_group="IN_PROGRESS", target_role="all",
-                harvest_id=harvest_id, transaction_code=code or wr_code,
-                actor_role=_val(actor.role), actor_name=a_name,
-            )
-        elif t_to == "delivered":
-            await record_notification(
-                db, event_type="FACTORY_RECEIVED",
-                title=f"🏭 Biomassa Diterima di Pabrik ({wr_code})",
-                message=f"Pabrik telah menimbang terima netto {weight_kg or h_obj.received_kg:g} kg. Memasuki antrean konversi & QC boiler.",
-                status_group="COMPLETED", target_role="all",
-                harvest_id=harvest_id, transaction_code=code or wr_code,
-                actor_role=_val(actor.role), actor_name=a_name,
-            )
-        elif t_to == "converted":
-            await record_notification(
-                db, event_type="CONVERTED_BATCH",
-                title=f"⚗️ Konversi Produksi Selesai ({wr_code})",
-                message=f"Biomassa telah diproses menjadi produk & biochar aktif (baterai). Dompet petani dialokasikan abu bottom ash untuk muatan balik ke sawah.",
-                status_group="COMPLETED", target_role="petani", user_id=h_obj.farmer_id,
-                harvest_id=harvest_id, transaction_code=wr_code,
-                actor_role=_val(actor.role), actor_name=a_name,
-            )
-        elif t_to == "rejected":
-            await record_notification(
-                db, event_type="HARVEST_REJECTED",
-                title=f"❌ Penolakan Pasokan Biomassa ({wr_code})",
-                message=f"Pasokan ditolak oleh {a_name}. Alasan: {note or 'Kualitas tidak memenuhi standar acuan'}.",
-                status_group="ALERT_DISCREPANCY", target_role="petani", user_id=h_obj.farmer_id,
-                harvest_id=harvest_id, transaction_code=wr_code,
-                actor_role=_val(actor.role), actor_name=a_name,
-            )
+            if t_to == "verified":
+                await record_notification(
+                    db, event_type="OFFER_VERIFIED",
+                    title=f"✓ Verifikasi Qty & Harga Disetujui ({wr_code})",
+                    message=f"{a_name} memverifikasi {weight_kg or h_obj.verified_kg or h_obj.quantity_kg:g} kg. Menunggu penjemputan armada.",
+                    status_group="IN_PROGRESS", target_role="petani", user_id=h_obj.farmer_id,
+                    harvest_id=harvest_id, transaction_code=code or wr_code,
+                    actor_role=_val(actor.role), actor_name=a_name,
+                )
+            elif t_to == "collected":
+                await record_notification(
+                    db, event_type="DRIVER_PICKUP",
+                    title=f"🚛 Biomassa Diangkut Armada ({wr_code})",
+                    message=f"Driver {a_name} telah memuat {weight_kg or h_obj.picked_up_kg or h_obj.verified_kg:g} kg biomassa. Dalam perjalanan menuju pabrik.",
+                    status_group="IN_PROGRESS", target_role="petani", user_id=h_obj.farmer_id,
+                    harvest_id=harvest_id, transaction_code=code or wr_code,
+                    actor_role=_val(actor.role), actor_name=a_name,
+                )
+            elif t_to == "delivered":
+                await record_notification(
+                    db, event_type="FACTORY_RECEIVED",
+                    title=f"🏭 Biomassa Diterima di Pabrik ({wr_code})",
+                    message=f"Pabrik telah menimbang terima netto {weight_kg or h_obj.received_kg:g} kg. Memasuki antrean konversi & QC boiler.",
+                    status_group="COMPLETED", target_role="petani", user_id=h_obj.farmer_id,
+                    harvest_id=harvest_id, transaction_code=code or wr_code,
+                    actor_role=_val(actor.role), actor_name=a_name,
+                )
+            elif t_to == "converted":
+                await record_notification(
+                    db, event_type="CONVERTED_BATCH",
+                    title=f"⚗️ Konversi Produksi Selesai ({wr_code})",
+                    message=f"Biomassa telah diproses menjadi produk & biochar aktif (baterai). Dompet petani dialokasikan abu bottom ash untuk muatan balik ke sawah.",
+                    status_group="COMPLETED", target_role="petani", user_id=h_obj.farmer_id,
+                    harvest_id=harvest_id, transaction_code=wr_code,
+                    actor_role=_val(actor.role), actor_name=a_name,
+                )
+            elif t_to == "rejected":
+                await record_notification(
+                    db, event_type="HARVEST_REJECTED",
+                    title=f"❌ Penolakan Pasokan Biomassa ({wr_code})",
+                    message=f"Pasokan ditolak oleh {a_name}. Alasan: {note or 'Kualitas tidak memenuhi standar acuan'}.",
+                    status_group="ALERT_DISCREPANCY", target_role="petani", user_id=h_obj.farmer_id,
+                    harvest_id=harvest_id, transaction_code=wr_code,
+                    actor_role=_val(actor.role), actor_name=a_name,
+                )
     except Exception:
-        pass
+        logging.getLogger("biochain.error").warning("Notifikasi custody gagal (harvest %s)", harvest_id, exc_info=True)
 
     return event
 

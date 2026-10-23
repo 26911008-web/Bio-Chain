@@ -14,6 +14,7 @@ from ..models.params import ParameterChange
 from ..models.user import User, UserRole
 from ..services import params_store
 
+from ..security.demo_guard import forbid_shared_account_change
 router = APIRouter()
 _editor = require_role(UserRole.PABRIK, UserRole.ADMIN)
 
@@ -55,12 +56,17 @@ async def list_params(db: Annotated[AsyncSession, Depends(get_db)],
         items = [params.describe(d.key) for d in params.DEFS if d.group == gid]
         groups.append({"id": gid, "label": glabel, "params": items,
                        "modified": sum(i["modified"] for i in items)})
-    return {"can_edit": role in ("pabrik", "admin"), "groups": groups}
+    from ..config import settings
+    from ..security.demo_guard import shared_demo_usernames
+    shared = settings.PUBLIC_DEMO and user.username in shared_demo_usernames()
+    return {"can_edit": role in ("pabrik", "admin") and not shared, "groups": groups}
 
 
 @router.put("/{key}")
 async def update_param(key: str, body: ParamUpdate, db: Annotated[AsyncSession, Depends(get_db)],
                        user: Annotated[User, Depends(_editor)]):
+    # Parameter berlaku global: di demo publik akun pabrik bersama tidak boleh mengubahnya untuk semua pengunjung
+    forbid_shared_account_change(user.username, "Mengubah parameter global")
     try:
         return await params_store.set_value(db, key, body.value, user, body.reason)
     except params.ParamError as e:
@@ -70,6 +76,8 @@ async def update_param(key: str, body: ParamUpdate, db: Annotated[AsyncSession, 
 @router.post("/{key}/reset")
 async def reset_param(key: str, body: ParamReset, db: Annotated[AsyncSession, Depends(get_db)],
                       user: Annotated[User, Depends(_editor)]):
+    # Parameter berlaku global: di demo publik akun pabrik bersama tidak boleh mengubahnya untuk semua pengunjung
+    forbid_shared_account_change(user.username, "Mengubah parameter global")
     try:
         return await params_store.reset_value(db, key, user, body.reason)
     except params.ParamError as e:

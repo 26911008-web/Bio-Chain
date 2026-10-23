@@ -8,7 +8,9 @@ tidak pernah dikirim ke browser.
 from dataclasses import dataclass
 
 import json
+import os
 import ssl
+import time
 
 import httpx
 
@@ -167,6 +169,13 @@ def _check_status(p: Provider, status: int, body: bytes | str = b"") -> None:
         raise AssistantError(f"{p.label} menolak permintaan (HTTP {status}){_upstream_message(body)}", 502)
 
 
+def total_timeout_s() -> float:
+    """Batas total jawaban AI (detik); 0 = tanpa batas."""
+    if settings.AI_TOTAL_TIMEOUT_S > 0:
+        return settings.AI_TOTAL_TIMEOUT_S
+    return 50.0 if os.getenv("VERCEL") else 0.0
+
+
 async def chat_stream(p: Provider, model: str, messages: list[dict], client: httpx.AsyncClient):
     """Streaming (SSE kompatibel OpenAI): yield potongan teks segera setelah dihasilkan.
     Timeout dihitung per potongan, sehingga jawaban panjang dari model lokal tetap lolos."""
@@ -174,6 +183,7 @@ async def chat_stream(p: Provider, model: str, messages: list[dict], client: htt
         raise AssistantError(f"Pilih model untuk {p.label} (atau isi {p.model_setting} di .env).", 422)
     body = _body(p, model, messages, stream=True)
     timeout = httpx.Timeout(connect=10, read=settings.AI_TIMEOUT_S, write=10, pool=10)
+    deadline = time.monotonic() + total_timeout_s() if total_timeout_s() else None
     try:
         async with client.stream("POST", f"{_base_url(p)}/chat/completions", headers=_headers(p),
                                  json=body, timeout=timeout) as r:
@@ -193,6 +203,9 @@ async def chat_stream(p: Provider, model: str, messages: list[dict], client: htt
                     yield delta
                 if choice.get("finish_reason") == "length":
                     yield TRUNCATED_NOTE
+                if deadline and time.monotonic() > deadline:
+                    yield TRUNCATED_NOTE        # akhiri rapi sebelum platform memutus koneksi
+                    break
     except httpx.ConnectError as e:
         hint = " Pastikan Ollama berjalan (`ollama serve`)." if p.id == "ollama" else ""
         raise AssistantError(f"Tidak bisa terhubung ke {p.label}.{hint}", 503) from e
@@ -207,7 +220,7 @@ async def chat(p: Provider, model: str, messages: list[dict], client: httpx.Asyn
     body = _body(p, model, messages, stream=False)
     try:
         r = await client.post(f"{_base_url(p)}/chat/completions", headers=_headers(p), json=body,
-                              timeout=settings.AI_TIMEOUT_S)
+                              timeout=min(settings.AI_TIMEOUT_S, total_timeout_s() or settings.AI_TIMEOUT_S))
     except httpx.ConnectError as e:
         hint = " Pastikan Ollama berjalan (`ollama serve`)." if p.id == "ollama" else ""
         raise AssistantError(f"Tidak bisa terhubung ke {p.label}.{hint}", 503) from e

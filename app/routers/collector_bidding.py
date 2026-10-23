@@ -264,11 +264,19 @@ async def get_offers_dashboard(
             my_bids_by_listing[b.listing_id] = []
         my_bids_by_listing[b.listing_id].append(b)
 
-    # Preload all bids for listings to count competing bidders
-    all_bids_res = await db.execute(select(Bid))
-    all_bids_by_listing = {}
-    for b in all_bids_res.scalars().all():
-        all_bids_by_listing.setdefault(b.listing_id, []).append(b)
+    # Harga tawaran tertinggi per listing terbuka — agregasi di DB (dulu: SELECT seluruh tabel bids setiap buka dashboard)
+    max_bid_by_listing: dict[int, float] = {}
+    bid_count_by_listing: dict[int, int] = {}
+    if listings:
+        rows = await db.execute(
+            select(Bid.listing_id, func.max(Bid.price_per_kg), func.count(Bid.id))
+            .where(Bid.listing_id.in_([l.id for l in listings]))
+            .group_by(Bid.listing_id)
+        )
+        for lid, mx, n in rows.all():
+            bid_count_by_listing[lid] = n
+            if mx is not None:
+                max_bid_by_listing[lid] = float(mx)
 
     # Preload biochar requests for poktan backhaul
     biochar_reqs = (await db.execute(
@@ -417,9 +425,8 @@ async def get_offers_dashboard(
         f = farmers_map.get(l.farmer_id)
         is_bidding = getattr(l, "transaction_mode", "BIDDING") == "BIDDING" or (getattr(l, "allow_jemput", True) or not getattr(l, "allow_antar", False))
         my_bids = my_bids_by_listing.get(l.id, [])
-        all_bids = all_bids_by_listing.get(l.id, [])
         active_my_bid = next((b for b in my_bids if b.status == BidStatus.ACTIVE), None)
-        highest_bid = max([b.price_per_kg for b in all_bids], default=l.floor_price or 400.0) if all_bids else (l.floor_price or 400.0)
+        highest_bid = max_bid_by_listing.get(l.id, l.floor_price or 400.0)
 
         hrg = l.ask_price_jemput or l.ask_price_antar or l.floor_price or 450.0
         skema = "JEMPUT" if l.ask_price_jemput else "ANTAR"
@@ -483,7 +490,7 @@ async def get_offers_dashboard(
             "bidding_details": {
                 "floor_price": l.floor_price or 400.0,
                 "highest_bid": highest_bid,
-                "total_bids": len(all_bids),
+                "total_bids": bid_count_by_listing.get(l.id, 0),
                 "my_bid": {
                     "id": active_my_bid.id,
                     "price_per_kg": active_my_bid.price_per_kg,

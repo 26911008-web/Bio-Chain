@@ -119,3 +119,16 @@ def test_non_admin_cannot_pick_arbitrary_ai_model(client):
     with pytest.raises(P.AssistantError):
         _pick_model(p, "model-mahal-xl", petani)
     assert _pick_model(p, "model-mahal-xl", admin) == "model-mahal-xl"
+
+
+# ------------------------------------------------------------------ usulan biomassa non-operator dibatasi
+def test_farmer_biomass_proposal_is_bounded_and_lab_fields_ignored(client):
+    hp = demo_headers(client, "petani")
+    name = f"Kulit Uji {uuid.uuid4().hex[:6]}"
+    r = client.post("/api/v1/biomass", headers=hp, json={"name": name, "base_price_per_kg": 10_000_000})
+    assert r.status_code == 422, r.text
+    r = client.post("/api/v1/biomass", headers=hp, json={"name": name, "moisture_reject_pct": 80})
+    assert r.status_code == 422, r.text
+    r = client.post("/api/v1/biomass", headers=hp, json={"name": name, "ash_pct_db": 59, "lhv_db_mj_kg": 30})
+    assert r.status_code == 201, r.text
+    assert r.json()["ash_pct_db"] != 59, "parameter lab dari petani diabaikan"

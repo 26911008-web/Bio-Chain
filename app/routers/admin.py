@@ -1,5 +1,6 @@
 """Router: Admin (⚙️) — Manajemen users, data seed, system overview."""
 
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -192,7 +193,8 @@ async def system_stats(
         red_res = await db.execute(select(func.count(BiocharRedemption.id)))
         total_redemptions = red_res.scalar() or 0
     except Exception:
-        pass
+        # Tabel opsional bisa belum dimigrasi; jangan diam-diam — angka 0 di dashboard harus bisa ditelusuri
+        logging.getLogger("biochain.error").warning("admin stats: hitungan lelang/timbang gagal", exc_info=True)
 
     return {
         "total_users": users_count.scalar() or 0,

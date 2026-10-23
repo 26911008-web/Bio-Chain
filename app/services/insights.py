@@ -210,11 +210,23 @@ async def _collector_commodity_breakdowns(db: AsyncSession, collector_id: int, l
         .where(DeliveryRequest.collector_id == collector_id,
                InboundQC.created_at >= lo, InboundQC.created_at < hi)
     )).all()
+    # Komoditas per delivery request — satu query untuk semua baris QC & settlement (dulu N+1)
+    dr_commodity: dict[int, str] = {}
+
+    async def _load_dr_commodities(dr_ids: set[int]) -> None:
+        missing = [i for i in dr_ids if i not in dr_commodity]
+        if missing:
+            for dr_id, com in (await db.execute(
+                select(Harvest.delivery_request_id, Harvest.commodity)
+                .where(Harvest.delivery_request_id.in_(missing))
+                .order_by(Harvest.id)
+            )).all():
+                if com and dr_id not in dr_commodity:
+                    dr_commodity[dr_id] = com
+
+    await _load_dr_commodities({dr.id for _, dr in qc_rows})
     for qc, dr in qc_rows:
-        c_found = (await db.execute(select(Harvest.commodity).where(
-            Harvest.delivery_request_id == dr.id
-        ).limit(1))).scalar_one_or_none()
-        c = c_found or "sekam_padi"
+        c = dr_commodity.get(dr.id) or "sekam_padi"
         d = _init(c)
         if _v(qc.decision) == "tolak":
             d["rejected_kg"] += (qc.net_kg or 0.0)
@@ -228,16 +240,21 @@ async def _collector_commodity_breakdowns(db: AsyncSession, collector_id: int, l
             CollectorSettlement.created_at >= lo, CollectorSettlement.created_at < hi
         )
     )).scalars().all()
+    h_ids = {st.harvest_id for st in st_rows if st.source == "rute" and st.harvest_id}
+    harvest_commodity = dict((await db.execute(
+        select(Harvest.id, Harvest.commodity).where(Harvest.id.in_(h_ids)))).all()) if h_ids else {}
+    qc_ids_needed = {st.qc_id for st in st_rows if st.source == "qc" and st.qc_id}
+    qc_request = dict((await db.execute(
+        select(InboundQC.id, InboundQC.request_id).where(InboundQC.id.in_(qc_ids_needed)))).all()) if qc_ids_needed else {}
+    await _load_dr_commodities({r for r in qc_request.values() if r})
     for st in st_rows:
         c = "sekam_padi"
         if st.source == "rute" and st.harvest_id:
-            h_c = (await db.execute(select(Harvest.commodity).where(Harvest.id == st.harvest_id))).scalar_one_or_none()
-            if h_c: c = h_c
+            c = harvest_commodity.get(st.harvest_id) or c
         elif st.source == "qc" and st.qc_id:
-            dr_id = (await db.execute(select(InboundQC.request_id).where(InboundQC.id == st.qc_id))).scalar_one_or_none()
+            dr_id = qc_request.get(st.qc_id)
             if dr_id:
-                h_c = (await db.execute(select(Harvest.commodity).where(Harvest.delivery_request_id == dr_id).limit(1))).scalar_one_or_none()
-                if h_c: c = h_c
+                c = dr_commodity.get(dr_id) or c
         d = _init(c)
         if st.amount_rp is None:
             d["unpriced_kg"] += (st.payable_kg or 0.0)

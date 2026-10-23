@@ -107,10 +107,42 @@ class BiomassCreate(BaseModel):
     source: str | None = Field(None, max_length=500)
 
 
+async def _bound_proposal(db: AsyncSession, data: dict) -> None:
+    """Batasi usulan non-operator ke rentang yang wajar menurut data yang ada (bukan konstanta harga):
+    harga ≤ 2× harga dasar tertinggi komoditas aktif; kadar air acuan 5–30 %, batas tolak ≤ 40 % dan > acuan."""
+    from fastapi import HTTPException
+    from sqlalchemy import func, select
+    from ..models.biomass import BiomassParameter
+    price = data.get("base_price_per_kg")
+    if price is not None:
+        top = (await db.execute(select(func.max(BiomassParameter.base_price_per_kg))
+                                .where(BiomassParameter.is_active.is_(True)))).scalar()
+        if top and price > 2 * top:
+            raise HTTPException(422, f"Harga usulan melebihi 2× harga dasar tertinggi yang berlaku (Rp {2 * top:,.0f}/kg). "
+                                     "Minta pabrik/admin menetapkan harga komoditas ini.")
+    ref, rej = data.get("moisture_ref_pct"), data.get("moisture_reject_pct")
+    if ref is not None and not 5 <= ref <= 30:
+        raise HTTPException(422, "Kadar air acuan usulan harus 5–30 %.")
+    if rej is not None and (rej > 40 or (ref is not None and rej <= ref)):
+        raise HTTPException(422, "Batas tolak kadar air usulan harus ≤ 40 % dan di atas kadar air acuan.")
+
+
 @router.post("/biomass", status_code=201)
 async def biomass_create(req: BiomassCreate, db: DB, user: Annotated[User, Depends(get_current_user)]):
-    """Pendaftaran jenis komoditas biomassa baru secara dinamis."""
-    return await svc.create_biomass(db, user, req.model_dump(exclude_unset=True))
+    """Pendaftaran jenis komoditas biomassa baru secara dinamis.
+
+    Petani/pengepul boleh mengusulkan komoditas BARU dari form lapor beserta harga acuan & ambang kadar air
+    yang ia ketahui (komoditas yang sudah ada tidak bisa ditimpa — create_biomass mengembalikan yang lama).
+    Parameter lab/kimia (abu, LHV, oksida abu, logam berat, dll.) memengaruhi engine konversi pabrik sehingga
+    hanya Pabrik/Admin yang boleh mengisinya; untuk usulan non-operator dipakai nilai acuan konservatif.
+    """
+    data = req.model_dump(exclude_unset=True)
+    role = user.role.value if hasattr(user.role, "value") else str(user.role)
+    if role not in ("pabrik", "admin"):
+        allowed = {"name", "code", "base_price_per_kg", "moisture_ref_pct", "moisture_reject_pct"}
+        data = {k: v for k, v in data.items() if k in allowed}
+        await _bound_proposal(db, data)
+    return await svc.create_biomass(db, user, data)
 
 
 @router.put("/biomass/{code}")
@@ -456,18 +488,24 @@ async def ops_logs_ingest(req: OpsLogBatch, db: DB, user: Annotated[User, Depend
     from sqlalchemy import select
     from ..models.energy_ops import EnergyOperationLog
     created, skipped = 0, []
+    # Prefetch sekali (dulu ≤3 query per baris × 500 baris): kode biomassa, event id & slot yang sudah ada.
+    # Set diperbarui saat menambah baris agar duplikat di dalam batch yang sama juga terlewati.
+    for code in {lg.biomass_fuel_code for lg in req.logs if lg.biomass_fuel_code}:
+        await svc.get_biomass(db, code)
+    ev_ids = [lg.client_event_id for lg in req.logs if lg.client_event_id]
+    seen_events = set((await db.execute(select(EnergyOperationLog.client_event_id).where(
+        EnergyOperationLog.client_event_id.in_(ev_ids)))).scalars().all()) if ev_ids else set()
+    dates = {lg.log_date for lg in req.logs}
+    seen_slots = set((await db.execute(select(EnergyOperationLog.log_date, EnergyOperationLog.shift).where(
+        EnergyOperationLog.facility == req.facility, EnergyOperationLog.log_date.in_(dates)))).all())
     for lg in req.logs:
-        if lg.biomass_fuel_code:
-            await svc.get_biomass(db, lg.biomass_fuel_code)
-        dup = lg.client_event_id and (await db.execute(select(EnergyOperationLog.id).where(
-            EnergyOperationLog.client_event_id == lg.client_event_id))).first()
-        slot = (await db.execute(select(EnergyOperationLog.id).where(
-            EnergyOperationLog.facility == req.facility, EnergyOperationLog.log_date == lg.log_date,
-            EnergyOperationLog.shift == lg.shift))).first()
-        if dup or slot:
+        if (lg.client_event_id and lg.client_event_id in seen_events) or (lg.log_date, lg.shift) in seen_slots:
             skipped.append({"log_date": lg.log_date, "shift": lg.shift, "reason": "sudah tercatat"})
             continue
         db.add(EnergyOperationLog(facility=req.facility, recorded_by_id=user.id, **lg.model_dump()))
+        seen_slots.add((lg.log_date, lg.shift))
+        if lg.client_event_id:
+            seen_events.add(lg.client_event_id)
         created += 1
     await db.flush()
     return {"created": created, "skipped": skipped}

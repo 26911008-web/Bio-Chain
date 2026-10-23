@@ -222,14 +222,20 @@ async def get_driver_job_inbox(
         .limit(20)
     )).scalars().all()
 
-    items = []
-    for r in routes:
-        stops = (await db.execute(
+    # Semua titik untuk ≤20 rute dalam satu query (dulu satu query per rute)
+    stops_by_route: dict[int, list] = {}
+    if routes:
+        for s, h in (await db.execute(
             select(RouteStop, Harvest)
             .outerjoin(Harvest, Harvest.id == RouteStop.harvest_id)
-            .where(RouteStop.route_id == r.id)
-            .order_by(RouteStop.stop_order)
-        )).all()
+            .where(RouteStop.route_id.in_([r.id for r in routes]))
+            .order_by(RouteStop.route_id, RouteStop.stop_order)
+        )).all():
+            stops_by_route.setdefault(s.route_id, []).append((s, h))
+
+    items = []
+    for r in routes:
+        stops = stops_by_route.get(r.id, [])
         commodities = list({h.commodity for s, h in stops if h and h.commodity})
         comm_name = commodities[0].replace("_", " ").title() if commodities else "Biomassa"
 

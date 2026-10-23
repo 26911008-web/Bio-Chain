@@ -228,9 +228,14 @@ async def serve_upload(name: str):
     data = await get_store().load(name) if is_safe_name(name) else None
     if data is None:
         return JSONResponse(status_code=404, content={"detail": "Berkas tidak ditemukan"})
-    return Response(content=data, media_type=content_type_for(name),
-                    headers={"Cache-Control": "public, max-age=31536000, immutable",
-                             "X-Content-Type-Options": "nosniff"})
+    media = content_type_for(name)
+    # Bukti foto/kuitansi = data pribadi: jangan disimpan cache bersama (CDN/proxy). Nama sha256 tetap immutable
+    # untuk cache browser. PDF diunduh, bukan dirender inline di origin aplikasi.
+    headers = {"Cache-Control": "private, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff"}
+    if media == "application/pdf":
+        headers["Content-Disposition"] = f'attachment; filename="{name}"'
+        headers["Content-Security-Policy"] = "sandbox"
+    return Response(content=data, media_type=media, headers=headers)
 
 
 # ================================================================

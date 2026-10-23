@@ -63,6 +63,9 @@ class Settings(BaseSettings):
     # Asisten AI — semua kunci hanya di server (.env), tidak pernah ke browser
     AI_DEFAULT_PROVIDER: str = "auto"       # auto | ollama | gemini | mistral | groq | openai | openrouter
     AI_TIMEOUT_S: float = 60.0              # jeda maksimum antar potongan teks (streaming)
+    # Batas total satu jawaban. 0 = otomatis: 50 s di Vercel (maxDuration 60 s — jawab sebelum fungsi diputus),
+    # tanpa batas di server sendiri (model lokal Ollama bisa lambat tetapi tetap mengalir).
+    AI_TOTAL_TIMEOUT_S: float = 0.0
     AI_MAX_TOKENS: int = 600
     # Model selain default yang boleh dipilih non-admin (dipisah koma). Kosong = non-admin selalu memakai model
     # default provider — mencegah akun mana pun (termasuk demo publik) memilih model mahal atas biaya server.

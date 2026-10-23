@@ -140,8 +140,12 @@ async def _evaluation(user: User, db: AsyncSession, window_months: int | None = 
 
 
 def _opt_messages(user: User, ev: dict, focus: str | None) -> list[dict]:
-    return [{"role": "system", "content": optimization_prompt(_role(user), ev, focus)},
-            {"role": "user", "content": "Susun evaluasi dan rencana optimasi saya berdasarkan data di atas."}]
+    # `focus` adalah teks bebas pengguna → di pesan user, bukan di system prompt (cegah injeksi instruksi sistem)
+    ask = "Susun evaluasi dan rencana optimasi saya berdasarkan data di atas."
+    if focus:
+        ask += f" Fokus yang saya minta: {focus}"
+    return [{"role": "system", "content": optimization_prompt(_role(user), ev)},
+            {"role": "user", "content": ask}]
 
 
 @router.get("/evaluation")

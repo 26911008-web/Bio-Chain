@@ -1,5 +1,6 @@
 """Muat & simpan parameter asumsi ke database (dengan audit)."""
 
+import logging
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,7 +27,8 @@ async def _notify_param_change(db: AsyncSession) -> None:
             from sqlalchemy import text
             await db.execute(text("NOTIFY biochain_params_channel, 'reload'"))
     except Exception:
-        pass
+        # Worker lain tetap memakai parameter lama sampai restart — catat agar bisa ditelusuri
+        logging.getLogger("biochain.error").warning("NOTIFY perubahan parameter gagal", exc_info=True)
 
 
 async def set_value(db: AsyncSession, key: str, value, user: User, reason: str) -> dict:
