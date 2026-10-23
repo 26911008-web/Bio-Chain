@@ -7,11 +7,13 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import get_db
 from ..dependencies import require_role
 from ..models.user import User, UserRole
+from ..models.harvest import Harvest
 from ..models.trade import StockListing, Bid, CollectorPaymentReputation, CollectorRating
 from ..models.circular import BiocharQualityEvaluation
 
@@ -117,18 +119,39 @@ async def submit_collector_rating(
     if not collector:
         raise HTTPException(404, "Pengepul tidak ditemukan.")
 
+    # Rating hanya dari transaksi nyata, satu kali per panen — tanpa ini petani mana pun bisa menilai pengepul
+    # mana pun berulang-ulang dan memanipulasi skor reputasi (moving average di bawah).
+    rated = select(CollectorRating.harvest_id).where(CollectorRating.farmer_id == user.id,
+                                                      CollectorRating.harvest_id.is_not(None))
+    own_tx = select(Harvest.id).where(Harvest.farmer_id == user.id, Harvest.collector_id == req.collector_id)
+    if req.harvest_id is not None:
+        if (await db.execute(own_tx.where(Harvest.id == req.harvest_id))).first() is None:
+            raise HTTPException(403, "Panen ini bukan transaksi Anda dengan pengepul tersebut.")
+        if (await db.execute(rated.where(CollectorRating.harvest_id == req.harvest_id))).first() is not None:
+            raise HTTPException(409, "Transaksi ini sudah Anda nilai.")
+        harvest_id = req.harvest_id
+    else:
+        # UI memilih pengepul saja → nilai transaksi terbaru dengan pengepul itu yang belum dinilai
+        harvest_id = (await db.execute(own_tx.where(Harvest.id.not_in(rated)).order_by(Harvest.id.desc()).limit(1))).scalar()
+        if harvest_id is None:
+            raise HTTPException(403, "Belum ada transaksi dengan pengepul ini yang bisa dinilai (atau semua sudah dinilai).")
+
     overall = round((req.punctuality_rating + req.payment_rating) / 2.0, 1)
     rating = CollectorRating(
         farmer_id=user.id,
         collector_id=req.collector_id,
-        harvest_id=req.harvest_id,
+        harvest_id=harvest_id,
         punctuality_rating=req.punctuality_rating,
         payment_rating=req.payment_rating,
         overall_rating=overall,
         review_text=req.review_text,
     )
     db.add(rating)
-    await db.flush()
+    try:
+        async with db.begin_nested():
+            await db.flush()
+    except IntegrityError as e:          # indeks unik (farmer_id, harvest_id) — klik ganda / dua HP bersamaan
+        raise HTTPException(409, "Transaksi ini sudah Anda nilai.") from e
 
     # Perbarui scorecard reputasi pengepul
     rep = (await db.execute(

@@ -153,3 +153,19 @@ def test_broadcast_read_state_is_per_user(client):
     assert nid in unread(hb), "membaca siaran oleh A tidak menandai milik B"
     assert client.post("/api/v1/notifications/read-all", headers=hb).status_code == 200
     assert unread(hb) == set()
+
+
+# ------------------------------------------------------------------ rating pengepul hanya dari transaksi nyata
+def test_collector_rating_requires_real_transaction_once(client):
+    hp = demo_headers(client, "pengepul")
+    collector_id = client.get("/api/v1/auth/me", headers=hp).json()["user_id"]
+    stranger = _phone()
+    assert _register_petani(client, stranger).status_code == 201
+    hs = _login(client, stranger)
+    body = {"collector_id": collector_id, "punctuality_rating": 1, "payment_rating": 1}
+    r = client.post("/api/v1/farmer/collector-ratings", headers=hs, json=body)
+    assert r.status_code == 403, "petani tanpa transaksi tidak boleh menilai pengepul"
+
+    hid = client.post("/api/v1/farmer/harvest", headers=hs, json={"quantity_kg": 500}).json()["id"]
+    r = client.post("/api/v1/farmer/collector-ratings", headers=hs, json={**body, "harvest_id": hid})
+    assert r.status_code == 403, "panen yang belum ditangani pengepul itu bukan transaksi dengannya"

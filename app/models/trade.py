@@ -156,8 +156,11 @@ class CollectorPaymentReputation(Base):
 
 
 class CollectorRating(Base):
-    """Evaluasi performa pengepul oleh petani (rating ketepatan waktu & pembayaran)."""
+    """Evaluasi performa pengepul oleh petani (rating ketepatan waktu & pembayaran). Satu rating per panen."""
     __tablename__ = "collector_ratings"
+    __table_args__ = (Index("uq_collector_rating_farmer_harvest", "farmer_id", "harvest_id", unique=True,
+                            postgresql_where=text("harvest_id IS NOT NULL"),
+                            sqlite_where=text("harvest_id IS NOT NULL")),)
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     farmer_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)

@@ -29,7 +29,8 @@ MIGRATIONS = ["002_circular_mass_balance.sql", "003_concurrency_indexes.sql", "0
               "023_gate_ramp_blending_and_financial.sql", "024_omni_e2e_state_machine.sql",
               "025_omni_v_omega_state_machine.sql",
               "000_app_role.sql", "026_audit_indexes_and_role_timeouts.sql",   # 026/027 butuh peran biochain_app
-              "027_notification_reads_rls_and_schema_migrations.sql"]
+              "027_notification_reads_rls_and_schema_migrations.sql",
+              "028_collector_rating_once_per_harvest.sql"]
 
 
 def psql(sql_file: pathlib.Path | None = None, command: str | None = None) -> str:
