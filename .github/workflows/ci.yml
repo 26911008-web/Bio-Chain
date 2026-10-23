@@ -6,9 +6,30 @@ on:
   pull_request:
     branches: [ master, main ]
 
+# Satu run per ref: push baru membatalkan run lama di PR yang sama
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"        # sama dengan Dockerfile (python:3.12-slim)
+
 jobs:
+  lint:
+    name: Lint (ruff — kesalahan fatal)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Ruff (sintaks, nama tak terdefinisi, perbandingan keliru)
+        run: |
+          python -m pip install --upgrade pip ruff
+          ruff check app scripts tests --select E9,F63,F7,F82 --output-format github
+
   test-and-benchmark:
-    name: Test & Performance SLO Gate
+    name: Test (SQLite + PostgreSQL) & Performance SLO Gate
     runs-on: ubuntu-latest
 
     services:
@@ -33,7 +54,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ env.PYTHON_VERSION }}
           cache: "pip"
 
       - name: Install Dependencies
@@ -41,7 +62,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Setup PostgreSQL Schema & Migrations
+      - name: Setup PostgreSQL Schema & Migrations (002-028)
         env:
           DATABASE_URL: "postgresql+asyncpg://biochain:biochain_dev_2026@localhost:5433/biochain"
         run: |
@@ -56,6 +77,28 @@ jobs:
         run: |
           pytest -q -p no:cacheprovider
 
+      # RLS, trigger append-only, CHECK & konkurensi diuji sebagai peran aplikasi `biochain_app`
+      # (NOSUPERUSER, NOBYPASSRLS). AUTO_MIGRATE/ALLOW_SQLITE_FALLBACK=false wajib: tanpa itu app jatuh
+      # diam-diam ke SQLite dan tes membandingkan dua database berbeda (lihat docstring tests/test_postgres.py).
+      - name: Seed demo data into PostgreSQL (owner)
+        env:
+          DATABASE_URL: "postgresql+asyncpg://biochain:biochain_dev_2026@localhost:5433/biochain"
+          AUTO_MIGRATE: "false"
+          ALLOW_SQLITE_FALLBACK: "false"
+        run: |
+          python -c "from fastapi.testclient import TestClient; from app.main import app; c = TestClient(app); c.__enter__(); print(c.get('/readyz').json()); c.__exit__(None, None, None)"
+
+      - name: Run PostgreSQL suite as app role (RLS)
+        env:
+          DATABASE_URL: "postgresql+asyncpg://biochain_app:biochain_app_dev@localhost:5433/biochain"
+          BIOCHAIN_TEST_PG_OWNER_URL: "postgresql+asyncpg://biochain:biochain_dev_2026@localhost:5433/biochain"
+          AUTO_MIGRATE: "false"
+          ALLOW_SQLITE_FALLBACK: "false"
+          RATE_LIMIT_REQUESTS: "1000000"
+          LOGIN_RATE_LIMIT: "1000000"
+        run: |
+          pytest -q -p no:cacheprovider tests/test_postgres.py
+
       - name: Run Engine Performance Benchmark (SLO <= 500ms)
         run: |
           python scripts/benchmark_engines.py --runs 5 --slo 500
@@ -66,3 +109,57 @@ jobs:
         with:
           name: benchmark-results
           path: docs/benchmark_results.md
+
+  e2e:
+    name: E2E Playwright (Chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: "sqlite+aiosqlite:///e2e.db"
+      RATE_LIMIT_REQUESTS: "1000000"
+      LOGIN_RATE_LIMIT: "1000000"
+      PUBLIC_DEMO: "false"
+      DEMO_MODE: "true"
+      DEBUG: "true"
+      JOB_BACKEND: "inline"
+      BIOCHAIN_URL: "http://127.0.0.1:8766"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Start app server (clean SQLite) & seed e2e data
+        run: |
+          nohup python -m uvicorn app.main:app --port 8766 > server.log 2>&1 &
+          for i in $(seq 1 60); do curl -fs http://127.0.0.1:8766/readyz && break; sleep 1; done
+          curl -fs http://127.0.0.1:8766/readyz
+          python scripts/seed_e2e_audit.py
+          python seed_biomass_e2e.py
+
+      - name: Run Playwright
+        run: npx playwright test --reporter=line
+
+      - name: Upload Playwright artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: |
+            test-results/
+            server.log
+          retention-days: 7
