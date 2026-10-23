@@ -17,7 +17,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 # v2 infrastructure
@@ -211,9 +211,18 @@ async def _zero_div(_: Request, exc: ZeroDivisionError):
 
 # Static files & uploads
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
-UPLOADS_DIR = settings.uploads_path
-UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR), name="uploads")
+
+
+@app.get("/uploads/{name}", include_in_schema=False)
+async def serve_upload(name: str):
+    """Foto bukti dari penyimpanan aktif (disk lokal / Supabase Storage). Nama = sha256 isi → immutable."""
+    from .services.file_store import content_type_for, get_store, is_safe_name
+    data = await get_store().load(name) if is_safe_name(name) else None
+    if data is None:
+        return JSONResponse(status_code=404, content={"detail": "Berkas tidak ditemukan"})
+    return Response(content=data, media_type=content_type_for(name),
+                    headers={"Cache-Control": "public, max-age=31536000, immutable",
+                             "X-Content-Type-Options": "nosniff"})
 
 
 # ================================================================

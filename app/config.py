@@ -28,10 +28,17 @@ class Settings(BaseSettings):
     PGBOUNCER: bool = False                 # True → nonaktifkan prepared-statement cache asyncpg
     # Folder foto bukti. Kosong = app/static/uploads; di Vercel (disk read-only) otomatis /tmp (sementara!)
     UPLOADS_DIR: str = ""
+    # Supabase Storage (bucket privat) untuk foto bukti persisten. Kosong → disk lokal (UPLOADS_DIR).
+    SUPABASE_URL: str = ""
+    SUPABASE_SECRET_KEY: str = ""           # kunci sb_secret_… — HANYA server, jangan pernah ke browser
+    SUPABASE_BUCKET: str = "bukti"
+    # Demo publik (URL dibagikan): sembunyikan admin, matikan reset, kunci akun demo bersama (security/demo_guard.py)
+    PUBLIC_DEMO: bool = False
+    DEMO_ADMIN_PASSWORD: str = ""           # password admin demo; kosong = default seed (hanya untuk laptop)
 
     # Redis
     REDIS_URL: str = "redis://localhost:6381/0"
-    JOB_BACKEND: str = "local"              # local | arq. arq wajib diset eksplisit (tidak menebak dari port terbuka)
+    JOB_BACKEND: str = "local"              # local | inline (serverless) | arq. arq wajib diset eksplisit
     REDIS_KEY_PREFIX: str = "biochain:"     # semua kunci Redis Bio-Chain ber-namespace (aman berbagi Redis)
 
     # Auth
@@ -105,6 +112,13 @@ class Settings(BaseSettings):
         return v
 
     @model_validator(mode="after")
+    def _validate_public_demo(self):
+        # Demo publik: password admin default (admin2026) tercantum di README → wajib diganti, gagal tertutup
+        if self.PUBLIC_DEMO and len(self.DEMO_ADMIN_PASSWORD) < 12:
+            raise ValueError("PUBLIC_DEMO=true wajib DEMO_ADMIN_PASSWORD minimal 12 karakter (bukan password demo default).")
+        return self
+
+    @model_validator(mode="after")
     def _validate_secrets(self):
         if not self.DEBUG:
             if self.JWT_SECRET.startswith("biochain-dev-secret") or len(self.JWT_SECRET) < 32:
@@ -115,7 +129,7 @@ class Settings(BaseSettings):
                 raise ValueError("DEMO_MODE harus False saat DEBUG=False (akun demo & reset data terbuka).")
             if self.ALLOW_SQLITE_FALLBACK and "sqlite" not in self.DATABASE_URL.lower():
                 raise ValueError("ALLOW_SQLITE_FALLBACK harus False di produksi (cegah split-brain SQLite/PostgreSQL).")
-            if self.JOB_BACKEND != "arq" and not self.ALLOW_LOCAL_JOBS_IN_PROD:
+            if self.JOB_BACKEND not in ("arq", "inline") and not self.ALLOW_LOCAL_JOBS_IN_PROD:
                 raise ValueError("JOB_BACKEND=arq (+ REDIS_URL) wajib di produksi: job & antrean in-memory tidak terbagi "
                                  "antar worker. Untuk server satu worker setel ALLOW_LOCAL_JOBS_IN_PROD=true.")
             origins = self.cors_origins

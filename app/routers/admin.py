@@ -221,6 +221,8 @@ async def seed_demo_data(
     from ..config import settings
     if not settings.DEMO_MODE:
         raise HTTPException(404, "Not Found")
+    from ..security.demo_guard import forbid_in_public_demo
+    forbid_in_public_demo("Seed ulang data demo")
     from ..seed import seed_demo_data as run_seed
     result = await run_seed(db, force_reset=force_reset)
     return result

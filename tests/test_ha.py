@@ -137,3 +137,24 @@ def test_instant_param_invalidation_marks_stale():
     assert not params.needs_refresh()
     params.mark_stale()
     assert params.needs_refresh()
+
+
+def test_inline_job_backend_returns_result_in_submit_response(client, pabrik, monkeypatch):
+    """Serverless: polling bisa mendarat di instance lain → hasil wajib ikut di respons submit (status done)."""
+    from app import jobs
+    monkeypatch.setattr(jobs, "_backend", jobs.InlineJobs())
+    body = {"vehicle_m3": 30, "mode": "heuristic", "time_budget_ms": 50}
+    r = client.post("/api/v1/jobs/routes/optimize", headers=pabrik, json=body)
+    assert r.status_code == 202
+    data = r.json()
+    assert data["backend"] == "inline" and data["status"] == "done"
+    assert data["result"]["computation_details"]["mode_used"] == "heuristic"
+    bad = client.post("/api/v1/jobs/routes/optimize", headers=pabrik, json={"mode": "exact"}).json()
+    assert bad["status"] == "failed" and "exact" in bad["error"]
+
+
+def test_client_ip_on_vercel_uses_edge_forwarded_for(monkeypatch):
+    """Di Vercel, edge menimpa X-Forwarded-For dengan IP klien asli; tanpa ini semua pengguna berbagi 1 kuota."""
+    monkeypatch.setattr(rate_limiter, "ON_VERCEL", True)
+    assert rate_limiter.client_ip(_req("10.0.0.5", "203.0.113.7")) == "203.0.113.7"
+    assert rate_limiter.client_ip(_req("10.0.0.5", None)) == "10.0.0.5"

@@ -27,7 +27,10 @@ async def submit_route_optimization(
     if not mills:
         raise HTTPException(422, "Tidak ada penggilingan yang dipilih.")
     job_id = await jobs.submit("route_optimize", {"depot": depot, "mills": mills, "request": req.model_dump()})
-    return {"job_id": job_id, "status": "queued", "backend": jobs.name, "poll_url": f"/api/v1/jobs/{job_id}"}
+    out = {"job_id": job_id, "status": "queued", "backend": jobs.name, "poll_url": f"/api/v1/jobs/{job_id}"}
+    if jobs.name == "inline":                         # sudah selesai di request ini: kirim hasil, tanpa polling
+        out.update(await jobs.get(job_id) or {})
+    return out
 
 
 @router.get("/{job_id}")

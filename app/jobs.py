@@ -6,6 +6,8 @@ lonjakan permintaan optimasi tidak memakan slot request/koneksi DB API.
 Backend:
 - ArqJobs   : Redis + worker terpisah (`arq app.worker.WorkerSettings`). Wajib bila API > 1 proses.
 - LocalJobs : asyncio task + thread pool terbatas di proses API (dev / satu proses, tanpa Redis).
+- InlineJobs: serverless (Vercel) — dihitung di dalam request submit lalu langsung `done`, karena polling
+              berikutnya bisa mendarat di instance lain yang tidak punya memori job tersebut.
 `JOB_BACKEND=arq` harus diset eksplisit; port Redis yang kebetulan terbuka (bisa milik proyek lain)
 tidak pernah dipakai otomatis. Antrean arq memakai nama ber-namespace (QUEUE_NAME).
 """
@@ -75,6 +77,17 @@ class LocalJobs:
             del self._jobs[jid]
 
 
+class InlineJobs(LocalJobs):
+    name = "inline"
+
+    async def submit(self, kind: str, payload: dict) -> str:
+        self._gc()
+        job_id = uuid.uuid4().hex
+        self._jobs[job_id] = {"job_id": job_id, "kind": kind, "status": "queued", "created_at": time.time()}
+        await self._run(job_id, kind, payload)
+        return job_id
+
+
 # ---------------------------------------------------------------- backend arq / Redis
 class ArqJobs:
     name = "arq"
@@ -112,15 +125,18 @@ class ArqJobs:
         return {**out, "status": "failed", "error": _public_error(info.result)}
 
 
-_backend: LocalJobs | ArqJobs | None = None
+_backend: LocalJobs | InlineJobs | ArqJobs | None = None
 _lock = asyncio.Lock()
 
 
-async def get_job_backend() -> LocalJobs | ArqJobs:
+async def get_job_backend() -> LocalJobs | InlineJobs | ArqJobs:
     """Dependency FastAPI: backend job tunggal per proses."""
     global _backend
     if _backend is None:
         async with _lock:
             if _backend is None:
-                _backend = await ArqJobs.connect() if settings.JOB_BACKEND == "arq" else LocalJobs()
+                if settings.JOB_BACKEND == "arq":
+                    _backend = await ArqJobs.connect()
+                else:
+                    _backend = InlineJobs() if settings.JOB_BACKEND == "inline" else LocalJobs()
     return _backend

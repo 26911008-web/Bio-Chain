@@ -15,6 +15,7 @@ import uuid
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .security.demo_guard import demo_password
 from .services.qr_sign import new_qr_code
 from .data import MILLS, DEPOT
 from .models.user import User, UserRole, IncentiveTier
@@ -180,7 +181,7 @@ async def seed_demo_data(db: AsyncSession, force_reset: bool = False) -> dict:
                 username=acc["username"],
                 phone=acc["phone"],
                 email=acc.get("email"),
-                password_hash=hash_password(acc["password"]),
+                password_hash=hash_password(demo_password(acc)),
                 full_name=acc["full_name"],
                 role=acc["role"],
                 is_active=True,
@@ -462,7 +463,7 @@ async def seed_demo_data(db: AsyncSession, force_reset: bool = False) -> dict:
             {
                 "username": a["username"],
                 "phone": a["phone"],
-                "password": a["password"],
+                "password": demo_password(a),
                 "role": a["role"],
                 "role_label": a["role_label"],
                 "icon": a["icon"],

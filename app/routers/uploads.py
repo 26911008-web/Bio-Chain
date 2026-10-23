@@ -5,14 +5,11 @@ import hashlib
 import anyio.to_thread
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 
-from ..config import settings
 from ..dependencies import get_current_user
 from ..models.user import User
+from ..services.file_store import get_store
 
 router = APIRouter()
-
-UPLOADS_DIR = settings.uploads_path
-UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".pdf"}
 ALLOWED_MIME_TYPES = {
@@ -78,10 +75,10 @@ async def upload_file(
     # pemakaian ulang foto bukti lintas transaksi terdeteksi (`duplicate`), tanpa tabel tambahan.
     digest = hashlib.sha256(original).hexdigest()
     safe_filename = f"{digest[:40]}{ext}"
-    dest_path = UPLOADS_DIR / safe_filename
-    duplicate = dest_path.exists()
+    store = get_store()
+    duplicate = await store.exists(safe_filename)
     if not duplicate:
-        await anyio.to_thread.run_sync(dest_path.write_bytes, content)
+        await store.save(safe_filename, content, content_type)
 
     return {
         "url": f"/uploads/{safe_filename}",

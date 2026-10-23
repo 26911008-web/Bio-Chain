@@ -67,3 +67,4 @@ videos/
 
 .vercel
 .env*
+supabase/.temp/

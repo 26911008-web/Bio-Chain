@@ -275,6 +275,8 @@ async def get_me(user: Annotated[User, Depends(get_current_user)]):
 async def change_password(req: ChangePasswordRequest, user: Annotated[User, Depends(get_current_user)],
                           db: Annotated[AsyncSession, Depends(get_db)]):
     """Ganti password sendiri (wajib setelah reset oleh admin — F6)."""
+    from ..security.demo_guard import forbid_shared_account_change
+    forbid_shared_account_change(user.username, "Ganti password")
     if not await run_cpu(verify_password, req.old_password, user.password_hash):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Password lama salah")
     if req.old_password == req.new_password:
@@ -293,8 +295,8 @@ async def get_demo_accounts():
     """Daftar akun demo resmi untuk auto-fill di halaman login (hanya DEMO_MODE; produksi → 404)."""
     if not settings.DEMO_MODE:
         raise HTTPException(404, "Not Found")
-    from ..seed import DEMO_ACCOUNTS
-    return DEMO_ACCOUNTS
+    from ..security.demo_guard import visible_demo_accounts
+    return visible_demo_accounts()
 
 
 @router.post("/reset-demo")
@@ -306,6 +308,8 @@ async def reset_demo(
     """Reset & isi ulang database dengan data demo — hanya admin & hanya DEMO_MODE (operasi destruktif)."""
     if not settings.DEMO_MODE:
         raise HTTPException(404, "Not Found")
+    from ..security.demo_guard import forbid_in_public_demo
+    forbid_in_public_demo("Reset data demo")
     user = await get_current_user(request, credentials, db)
     if user.role != UserRole.ADMIN:
         raise HTTPException(403, "Reset data hanya untuk admin.")

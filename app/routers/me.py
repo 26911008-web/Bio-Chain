@@ -67,6 +67,8 @@ async def data_export(
 async def delete_me(req: DeleteRequest, user: Annotated[User, Depends(get_current_user)],
                     db: Annotated[AsyncSession, Depends(get_db)]):
     from .auth import verify_password
+    from ..security.demo_guard import forbid_shared_account_change
+    forbid_shared_account_change(user.username, "Hapus akun")
     if not await run_cpu(verify_password, req.password, user.password_hash):
         raise HTTPException(401, "Password salah.")
     return await privacy.anonymize(db, user, req.reason)

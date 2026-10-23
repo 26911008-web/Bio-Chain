@@ -122,3 +122,33 @@ async def test_upload_rejects_fake_image(collector_token):
         files = {"file": ("bukti.jpg", b"<html><script>alert(1)</script></html>", "image/jpeg")}
         resp = await ac.post("/api/v1/uploads", files=files, headers={"Authorization": f"Bearer {collector_token}"})
         assert resp.status_code == 400 and "bukan gambar" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name", ["..%2Fmain.py", ".env", "a..b.jpg", "tidak-ada-0000.jpg"])
+async def test_serve_upload_rejects_traversal_and_missing(name):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        resp = await ac.get(f"/uploads/{name}")
+        assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_supabase_store_roundtrip_uses_secret_key_server_side():
+    import httpx
+    from app.services.file_store import SupabaseStore
+    objects: dict[str, bytes] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        assert req.headers["apikey"] == "sb_secret_test" and req.headers["authorization"] == "Bearer sb_secret_test"
+        key = req.url.path.split("/storage/v1/object/bukti/", 1)[1]
+        if req.method == "POST":
+            objects[key] = req.content
+            return httpx.Response(200, json={"Key": f"bukti/{key}"})
+        if key not in objects:
+            return httpx.Response(400, json={"error": "not_found", "message": "Object not found"})
+        return httpx.Response(200, content=b"" if req.method == "HEAD" else objects[key])
+
+    store = SupabaseStore("https://x.supabase.co", "sb_secret_test", "bukti", transport=httpx.MockTransport(handler))
+    assert not await store.exists("a.pdf") and await store.load("a.pdf") is None
+    await store.save("a.pdf", b"%PDF-1.4", "application/pdf")
+    assert await store.exists("a.pdf") and await store.load("a.pdf") == b"%PDF-1.4"
