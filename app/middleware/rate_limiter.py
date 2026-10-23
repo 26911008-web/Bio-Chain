@@ -23,6 +23,8 @@ EXEMPT_PATHS = {"/health", "/ready", "/docs", "/openapi.json", "/redoc"}
 LOGIN_PATH = "/api/v1/auth/login"
 TRUSTED_PROXIES = {ip.strip() for ip in settings.TRUSTED_PROXIES.split(",") if ip.strip()}
 ON_VERCEL = bool(os.getenv("VERCEL"))
+# Backend yang terakhir dipakai ("redis" | "memory") — dilaporkan /readyz untuk pemantauan (bukan rahasia)
+BACKEND = {"name": "memory"}
 
 
 def client_ip(request: Request) -> str:
@@ -104,6 +106,7 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
         now = time.time()
 
         redis_client = await self._get_redis()
+        BACKEND["name"] = "memory" if redis_client is None else "redis"
         if redis_client is None:
             request_count = self._memory.hit(bucket, now, self.window)
             if is_login and self._memory.hit(f"login:{ip}", now, self.window) > settings.LOGIN_RATE_LIMIT:
@@ -128,6 +131,7 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
             self._redis_available = False
             self._redis = None
             self._last_checked = time.time()
+            BACKEND["name"] = "memory"
             return await self._respond(request, call_next, self._memory.hit(bucket, now, self.window))
 
         return await self._respond(request, call_next, request_count)
