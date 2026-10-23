@@ -139,16 +139,9 @@ async function aiSend(text) {
   const started = Date.now();
   let answer = "";
   try {
-    const res = await fetch("/api/v1/assistant/chat/stream", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${STATE.token}` },
-      body: JSON.stringify({ message: text, history: AI.history.slice(-10),
-                             provider: $("ai-provider").value || undefined, model: $("ai-model").value || undefined }),
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.detail || `HTTP ${res.status}`);
-    }
+    const res = await apiRaw("/api/v1/assistant/chat/stream", { timeoutMs: 30000,
+      body: { message: text, history: AI.history.slice(-10),
+              provider: $("ai-provider").value || undefined, model: $("ai-model").value || undefined } });
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     for (;;) {

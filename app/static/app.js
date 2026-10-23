@@ -863,7 +863,9 @@ window.addEventListener("keydown", (e) => {
   }
 });
 
-async function api(path, options = {}) {
+// Respons mentah (blob / stream / FormData) dengan perlakuan yang sama seperti api(): token Bearer, timeout
+// sampai header respons tiba (body stream boleh mengalir lebih lama), 401 → logout, error ber-.status/.code.
+async function apiRaw(path, options = {}) {
   const headers = options.headers || {};
   const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
   if (options.body && !isFormData && !headers["Content-Type"]) {
@@ -898,15 +900,30 @@ async function api(path, options = {}) {
     throw err;
   }
 
-  const data = await res.json().catch(() => ({}));
   if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
     const msg = data.detail || res.statusText || "Terjadi kesalahan";
     const err = new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
     err.status = res.status;
     if (data.code) err.code = data.code;
     throw err;
   }
-  return data;
+  return res;
+}
+
+async function api(path, options = {}) {
+  const res = await apiRaw(path, options);
+  return res.json().catch(() => ({}));
+}
+
+// Unduh berkas lewat apiRaw; nama dari Content-Disposition bila ada
+async function apiDownload(path, fallbackName) {
+  const res = await apiRaw(path, { timeoutMs: 60000 });
+  const blob = await res.blob();
+  const name = (res.headers.get("Content-Disposition") || "").match(/filename="([^"]+)"/)?.[1] || fallbackName;
+  const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: name });
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 
 // ==============================================================
@@ -1108,25 +1125,13 @@ async function loadReport() {
 }
 
 async function downloadReportCsv() {
-  try {
-    const res = await fetch(`/api/reports/monthly${rpQuery("&format=csv")}`, { headers: { Authorization: `Bearer ${STATE.token}` } });
-    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || `HTTP ${res.status}`);
-    const blob = await res.blob();
-    const name = (res.headers.get("Content-Disposition") || "").match(/filename="([^"]+)"/)?.[1] || "laporan.csv";
-    const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: name });
-    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
-  } catch (err) { showToast(err.message, "❌"); }
+  try { await apiDownload(`/api/reports/monthly${rpQuery("&format=csv")}`, "laporan.csv"); }
+  catch (err) { showToast(err.message, "❌"); }
 }
 
 async function downloadReportXlsx() {
-  try {
-    const res = await fetch(`/api/reports/monthly${rpQuery("&format=xlsx")}`, { headers: { Authorization: `Bearer ${STATE.token}` } });
-    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || `HTTP ${res.status}`);
-    const blob = await res.blob();
-    const name = (res.headers.get("Content-Disposition") || "").match(/filename="([^"]+)"/)?.[1] || "laporan.xlsx";
-    const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: name });
-    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
-  } catch (err) { showToast(err.message, "❌"); }
+  try { await apiDownload(`/api/reports/monthly${rpQuery("&format=xlsx")}`, "laporan.xlsx"); }
+  catch (err) { showToast(err.message, "❌"); }
 }
 $("btn-rp") && ($("btn-rp").onclick = e => withBusy(e.currentTarget, loadReport));
 $("btn-rp-csv") && ($("btn-rp-csv").onclick = e => withBusy(e.currentTarget, downloadReportCsv));
@@ -1245,14 +1250,7 @@ async function photoQueue(file) {
 async function photoUpload(blob) {
   const fd = new FormData();
   fd.append("file", blob, blob.name || "bukti.jpg");
-  let res;
-  try {
-    res = await fetch("/api/v1/uploads", { method: "POST", body: fd,
-                                            headers: STATE.token ? { Authorization: `Bearer ${STATE.token}` } : {} });
-  } catch { const e = new Error("Tidak ada sinyal"); e.network = true; throw e; }
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) { const e = new Error(data.detail || `HTTP ${res.status}`); e.status = res.status; throw e; }
-  return data;
+  return api("/api/v1/uploads", { method: "POST", body: fd, timeoutMs: 60000 });   // foto ≤300 KB, sinyal 2G
 }
 async function resolvePendingPhotos(body) {
   const tokens = Object.entries(body).filter(([, v]) => typeof v === "string" && v.startsWith(PHOTO_PREFIX));
@@ -2242,16 +2240,9 @@ async function runAIEvaluation(role) {
   const started = Date.now();
   let text = "";
   try {
-    const res = await fetch("/api/v1/assistant/evaluate/stream", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${STATE.token}` },
-      body: JSON.stringify({ focus: ($(`ai-eval-focus-${role}`) || {}).value || null,
-                             provider: ($(`eval-provider-${role}`) || {}).value || null }),
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.detail || `HTTP ${res.status}`);
-    }
+    const res = await apiRaw("/api/v1/assistant/evaluate/stream", { timeoutMs: 30000,
+      body: { focus: ($(`ai-eval-focus-${role}`) || {}).value || null,
+              provider: ($(`eval-provider-${role}`) || {}).value || null } });
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     for (;;) {

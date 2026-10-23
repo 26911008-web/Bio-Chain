@@ -743,14 +743,7 @@
 
   async function exportMyData() {
     try {
-      const res = await fetch("/api/v1/me/data-export", { headers: { Authorization: `Bearer ${STATE.token}` } });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const blob = await res.blob();
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = `biochain-data-saya-${(STATE.user || {}).user_id || "akun"}.json`;
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      await apiDownload("/api/v1/me/data-export", `biochain-data-saya-${(STATE.user || {}).user_id || "akun"}.json`);
       showToast("Data Anda diunduh (JSON).", "📄");
     } catch (e) { showToast("Gagal mengunduh: " + e.message, "❌"); }
   }

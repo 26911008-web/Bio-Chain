@@ -706,19 +706,14 @@
       try {
         const fd = new FormData();
         fd.append("file", small, small.name || "bukti.jpg");
-        let token = null;
-        try { token = STATE.token; } catch {}
-        const res = await fetch("/api/v1/uploads", { method: "POST", body: fd,
-                                                      headers: token ? { Authorization: `Bearer ${token}` } : {} });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+        const data = await api("/api/v1/uploads", { method: "POST", body: fd, timeoutMs: 60000 });
         input.value = data.url;
         input.dispatchEvent(new Event("input", { bubbles: true }));
         status.innerHTML = `✅ Terunggah (${Math.round(data.size_bytes / 1024)} KB)${data.duplicate
             ? " · ⚠️ foto ini pernah diunggah sebelumnya — pastikan bukan foto lama" : ""}
           <img src="${esc(data.url)}" alt="Pratinjau foto bukti" class="photo-thumb">`;
       } catch (err) {
-        if ((navigator.onLine === false || err instanceof TypeError) && window.BiochainPhotos) {
+        if ((navigator.onLine === false || err.network || err instanceof TypeError) && window.BiochainPhotos) {
           try { await saveOffline(); } catch (e2) { status.textContent = `⚠️ ${e2.message}`; }
         } else {
           status.textContent = `⚠️ Gagal unggah: ${err.message}`;

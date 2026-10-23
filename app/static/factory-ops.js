@@ -462,13 +462,8 @@
 
   async function downloadEsgCsv() {
     try {
-      const res = await fetch(`/api/v1/factory/esg/report.csv${q("fx-esg")}`, { headers: { Authorization: `Bearer ${STATE.token}` } });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(await res.blob());
-      a.download = `laporan-esg-${$("fx-esg-from").value}-${$("fx-esg-to").value}.csv`;
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      await apiDownload(`/api/v1/factory/esg/report.csv${q("fx-esg")}`,
+                        `laporan-esg-${$("fx-esg-from").value}-${$("fx-esg-to").value}.csv`);
     } catch (e) { showToast("Gagal mengunduh: " + e.message, "❌"); }
   }
 
