@@ -247,3 +247,23 @@ Metode:
 - Paket & PITR Supabase.
 - `app.js` (6.300 baris) dan `factory.py` dicek dengan grep + sampel, belum dibaca utuh baris per baris.
 - Uji UX dengan pengguna lapangan sungguhan. Heuristik menemukan ±75% masalah; sisanya butuh uji pengguna.
+
+---
+
+## 9. Tahap 3 (23 Okt 2026) — sisa roadmap kode
+
+| Item | Hasil |
+|---|---|
+| Ketelusuran QR publik (S-4) | **Selesai.** Tanpa login hanya kode QR **bertanda tangan HMAC** (`BIO-XXXXXXXX-TTTTTT`) yang diterima, dibaca dengan identitas sistem RLS, dan data disamarkan. Ini memperbaiki fitur QR publik yang di live selalu kosong. Pengguna login memakai identitasnya sendiri. ID angka/`WR-HV-…` tanpa login → 401, sehingga lot tidak bisa dienumerasi. `/recent` wajib login. |
+| Status baca notifikasi per pengguna | **Selesai.** Tabel `notification_reads`: notifikasi siaran kini punya status baca per pengguna. `is_read` hanya dipakai untuk notifikasi milik sendiri. Hitungan belum dibaca, tandai satu, dan tandai semua sudah per pengguna. |
+| RLS `notifications` + `schema_migrations` | **Migrasi 027.** RLS: notifikasi bertuan hanya untuk pemilik, siaran per peran, admin/auditor/sistem melihat semua. Tabel `schema_migrations` kini diisi otomatis oleh `pg_setup.py`. Hak akses hanya untuk `biochain_app`, bukan PUBLIC/anon. |
+| Uji PostgreSQL | **17/17 lulus** (baseline 2/16). Kegagalan "API ≠ view" ternyata **masalah setup tes**: tanpa `AUTO_MIGRATE=false`, app sebagai `biochain_app` gagal menjalankan DDL lalu diam-diam jatuh ke SQLite lokal. Perintah yang benar ada di docstring `tests/test_postgres.py`. Tambahkan `ALLOW_SQLITE_FALLBACK=false`. |
+| AI-3 retry | **Selesai.** Ulang **sekali** dengan jeda acak 0,6–1,2 s untuk 429/5xx/gagal koneksi. Pada stream, retry hanya sebelum potongan pertama. Ada tes khusus. AI-4 (klien HTTP bersama) **tidak dikerjakan**: tes mem-patch `new_client` per tes, dan manfaatnya kecil di Fluid Compute. |
+| A-6 pecah berkas besar | **Selesai sebagian besar.** `app.js` 6.328 → 5.549 baris: modul `qr-tools.js`, `engine-lab.js`, `engine-lab-product.js`. `factory.py` 1.990 → 1.071 baris: `factory_esg.py`, `factory_optimization.py`, `factory_supply.py`. `farmer.py` 1.208 → 680 baris: `farmer_market.py`, `farmer_feedback.py`. Operasi OpenAPI pabrik+petani **identik** sebelum/sesudah (116 operasi). |
+| Pagination, `response_model`, Sentry | Belum (lihat §7). Sentry perlu DSN akun. |
+
+**Pekerjaan sisi akun yang dicoba:**
+- **Upstash Redis.** Diprovisikan lewat `vercel integration add upstash/upstash-kv` (free, `bom1`). CLI berhenti di `userActionRequired`: pemilik akun harus menyetujui syarat Upstash di <https://vercel.com/mm-op/~/integrations/accept-terms/upstash?source=cli>. Setelah itu jalankan ulang perintah `next[]`. Aplikasi membaca `REDIS_URL`; bila integrasi memberi nama lain (mis. `KV_URL`), set `REDIS_URL` ke nilai `rediss://` tersebut.
+- **`QR_HMAC_KEY`.** Sengaja **tidak** diisi. Mengisinya dengan kunci baru membatalkan semua QR yang sudah tercetak (saat ini kunci diturunkan dari `JWT_SECRET`). Isi hanya sebelum mencetak QR produksi sungguhan, dan setelah itu jangan rotasi `JWT_SECRET` tanpa rencana.
+- **Env Preview terpisah.** Butuh database kedua (Supabase branch/proyek, ada biaya) dan keputusan Anda. Deployment Protection untuk Preview **sudah aktif** (terverifikasi: 302 ke login Vercel).
+- **Scope `workflow` token gh.** Harus Anda jalankan sendiri secara interaktif: `gh auth refresh -s workflow`.
