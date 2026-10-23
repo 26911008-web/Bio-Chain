@@ -301,9 +301,11 @@ async def readiness():
             content={"status": "not_ready", "database": "error"},
         )
 
+    from .middleware.rate_limiter import BACKEND as rl_backend
     return {
         "status": "ready",
         "database": "ok",
+        "rate_limiter": rl_backend["name"],
         "driver": db_module.active_driver,
         "version": "2.0.0",
     }
