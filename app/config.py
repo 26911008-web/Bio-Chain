@@ -67,6 +67,12 @@ class Settings(BaseSettings):
     # tanpa batas di server sendiri (model lokal Ollama bisa lambat tetapi tetap mengalir).
     AI_TOTAL_TIMEOUT_S: float = 0.0
     AI_MAX_TOKENS: int = 600
+    # Hemat token & biaya: kuota pertanyaan AI per akun per hari (0 = tanpa batas), direset pukul 00.00 waktu
+    # lokal (UTC+7 = WIB). Riwayat yang diteruskan ke LLM dipangkas ke N pesan terakhir, tiap pesan maks. N karakter.
+    AI_DAILY_QUOTA: int = 3
+    AI_QUOTA_UTC_OFFSET_HOURS: int = 7
+    AI_HISTORY_MESSAGES: int = 3
+    AI_HISTORY_MAX_CHARS: int = 1200
     # Model selain default yang boleh dipilih non-admin (dipisah koma). Kosong = non-admin selalu memakai model
     # default provider — mencegah akun mana pun (termasuk demo publik) memilih model mahal atas biaya server.
     AI_ALLOWED_MODELS: str = ""

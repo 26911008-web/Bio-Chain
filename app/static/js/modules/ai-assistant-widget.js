@@ -15,7 +15,14 @@ const AI_SUGGEST = {
   auditor: ["Ringkas temuan neraca massa saat ini.", "Indikator kecurangan timbangan apa yang perlu dipantau?"],
   admin: ["Ringkas kondisi rantai pasok hari ini.", "Apa risiko operasional terbesar saat ini?"],
 };
-const AI = { history: [], providers: [], busy: false };
+const AI = { history: [], providers: [], busy: false, quota: null };
+// Hemat token: server hanya memakai 3 pesan terakhir (AI_HISTORY_MESSAGES); kirim sebanyak itu saja.
+const AI_HISTORY_SEND = 3;
+
+function aiQuotaNote() {
+  const q = AI.quota;
+  return q && q.limit ? ` · sisa kuota hari ini ${q.remaining}/${q.limit}` : "";
+}
 
 function aiFormat(text) {
   return esc(text)
@@ -95,6 +102,7 @@ async function aiInitProviders() {
   try {
     const r = await api("/api/v1/assistant/providers");
     AI.providers = r.providers;
+    AI.quota = r.quota || null;
     const saved = aiLoad("ai_provider");
     const pick = AI.providers.find(p => p.id === saved && p.configured) ? saved : r.default;
     $("ai-provider").innerHTML = AI.providers.map(p =>
@@ -110,7 +118,7 @@ async function aiLoadModels() {
   const prov = AI.providers.find(p => p.id === pid) || {};
   const saved = aiLoad(`ai_model_${pid}`) || prov.default_model;
   $("ai-model").innerHTML = saved ? `<option>${esc(saved)}</option>` : `<option value="">memuat model…</option>`;
-  $("ai-meta").textContent = prov.note || "";
+  $("ai-meta").textContent = (prov.note || "") + aiQuotaNote();
   try {
     const r = await api(`/api/v1/assistant/providers/${encodeURIComponent(pid)}/models`);
     const models = r.models.length ? r.models : (saved ? [saved] : []);
@@ -140,7 +148,7 @@ async function aiSend(text) {
   let answer = "";
   try {
     const res = await apiRaw("/api/v1/assistant/chat/stream", { timeoutMs: 30000,
-      body: { message: text, history: AI.history.slice(-10),
+      body: { message: text, history: AI.history.slice(-AI_HISTORY_SEND),
               provider: $("ai-provider").value || undefined, model: $("ai-model").value || undefined } });
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
@@ -153,7 +161,9 @@ async function aiSend(text) {
     }
     if (!answer.trim()) throw new Error("Model tidak mengembalikan jawaban.");
     AI.history.push({ role: "user", content: text }, { role: "assistant", content: answer.slice(0, 4000) });
-    $("ai-meta").textContent = `${res.headers.get("X-AI-Provider")} · ${res.headers.get("X-AI-Model")} · ${((Date.now() - started) / 1000).toFixed(1)} s`;
+    const left = res.headers.get("X-AI-Quota-Remaining");
+    if (AI.quota && left !== null) AI.quota.remaining = Number(left);
+    $("ai-meta").textContent = `${res.headers.get("X-AI-Provider")} · ${res.headers.get("X-AI-Model")} · ${((Date.now() - started) / 1000).toFixed(1)} s${aiQuotaNote()}`;
   } catch (err) {
     bubble.className = "ai-msg err";
     bubble.textContent = err.message === "Failed to fetch" ? "Tidak ada koneksi ke server." : err.message;

@@ -14,7 +14,7 @@ from ..ai.context import build_context, optimization_prompt, system_prompt
 from ..database import get_db
 from ..dependencies import get_current_user
 from ..models.user import User
-from ..services import insights
+from ..services import ai_quota, insights
 
 router = APIRouter()
 
@@ -53,16 +53,30 @@ def _error(e: P.AssistantError) -> JSONResponse:
     return JSONResponse(status_code=e.status, content={"detail": str(e)})
 
 
+def _quota_headers(left: int | None) -> dict:
+    return {} if left is None else {"X-AI-Quota-Remaining": str(left)}
+
+
+async def _reserve(db: AsyncSession, user: User) -> int | None:
+    """Pesan 1 kuota harian (dikembalikan bila provider gagal sebelum menjawab). Sisa kuota, None = tanpa batas."""
+    try:
+        return await ai_quota.consume(db, user.id)
+    except ai_quota.QuotaExhausted as e:
+        raise P.AssistantError(str(e), 429) from e
+
+
 async def http_client():
     async with P.new_client() as client:
         yield client
 
 
 @router.get("/providers")
-async def providers(user: Annotated[User, Depends(get_current_user)]):
-    """Provider yang tersedia + status konfigurasi. API key tidak pernah dikembalikan."""
+async def providers(user: Annotated[User, Depends(get_current_user)],
+                    db: Annotated[AsyncSession, Depends(get_db)]):
+    """Provider yang tersedia + status konfigurasi + sisa kuota harian. API key tidak pernah dikembalikan."""
     return {
         "default": P.resolve_default(),
+        "quota": await ai_quota.status(db, user.id),
         "providers": [{"id": p.id, "label": p.label, "note": p.note, "configured": P.is_configured(p),
                        "default_model": P.default_model(p), "needs": p.key_setting}
                       for p in P.PROVIDERS.values()],
@@ -79,15 +93,26 @@ async def models(provider_id: str, user: Annotated[User, Depends(get_current_use
         return _error(e)
 
 
+def _trim_history(history: list[ChatTurn]) -> list[dict]:
+    """Hemat token input: hanya N pesan terakhir, tiap pesan dipotong ke AI_HISTORY_MAX_CHARS karakter."""
+    n = settings.AI_HISTORY_MESSAGES
+    return [{"role": t.role, "content": t.content[:settings.AI_HISTORY_MAX_CHARS]}
+            for t in (history[-n:] if n > 0 else [])]
+
+
 async def _prepare(req: ChatRequest, user: User, db: AsyncSession):
+    # Provider & model divalidasi dulu: konfigurasi yang salah tidak boleh memakan kuota.
     p = P.get_provider(req.provider)
-    role = user.role.value if hasattr(user.role, "value") else str(user.role)
+    model = _pick_model(p, req.model, user)
+    if not model:
+        raise P.AssistantError(f"Pilih model untuk {p.label} (atau isi {p.model_setting} di .env).", 422)
+    left = await _reserve(db, user)
     ctx = await build_context(db, user)
-    await db.commit()                             # lepas koneksi DB selama menunggu LLM (bisa puluhan detik)
-    messages = [{"role": "system", "content": system_prompt(role, ctx)}]
-    messages += [t.model_dump() for t in req.history[-10:]]
+    await db.commit()                             # simpan kuota + lepas koneksi DB selama menunggu LLM
+    messages = [{"role": "system", "content": system_prompt(_role(user), ctx)}]
+    messages += _trim_history(req.history)
     messages.append({"role": "user", "content": req.message})
-    return p, _pick_model(p, req.model, user), messages, ctx
+    return p, model, messages, ctx, left
 
 
 @router.post("/chat")
@@ -96,12 +121,16 @@ async def chat(req: ChatRequest, user: Annotated[User, Depends(get_current_user)
                client: Annotated[httpx.AsyncClient, Depends(http_client)]):
     """Jawaban utuh sekaligus (untuk integrasi/tes). UI memakai /chat/stream."""
     try:
-        p, model, messages, ctx = await _prepare(req, user, db)
-        out = await P.chat(p, model, messages, client)
-        return {"reply": out["content"], "provider": p.id, "model": out["model"], "usage": out["usage"],
-                "context_scope": sorted(ctx)}
+        p, model, messages, ctx, left = await _prepare(req, user, db)
     except P.AssistantError as e:
         return _error(e)
+    try:
+        out = await P.chat(p, model, messages, client)
+    except P.AssistantError as e:
+        await ai_quota.refund(db, user.id)
+        return _error(e)
+    return JSONResponse({"reply": out["content"], "provider": p.id, "model": out["model"], "usage": out["usage"],
+                         "context_scope": sorted(ctx), "quota_remaining": left}, headers=_quota_headers(left))
 
 
 @router.post("/chat/stream")
@@ -109,23 +138,27 @@ async def chat_stream(req: ChatRequest, user: Annotated[User, Depends(get_curren
                       db: Annotated[AsyncSession, Depends(get_db)]):
     """Jawaban mengalir (text/plain) — kata pertama tampil secepat model menghasilkannya."""
     try:
-        p, model, messages, _ = await _prepare(req, user, db)
-        if not model:
-            raise P.AssistantError(f"Pilih model untuk {p.label} (atau isi {p.model_setting} di .env).", 422)
+        p, model, messages, _, left = await _prepare(req, user, db)
     except P.AssistantError as e:
         return _error(e)
+    uid, role = user.id, _role(user)
 
     async def gen():
         # Klien HTTP dimiliki generator: dependency yield sudah ditutup sebelum streaming dimulai.
         async with P.new_client() as client:
+            sent = False
             try:
                 async for chunk in P.chat_stream(p, model, messages, client):
+                    sent = True
                     yield chunk
             except P.AssistantError as e:
+                if not sent:                      # belum ada jawaban → pertanyaan tidak dihitung
+                    await ai_quota.refund_detached(uid, role)
                 yield f"\n\n⚠️ {e}"
 
     return StreamingResponse(gen(), media_type="text/plain; charset=utf-8",
-                             headers={"X-AI-Provider": p.id, "X-AI-Model": model, "Cache-Control": "no-store"})
+                             headers={"X-AI-Provider": p.id, "X-AI-Model": model, "Cache-Control": "no-store",
+                                      **_quota_headers(left)})
 
 
 
@@ -170,7 +203,13 @@ async def evaluate(req: EvaluateRequest, user: Annotated[User, Depends(get_curre
     try:
         p = P.get_provider(req.provider)
         model = _pick_model(p, req.model, user)
-        res = await P.chat(p, model, _opt_messages(user, ev, req.focus), client)
+        out["quota_remaining"] = await _reserve(db, user)   # `focus` = teks bebas → ikut kuota harian
+        await db.commit()
+        try:
+            res = await P.chat(p, model, _opt_messages(user, ev, req.focus), client)
+        except P.AssistantError:
+            await ai_quota.refund(db, user.id)
+            raise
         out.update(evaluation_markdown=res["content"], is_ai_generated=True, provider=p.label, model=res["model"])
     except P.AssistantError as e:
         out["ai_error"] = str(e)
@@ -188,6 +227,8 @@ async def evaluate_stream(req: EvaluateRequest, user: Annotated[User, Depends(ge
         model = _pick_model(p, req.model, user)
         if not model:
             raise P.AssistantError(f"Pilih model untuk {p.label} (atau isi {p.model_setting} di .env).", 422)
+        left = await _reserve(db, user)
+        await db.commit()
     except P.AssistantError as e:
         reason = str(e)                       # `e` dihapus Python di akhir blok except — simpan pesannya
 
@@ -196,6 +237,7 @@ async def evaluate_stream(req: EvaluateRequest, user: Annotated[User, Depends(ge
         return StreamingResponse(fb(), media_type="text/plain; charset=utf-8",
                                  headers={"X-AI-Fallback": "1", "Cache-Control": "no-store"})
     messages = _opt_messages(user, ev, req.focus)
+    uid, role = user.id, _role(user)
 
     async def gen():
         async with P.new_client() as client:
@@ -205,7 +247,10 @@ async def evaluate_stream(req: EvaluateRequest, user: Annotated[User, Depends(ge
                     sent = True
                     yield chunk
             except P.AssistantError as e:
+                if not sent:
+                    await ai_quota.refund_detached(uid, role)
                 yield (f"\n\n⚠️ {e}" if sent else f"⚠️ {e}. Ringkasan otomatis:\n\n{fallback}")
 
     return StreamingResponse(gen(), media_type="text/plain; charset=utf-8",
-                             headers={"X-AI-Provider": p.id, "X-AI-Model": model, "Cache-Control": "no-store"})
+                             headers={"X-AI-Provider": p.id, "X-AI-Model": model, "Cache-Control": "no-store",
+                                      **_quota_headers(left)})

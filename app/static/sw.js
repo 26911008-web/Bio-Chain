@@ -7,7 +7,7 @@
  * - Background Sync (Chrome/Edge Android): saat sinyal kembali, SW membangunkan halaman yang terbuka untuk
  *   mengirim antrean. Safari/Firefox tidak mendukung → halaman memakai event 'online' & interval.
  */
-const VERSION = "biochain-shell-v22";         // v22: modul qr-tools/engine-lab dipisah dari app.js; v21: apiRaw/apiDownload (timeout & logout-401 seragam); v20: lompat-bagian, layout HP
+const VERSION = "biochain-shell-v23";         // v23: kuota harian Asisten AI di widget; v22: modul qr-tools/engine-lab dipisah dari app.js; v21: apiRaw/apiDownload (timeout & logout-401 seragam); v20: lompat-bagian, layout HP
 const SHELL = ["/", "/static/tokens.css", "/static/components.css", "/static/app.js", "/static/ui-enhance.js", "/static/field-ops.js",
                "/static/factory-ops.js", "/static/excel-filter.js"];  // three.js sengaja tidak di-precache
 

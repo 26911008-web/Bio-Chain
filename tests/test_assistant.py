@@ -102,7 +102,12 @@ def test_history_is_trimmed_and_forwarded(client, mock_llm):
     _chat(client, "petani", history=history)
     msgs = CAPTURED[-1]["body"]["messages"]
     assert msgs[0]["role"] == "system" and msgs[-1]["content"] == "Bagaimana optimasinya?"
-    assert len(msgs) == 1 + 10 + 1
+    assert len(msgs) == 1 + settings.AI_HISTORY_MESSAGES + 1 and msgs[1]["content"] == "pesan 17"
+
+
+def test_history_messages_are_capped_in_length(client, mock_llm):
+    _chat(client, "petani", history=[{"role": "assistant", "content": "x" * 4000}])
+    assert len(CAPTURED[-1]["body"]["messages"][1]["content"]) == settings.AI_HISTORY_MAX_CHARS
 
 
 @pytest.mark.parametrize("provider,expects_reasoning", [("gemini", True), ("mistral", False)])

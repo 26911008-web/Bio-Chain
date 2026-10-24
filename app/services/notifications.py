@@ -96,7 +96,7 @@ def _val(x: Any) -> str:
 
 def _read_by(user: User) -> Any:
     """Sudah dibaca OLEH pengguna ini: milik sendiri → kolom is_read; lainnya → baris notification_reads."""
-    own = and_(Notification.user_id == user.id, Notification.is_read.is_(True))
+    own = and_(Notification.user_id.is_not(None), Notification.user_id == user.id, Notification.is_read.is_(True))
     other = exists().where(NotificationRead.notification_id == Notification.id, NotificationRead.user_id == user.id)
     return or_(own, other)
 

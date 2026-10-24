@@ -22,3 +22,4 @@ from .energy_ops import EnergyOperationLog  # noqa: F401
 from .industrial import (ByProductLedger, ByProductType, CarrierType, FactoryInvoice,  # noqa: F401
                          GateReception, LoadingRamp, PaymentScheme, ProductionBlend, TargetProduct)  # noqa: F401
 from .notification import Notification, NotificationRead, NotificationStatusGroup  # noqa: F401
+from .ai_usage import UserAIUsage  # noqa: F401

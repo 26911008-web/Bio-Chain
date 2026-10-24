@@ -16,6 +16,8 @@ os.environ.setdefault("LOGIN_RATE_LIMIT", "1000000")
 os.environ["REDIS_URL"] = "redis://127.0.0.1:1/0"
 os.environ["JOB_BACKEND"] = "local"
 os.environ.setdefault("DB_NULLPOOL", "true")      # asyncpg: koneksi per event loop (lihat app/database.py)
+# Akun demo dipakai puluhan kali per sesi tes: kuota AI harian dimatikan, kecuali di tests/test_ai_quota.py.
+os.environ.setdefault("AI_DAILY_QUOTA", "0")
 
 DEMO = {
     "petani": ("petani_sugeng", "sekam123"),
