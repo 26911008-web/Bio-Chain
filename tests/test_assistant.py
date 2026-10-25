@@ -62,8 +62,9 @@ def test_provider_list_never_leaks_api_keys(client, mock_llm):
     r = client.get("/api/v1/assistant/providers", headers=demo_headers(client, "petani"))
     assert r.status_code == 200 and "kunci-rahasia-uji-123" not in r.text
     by_id = {p["id"]: p for p in r.json()["providers"]}
+    assert set(by_id.keys()) == {"gemini", "groq", "mistral"}
     assert by_id["gemini"]["configured"] and not by_id["groq"]["configured"]
-    assert by_id["ollama"]["configured"]                       # lokal tidak butuh kunci
+    assert by_id["mistral"]["configured"]
 
 
 def test_unconfigured_provider_returns_clear_503(client, mock_llm):
@@ -140,20 +141,16 @@ def test_streaming_concatenates_chunks(client, mock_llm):
     assert text == "Keringkan sekam." and CAPTURED[-1]["body"]["stream"] is True
 
 
-def test_openrouter_model_list_only_free(client, mock_llm, monkeypatch):
-    monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "x")
-    r = client.get("/api/v1/assistant/providers/openrouter/models", headers=demo_headers(client, "pabrik"))
-    assert r.json()["models"] == ["model-b:free"]
-
-
-def test_auto_default_prefers_configured_cloud_then_local(monkeypatch):
+def test_auto_default_prefers_configured_cloud(monkeypatch):
     monkeypatch.setattr(settings, "AI_DEFAULT_PROVIDER", "auto")
-    for k in ("GEMINI_API_KEY", "GROQ_API_KEY", "MISTRAL_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY"):
+    for k in ("GEMINI_API_KEY", "GROQ_API_KEY", "MISTRAL_API_KEY"):
         monkeypatch.setattr(settings, k, "")
-    assert P.resolve_default() == "ollama"
+    assert P.resolve_default() == "gemini"
     monkeypatch.setattr(settings, "MISTRAL_API_KEY", "x")
     assert P.resolve_default() == "mistral"
-    monkeypatch.setattr(settings, "GEMINI_API_KEY", "y")
+    monkeypatch.setattr(settings, "GROQ_API_KEY", "y")
+    assert P.resolve_default() == "groq"
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", "z")
     assert P.resolve_default() == "gemini"
 
 

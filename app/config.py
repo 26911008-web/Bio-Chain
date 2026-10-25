@@ -61,7 +61,7 @@ class Settings(BaseSettings):
     BASE_PRICE_PER_KG: float = 400.0            # Rp/kg sekam sebelum multiplier grade
 
     # Asisten AI — semua kunci hanya di server (.env), tidak pernah ke browser
-    AI_DEFAULT_PROVIDER: str = "auto"       # auto | ollama | gemini | mistral | groq | openai | openrouter
+    AI_DEFAULT_PROVIDER: str = "auto"       # auto | gemini | groq | mistral
     AI_TIMEOUT_S: float = 60.0              # jeda maksimum antar potongan teks (streaming)
     # Batas total satu jawaban. 0 = otomatis: 50 s di Vercel (maxDuration 60 s — jawab sebelum fungsi diputus),
     # tanpa batas di server sendiri (model lokal Ollama bisa lambat tetapi tetap mengalir).

@@ -1,8 +1,7 @@
 """Provider LLM untuk Asisten Bio-Chain — semua lewat API chat-completions kompatibel OpenAI.
 
-Satu klien generik melayani: Gemini (endpoint kompatibilitas OpenAI), Mistral, Groq, OpenRouter
-(model `:free`), dan AI lokal Ollama. API key HANYA dibaca dari environment server (.env) dan
-tidak pernah dikirim ke browser.
+Tiga provider cloud gratis didukung: Google Gemini, Groq, dan Mistral AI.
+API key HANYA dibaca dari environment server (.env) dan tidak pernah dikirim ke browser.
 """
 
 from dataclasses import dataclass
@@ -24,24 +23,18 @@ class Provider:
     id: str
     label: str
     base_url: str
-    key_setting: str | None      # nama setting API key; None = tanpa key (lokal)
+    key_setting: str | None      # nama setting API key
     model_setting: str
     note: str
 
 
 PROVIDERS: dict[str, Provider] = {p.id: p for p in [
-    Provider("ollama", "AI Lokal (Ollama)", "", None, "OLLAMA_MODEL",
-             "Gratis & offline, data tidak keluar dari server"),
     Provider("gemini", "Google Gemini", "https://generativelanguage.googleapis.com/v1beta/openai",
              "GEMINI_API_KEY", "GEMINI_MODEL", "Tier gratis via Google AI Studio"),
-    Provider("mistral", "Mistral AI", "https://api.mistral.ai/v1",
-             "MISTRAL_API_KEY", "MISTRAL_MODEL", "Paket gratis 'Experiment'"),
     Provider("groq", "Groq", "https://api.groq.com/openai/v1",
              "GROQ_API_KEY", "GROQ_MODEL", "Tier gratis berbatas laju, sangat cepat"),
-    Provider("openai", "OpenAI", "https://api.openai.com/v1",
-             "OPENAI_API_KEY", "OPENAI_MODEL", "Berbayar per token; kunci dari platform.openai.com"),
-    Provider("openrouter", "OpenRouter", "https://openrouter.ai/api/v1",
-             "OPENROUTER_API_KEY", "OPENROUTER_MODEL", "Pilih model berakhiran ':free'"),
+    Provider("mistral", "Mistral AI", "https://api.mistral.ai/v1",
+             "MISTRAL_API_KEY", "MISTRAL_MODEL", "Paket gratis 'Experiment'"),
 ]}
 
 
@@ -68,7 +61,7 @@ class AssistantError(Exception):
 
 
 def _base_url(p: Provider) -> str:
-    return f"{settings.OLLAMA_BASE_URL.rstrip('/')}/v1" if p.id == "ollama" else p.base_url
+    return p.base_url
 
 
 def _api_key(p: Provider) -> str:
@@ -87,20 +80,17 @@ def _headers(p: Provider) -> dict:
     h = {"Content-Type": "application/json", "User-Agent": "Bio-Chain-Assistant/1.0"}
     if key := _api_key(p):
         h["Authorization"] = f"Bearer {key}"
-    if p.id == "openrouter":
-        h["X-Title"] = "Bio-Chain Assistant"
     return h
 
 
-# Urutan pilihan otomatis: cloud gratis yang sudah ada kuncinya dulu (lebih cepat & akurat daripada
-# model kecil di CPU), Ollama sebagai cadangan offline.
-AUTO_ORDER = ("gemini", "groq", "mistral", "openrouter", "openai", "ollama")
+# Urutan pilihan otomatis: Gemini dulu, lalu Groq, kemudian Mistral.
+AUTO_ORDER = ("gemini", "groq", "mistral")
 
 
 def resolve_default() -> str:
     if settings.AI_DEFAULT_PROVIDER != "auto":
         return settings.AI_DEFAULT_PROVIDER
-    return next(pid for pid in AUTO_ORDER if is_configured(PROVIDERS[pid]))
+    return next((pid for pid in AUTO_ORDER if is_configured(PROVIDERS[pid])), "gemini")
 
 
 def get_provider(provider_id: str | None) -> Provider:
@@ -114,15 +104,13 @@ def get_provider(provider_id: str | None) -> Provider:
 
 
 async def list_models(p: Provider, client: httpx.AsyncClient) -> list[str]:
-    """Daftar model dari provider (GET /models). Untuk OpenRouter hanya model gratis."""
+    """Daftar model dari provider (GET /models)."""
     try:
         r = await client.get(f"{_base_url(p)}/models", headers=_headers(p), timeout=10)
         r.raise_for_status()
         ids = sorted(m["id"] for m in r.json().get("data", []) if "id" in m)
     except (httpx.HTTPError, ValueError, KeyError) as e:
         raise AssistantError(f"Tidak bisa mengambil daftar model {p.label}: {type(e).__name__}") from e
-    if p.id == "openrouter":
-        ids = [m for m in ids if m.endswith(":free")]
     if p.id == "gemini":
         ids = [m.removeprefix("models/") for m in ids if "gemini" in m]
     return ids
@@ -139,21 +127,14 @@ def _upstream_message(body: bytes | str) -> str:
     return f" — {msg[:240]}" if msg else ""
 
 
-# Model "thinking" (Gemini 3.x, gpt-oss di Groq) memakai token reasoning tersembunyi dari jatah
-# max_tokens; tanpa batas ini jawaban terpotong (terukur: 474 dari 600 token habis untuk reasoning).
+# Model "thinking" (Gemini, Groq) memakai token reasoning tersembunyi dari jatah max_tokens.
 REASONING_LOW = {"gemini", "groq"}
 TRUNCATED_NOTE = "\n\n_(Jawaban terpotong karena batas panjang; minta lanjutan bila perlu.)_"
 
 
 def _body(p: Provider, model: str, messages: list[dict], stream: bool) -> dict:
     body = {"model": model, "messages": messages, "temperature": 0.3, "max_tokens": settings.AI_MAX_TOKENS}
-    if p.id == "openai":
-        # API OpenAI terbaru: max_completion_tokens (max_tokens ditolak model reasoning) dan temperature
-        # bawaan saja; token reasoning ikut jatah → beri ruang lebih & usaha reasoning rendah.
-        body = {"model": model, "messages": messages, "max_completion_tokens": settings.AI_MAX_TOKENS * 3}
-        if settings.OPENAI_REASONING_EFFORT:
-            body["reasoning_effort"] = settings.OPENAI_REASONING_EFFORT
-    elif p.id in REASONING_LOW:
+    if p.id in REASONING_LOW:
         body["reasoning_effort"] = "low"
     if stream:
         body["stream"] = True
