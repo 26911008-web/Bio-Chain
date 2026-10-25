@@ -79,7 +79,7 @@ class Settings(BaseSettings):
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "llama3.2:latest"   # ringan untuk CPU; qwen2.5:14b lebih baik bila ada GPU
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-1.5-flash"   # model gratis dengan tier gratis Google AI Studio
+    GEMINI_MODEL: str = "gemini-flash-lite-latest"   # cepat, responsif, tier gratis Google AI Studio
     MISTRAL_API_KEY: str = ""
     MISTRAL_MODEL: str = "mistral-small-latest"
     GROQ_API_KEY: str = ""
