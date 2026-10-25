@@ -81,9 +81,9 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-flash-lite-latest"   # cepat, responsif, tier gratis Google AI Studio
     MISTRAL_API_KEY: str = ""
-    MISTRAL_MODEL: str = "mistral-small-latest"
+    MISTRAL_MODEL: str = "ministral-8b-latest"      # paket gratis Experiment tanpa batas rate limit
     GROQ_API_KEY: str = ""
-    GROQ_MODEL: str = "llama-3.1-8b-instant"  # tier gratis Groq: sangat cepat, model terbukti stabil
+    GROQ_MODEL: str = "qwen/qwen3.8-27b"            # sangat cepat & lancar berbahasa Indonesia di Groq
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-5-mini"        # cek GET /api/v1/assistant/providers/openai/models
     OPENAI_REASONING_EFFORT: str = "low"     # kosongkan untuk model non-reasoning (mis. gpt-4.1)

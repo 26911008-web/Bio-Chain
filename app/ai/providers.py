@@ -84,7 +84,7 @@ def is_configured(p: Provider) -> bool:
 
 
 def _headers(p: Provider) -> dict:
-    h = {"Content-Type": "application/json"}
+    h = {"Content-Type": "application/json", "User-Agent": "Bio-Chain-Assistant/1.0"}
     if key := _api_key(p):
         h["Authorization"] = f"Bearer {key}"
     if p.id == "openrouter":
