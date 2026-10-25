@@ -309,6 +309,19 @@ input[type="month"].btn, input[type="date"].btn { color-scheme: inherit; }
   transform-style: preserve-3d;
   animation: float 6s var(--ease-in-out) infinite;
 }
+.brand-logo-img {
+  width: 68px; height: 68px;
+  object-fit: contain;
+  border-radius: var(--r-md);
+  background: #ffffff;
+  padding: 5px;
+  margin-bottom: var(--sp-4);
+  box-shadow: 0 12px 32px rgba(45, 122, 79, 0.35);
+  transform: perspective(var(--persp)) rotateX(8deg) rotateY(-12deg);
+  transform-style: preserve-3d;
+  animation: float 6s var(--ease-in-out) infinite;
+  display: inline-block;
+}
 .login-brand h1 {
   margin: 0;
   font-family: var(--font-display);

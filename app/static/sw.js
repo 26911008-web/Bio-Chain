@@ -7,7 +7,7 @@
  * - Background Sync (Chrome/Edge Android): saat sinyal kembali, SW membangunkan halaman yang terbuka untuk
  *   mengirim antrean. Safari/Firefox tidak mendukung → halaman memakai event 'online' & interval.
  */
-const VERSION = "biochain-shell-v24";         // v24: logo perusahaan & branding Bio-Chain (hapus v2); v23: kuota harian Asisten AI di widget
+const VERSION = "biochain-shell-v25";         // v25: logo HD di login screen & header (hapus v2)
 const SHELL = ["/", "/static/tokens.css", "/static/components.css", "/static/app.js", "/static/ui-enhance.js", "/static/field-ops.js",
                "/static/factory-ops.js", "/static/excel-filter.js", "/static/logo.jpg"];  // three.js sengaja tidak di-precache
 
