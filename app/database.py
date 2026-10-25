@@ -1,4 +1,4 @@
-"""Bio-Chain v2 — Database engine & async session factory.
+"""Bio-Chain — Database engine & async session factory.
 
 Mendukung PostgreSQL (produksi/docker) dan SQLite lokal (development/demo standalone)
 secara otomatis tanpa error. Jika PostgreSQL tidak aktif, otomatis fallback ke SQLite.

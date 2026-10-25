@@ -2747,7 +2747,7 @@ async function renderPersonaDashboard(role) {
         <div class="card-header">
           <div>
             <h3 class="card-title">⚙️ Kendali Platform &amp; Data Demo</h3>
-            <p class="card-sub">Operasional sistem Bio-Chain v2</p>
+            <p class="card-sub">Operasional sistem Bio-Chain</p>
           </div>
         </div>
         <div style="display:flex; gap:12px; flex-wrap:wrap;">

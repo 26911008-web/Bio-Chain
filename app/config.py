@@ -1,4 +1,4 @@
-"""Bio-Chain v2 — Centralized configuration via Pydantic BaseSettings.
+"""Bio-Chain — Centralized configuration via Pydantic BaseSettings.
 
 Membaca dari .env file atau environment variables.
 """
@@ -79,11 +79,11 @@ class Settings(BaseSettings):
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "llama3.2:latest"   # ringan untuk CPU; qwen2.5:14b lebih baik bila ada GPU
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-3.8-flash"   # 2.5-flash ditutup untuk pengguna baru (cek /providers/gemini/models)
+    GEMINI_MODEL: str = "gemini-1.5-flash"   # model gratis dengan tier gratis Google AI Studio
     MISTRAL_API_KEY: str = ""
     MISTRAL_MODEL: str = "mistral-small-latest"
     GROQ_API_KEY: str = ""
-    GROQ_MODEL: str = "openai/gpt-oss-20b"
+    GROQ_MODEL: str = "llama-3.1-8b-instant"  # tier gratis Groq: sangat cepat, model terbukti stabil
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-5-mini"        # cek GET /api/v1/assistant/providers/openai/models
     OPENAI_REASONING_EFFORT: str = "low"     # kosongkan untuk model non-reasoning (mis. gpt-4.1)

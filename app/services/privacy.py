@@ -266,7 +266,7 @@ def export_data_docx(data: dict) -> bytes:
     doc.add_paragraph()
     foot = doc.add_paragraph()
     foot.paragraph_format.space_before = Pt(14)
-    r_f = foot.add_run("Dokumen ini dihasilkan secara otomatis oleh Platform Bio-Chain v2 sebagai pemenuhan hak akses data subjek berdasarkan UU No. 27/2022.")
+    r_f = foot.add_run("Dokumen ini dihasilkan secara otomatis oleh Platform Bio-Chain sebagai pemenuhan hak akses data subjek berdasarkan UU No. 27/2022.")
     _style_run(r_f, size=8.5, italic=True, color=(128, 128, 128))
 
     bio = io.BytesIO()

@@ -1,4 +1,4 @@
-"""Bio-Chain v2 — Demo Seed Data Generator.
+"""Bio-Chain — Demo Seed Data Generator.
 
 Menyediakan dataset demo realistis untuk hackathon & presentasi:
 - 6 Demo Users (Admin, Pabrik PT Indmira, Pengepul KUD Sleman, Driver Truk 01, Petani Penggilingan Godean, Petani Moyudan)

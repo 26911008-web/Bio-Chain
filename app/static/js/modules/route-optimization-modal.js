@@ -952,7 +952,7 @@
           <!-- Header -->
           <div class="ro-print-header">
             <div class="ro-print-brand">
-              <h2>🌿 Bio-Chain v2 · Logistik Biomassa</h2>
+              <h2>🌿 Bio-Chain · Logistik Biomassa</h2>
               <p>SURAT JALAN &amp; MANIFEST PENJEMPUTAN BIOMASSA PETANI</p>
             </div>
             <div class="ro-print-docinfo">
@@ -1096,7 +1096,7 @@
         <!-- Header -->
         <div class="ro-print-header">
           <div class="ro-print-brand">
-            <h2>📊 Bio-Chain v2 · Analisis Teknis &amp; Optimasi Rute</h2>
+            <h2>📊 Bio-Chain · Analisis Teknis &amp; Optimasi Rute</h2>
             <p>LAPORAN LOGISTIK VRP (VEHICLE ROUTING PROBLEM) &amp; SIMULASI DUAL-CONSTRAINT</p>
           </div>
           <div class="ro-print-docinfo">
