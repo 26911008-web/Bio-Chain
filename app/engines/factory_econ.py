@@ -292,6 +292,19 @@ def batch_economics(input_kg: float, outputs_kg: dict[str, float], losses_kg: di
     variable = joint_costs + sum(separable_costs.values())
     contribution_per_kg_input = (revenue - variable) / input_kg
     fixed_month_total = sum(fixed_month.values())
+
+    # Total Productive Maintenance (TPM) & Overall Equipment Effectiveness (OEE) (Nakajima 1988)
+    design_capacity_tph = float(P("pabrik.capacity_ton_per_hour", 1.5))
+    std_hours = (input_kg / 1000.0) / design_capacity_tph if design_capacity_tph > 0 else 1.0
+    act_hours = max(0.1, float(hours))
+    availability = min(1.0, std_hours / act_hours)
+    actual_tph = (input_kg / 1000.0) / act_hours
+    performance = min(1.0, actual_tph / design_capacity_tph) if design_capacity_tph > 0 else 1.0
+    good_output_kg = sum(outputs_kg.values())
+    quality = min(1.0, max(0.0, good_output_kg / accounted)) if accounted > 0 else 0.0
+    oee_pct = round(availability * performance * quality * 100.0, 1)
+    oee_status = "World-Class (≥85%)" if oee_pct >= 85.0 else ("Baik / Tipikal (65-84%)" if oee_pct >= 65.0 else "Perlu Peningkatan (<65%)")
+
     return {
         "mass_balance": {"input_kg": round(input_kg, 2), "outputs_kg": {k: round(v, 2) for k, v in outputs_kg.items()},
                          "losses_kg": {k: round(v, 2) for k, v in losses_kg.items()},
@@ -308,11 +321,117 @@ def batch_economics(input_kg: float, outputs_kg: dict[str, float], losses_kg: di
                 "break_even_ton_per_month": round(fixed_month_total / (contribution_per_kg_input * 1000), 1)
                 if contribution_per_kg_input > 0 else None,
                 "planned_ton_per_month": P("pabrik.planned_input_ton_per_month")},
+        "oee": {
+            "availability_pct": round(availability * 100.0, 1),
+            "performance_pct": round(performance * 100.0, 1),
+            "quality_pct": round(quality * 100.0, 1),
+            "oee_pct": oee_pct,
+            "status": oee_status,
+            "actual_tph": round(actual_tph, 2),
+            "design_capacity_tph": design_capacity_tph,
+            "standard_hours": round(std_hours, 2),
+            "operating_hours": round(act_hours, 2),
+        },
         "computation_details": {
             "alokasi": f"biaya bersama + biaya tetap teralokasi dibagi metode '{P('pabrik.joint_cost_method')}' "
                        "(Horngren); biaya terpisah langsung ke produknya",
             "depresiasi": "(nilai − nilai sisa) / umur jam × jam batch (garis lurus)",
             "impas": "biaya tetap per bulan / kontribusi per ton input (Cost-Volume-Profit)",
             "penutupan": "(input − Σ output − Σ loss) / input",
+            "oee": "Availability × Performance × Quality (Nakajima 1988 TPM Standard, target global ≥85%)",
         },
     }
+
+
+def calculate_ddmrp_buffers(current_stock_kg: float, adu_kg_day: float | None = None,
+                            dlt_days: float = 3.0, variability_factor: float = 0.4,
+                            moq_kg: float = 5000.0) -> dict:
+    """Demand-Driven MRP (DDMRP) Buffer Zones (Ptak & Smith, 2019):
+    Red Zone (Safety Buffer) = ADU * DLT * Variability Factor
+    Yellow Zone (Primary Coverage) = ADU * DLT
+    Green Zone (Replenishment Frequency) = max(MOQ, ADU * Cycle Days)
+    Top of Red (TOR) = Red
+    Top of Yellow (TOY) = Red + Yellow
+    Top of Green (TOG) = Red + Yellow + Green
+    """
+    if adu_kg_day is None:
+        planned_monthly_kg = float(P("pabrik.planned_input_ton_per_month", 500)) * 1000.0
+        operating_days = float(P("pabrik.operating_days_per_month", 25))
+        adu_kg_day = planned_monthly_kg / max(1.0, operating_days)
+
+    red_zone = adu_kg_day * dlt_days * variability_factor
+    yellow_zone = adu_kg_day * dlt_days
+    green_zone = max(moq_kg, adu_kg_day * 5.0)  # 5 days order cycle
+
+    tor = round(red_zone, 1)
+    toy = round(red_zone + yellow_zone, 1)
+    tog = round(red_zone + yellow_zone + green_zone, 1)
+
+    if current_stock_kg < tor:
+        zone = "RED"
+        status_label = "Zona Merah (Kritis - Risiko Stockout / Henti Operasi)"
+        recommended_action = f"Pesan pasokan darurat sebesar {round(tog - current_stock_kg):,} kg ke pengepul prioritas."
+    elif current_stock_kg < toy:
+        zone = "YELLOW"
+        status_label = "Zona Kuning (Peringatan - Rebuild Buffer)"
+        recommended_action = f"Rilis purchase/delivery order sebesar {round(tog - current_stock_kg):,} kg."
+    else:
+        zone = "GREEN"
+        status_label = "Zona Hijau (Stok Optimal / Aman)"
+        recommended_action = "Stok bahan baku berada dalam rentang kendali optimal."
+
+    return {
+        "current_stock_kg": round(current_stock_kg, 1),
+        "adu_kg_day": round(adu_kg_day, 1),
+        "dlt_days": dlt_days,
+        "zones": {
+            "red_zone_kg": round(red_zone, 1),
+            "yellow_zone_kg": round(yellow_zone, 1),
+            "green_zone_kg": round(green_zone, 1),
+            "top_of_red_kg": tor,
+            "top_of_yellow_kg": toy,
+            "top_of_green_kg": tog,
+        },
+        "current_zone": zone,
+        "status_label": status_label,
+        "recommended_action": recommended_action,
+    }
+
+
+def check_proximate_spc(moisture: float, ash: float, volatile_matter: float, fixed_carbon: float, contamination: float = 0.0) -> dict:
+    """Six Sigma & Statistical Process Control (Shewhart 3-Sigma Limits) for Biomass Proximate.
+    Proximate closure check: sum(M + A + VM + FC) should equal ~100% (+/- 5%).
+    ASTM D3172 / ISO 17246 Proximate Analysis Standard.
+    """
+    total_proximate = moisture + ash + volatile_matter + fixed_carbon
+    closure_error = abs(total_proximate - 100.0)
+    closure_valid = closure_error <= 5.0  # within +/- 5% lab tolerance
+
+    # 3-Sigma control limits (Standard ASTM Rice Husk / Biomass Feedstock)
+    # Moisture: Mean=12.0%, Sigma=1.33% -> UCL=16.0%, LCL=8.0%
+    # Ash: Mean=17.5%, Sigma=1.16% -> UCL=21.0%, LCL=14.0%
+    m_ucl, m_lcl = 16.0, 8.0
+    a_ucl, a_lcl = 21.0, 14.0
+
+    anomalies = []
+    if not closure_valid:
+        anomalies.append(f"Total fraksi proksimat ({total_proximate:.1f}%) menyimpang {closure_error:.1f}% dari 100% (Batas ASTM: ±5%).")
+    if moisture > m_ucl:
+        anomalies.append(f"Kadar air {moisture:.1f}% melampaui batas kendali atas (UCL = {m_ucl}%). Beban pengeringan tinggi.")
+    if ash > a_ucl:
+        anomalies.append(f"Kadar abu {ash:.1f}% melampaui batas kendali atas (UCL = {a_ucl}%). Indikasi kontaminasi tanah/pasir tinggi.")
+    if contamination > 10.0:
+        anomalies.append(f"Tingkat kontaminan fisik {contamination:.1f}% > 10%. Perlu pembersihan pra-reaktor.")
+
+    return {
+        "total_proximate_pct": round(total_proximate, 2),
+        "closure_error_pct": round(closure_error, 2),
+        "closure_valid": closure_valid,
+        "in_control": len(anomalies) == 0,
+        "anomalies": anomalies,
+        "limits": {
+            "moisture": {"lcl": m_lcl, "ucl": m_ucl, "actual": moisture},
+            "ash": {"lcl": a_lcl, "ucl": a_ucl, "actual": ash},
+        },
+    }
+

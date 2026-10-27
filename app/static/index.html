@@ -14,24 +14,26 @@
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" integrity="sha384-bs/nf9FbdNouRbMiFcrcZfLXYPKiPaGVGplVbv7dLGECccEXDW+S3zjqSKR5ZEaD" crossorigin="anonymous"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" integrity="sha512-CNgIRecGo7nphbeZ04Sc13ka07paqdeTu0WR1IM4kNcpmBAUSHSQX0FslNhTDadL4O5SAGapGt4FodqL8My0mA==" crossorigin="anonymous"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js" integrity="sha512-r6rDA7W6ZeQhvl8S7yRVQUKVHdexq+GAlNkNNqVC7YyIV+NwqCTJe2hDWCiffTyRNOeGEzRRJ9ifvRm/HCzGYg==" crossorigin="anonymous"></script>
-<link rel="stylesheet" href="/static/tokens.css?v=v25">
-<link rel="stylesheet" href="/static/components.css?v=v25">
+<link rel="stylesheet" href="/static/tokens.css?v=v28">
+<link rel="stylesheet" href="/static/components.css?v=v28">
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.min.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
-<script defer src="/static/app.js?v=v25"></script>
-<script defer src="/static/js/modules/qr-tools.js?v=v25"></script>
-<script defer src="/static/js/modules/engine-lab.js?v=v25"></script>
-<script defer src="/static/js/modules/engine-lab-product.js?v=v25"></script>
-<script defer src="/static/js/modules/notification-center.js?v=v25"></script>
-<script defer src="/static/js/modules/ai-assistant-widget.js?v=v25"></script>
-<script defer src="/static/ui-enhance.js?v=v25"></script>
-<script defer src="/static/js/modules/section-jump.js?v=v25"></script>
-<script defer src="/static/js/modules/factory-qc-modal.js?v=v25"></script>
-<script defer src="/static/js/modules/factory-pyrolysis-calc.js?v=v25"></script>
-<script defer src="/static/js/modules/route-optimization-modal.js?v=v25"></script>
-<script defer src="/static/js/modules/field-kuitansi.js?v=v25"></script>
-<script defer src="/static/field-ops.js?v=v25"></script>
-<script defer src="/static/factory-ops.js?v=v25"></script>
-<script defer src="/static/excel-filter.js?v=v25"></script>
+<script defer src="/static/app.js?v=v28"></script>
+<script defer src="/static/js/modules/qr-tools.js?v=v28"></script>
+<script defer src="/static/js/modules/engine-lab.js?v=v28"></script>
+<script defer src="/static/js/modules/engine-lab-product.js?v=v28"></script>
+<script defer src="/static/js/modules/notification-center.js?v=v28"></script>
+<script defer src="/static/js/modules/ai-assistant-widget.js?v=v28"></script>
+<script defer src="/static/ui-enhance.js?v=v28"></script>
+<script defer src="/static/js/modules/section-jump.js?v=v28"></script>
+<script defer src="/static/js/modules/factory-notice-modal.js?v=v28"></script>
+<script defer src="/static/js/modules/factory-qc-modal.js?v=v28"></script>
+<script defer src="/static/js/modules/factory-pyrolysis-calc.js?v=v28"></script>
+<script defer src="/static/js/modules/route-optimization-modal.js?v=v28"></script>
+<script defer src="/static/js/modules/field-kuitansi.js?v=v28"></script>
+<script defer src="/static/field-ops.js?v=v28"></script>
+<script defer src="/static/factory-ops.js?v=v28"></script>
+<script defer src="/static/excel-filter.js?v=v28"></script>
+<script defer src="/static/js/modules/voice-assistant.js?v=v28"></script>
 </head>
 <body>
 <a class="skip-link" href="#main-content">Lewati ke konten utama</a>
@@ -302,6 +304,40 @@
   <!-- App Main Content -->
   <main class="app-main" id="main-content" tabindex="-1">
     <h1 class="visually-hidden">Bio-Chain — Dashboard</h1>
+
+    <!-- 🌟 STICKY TOP ROLE-SWITCHER (4 PERSONA UTAMA) -->
+    <nav class="sticky-role-switcher" id="sticky-role-switcher" aria-label="Navigasi Persona Pengguna">
+      <div class="role-switcher-grid">
+        <button type="button" class="role-tab-btn tab-petani active" id="btn-tab-petani" data-onclick="switchPersonaTab('petani')" aria-label="Buka Portal Petani">
+          <div class="role-tab-icon">🌾</div>
+          <div class="role-tab-info">
+            <span class="role-tab-title">1. Petani</span>
+            <span class="role-tab-desc">Produsen Biomassa &amp; Panen</span>
+          </div>
+        </button>
+        <button type="button" class="role-tab-btn tab-pengepul" id="btn-tab-pengepul" data-onclick="switchPersonaTab('pengepul')" aria-label="Buka Portal Pengepul">
+          <div class="role-tab-icon">📦</div>
+          <div class="role-tab-info">
+            <span class="role-tab-title">2. Pengepul</span>
+            <span class="role-tab-desc">Hub KUD, Verifikasi &amp; QC</span>
+          </div>
+        </button>
+        <button type="button" class="role-tab-btn tab-driver" id="btn-tab-driver" data-onclick="switchPersonaTab('driver')" aria-label="Buka Portal Driver">
+          <div class="role-tab-icon">🚛</div>
+          <div class="role-tab-info">
+            <span class="role-tab-title">3. Driver</span>
+            <span class="role-tab-desc">Logistik Rute &amp; Muatan Balik</span>
+          </div>
+        </button>
+        <button type="button" class="role-tab-btn tab-pabrik" id="btn-tab-pabrik" data-onclick="switchPersonaTab('pabrik')" aria-label="Buka Portal Industri Summary">
+          <div class="role-tab-icon">🏭</div>
+          <div class="role-tab-info">
+            <span class="role-tab-title">4. Industri (Summary)</span>
+            <span class="role-tab-desc">Decision Center, ESG &amp; Sirkular</span>
+          </div>
+        </button>
+      </div>
+    </nav>
 
     <!-- TAB 1: PERSONA SPECIFIC DASHBOARD -->
     <div id="tab-persona" class="tab-pane active">

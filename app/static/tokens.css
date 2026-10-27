@@ -110,6 +110,14 @@
   --elev-2: 0 0 0 1px var(--border), 0 8px 24px rgba(0, 0, 0, .08);
   --elev-3: 0 24px 64px rgba(0, 0, 0, .25);
   --ornament-glow: rgba(74, 99, 0, .18);
+
+  /* Modern Glassmorphic, Sync & Security Tokens (Skill UI + Supabase + Strix) */
+  --glass-bg: rgba(255, 255, 255, .82);
+  --glass-border: rgba(226, 226, 222, .75);
+  --glass-blur: 14px;
+  --crypto-seal: #059669;
+  --sync-live: #16a34a;
+  --focus-glow: 0 0 0 3px rgba(74, 99, 0, .25);
 }
 
 @media (min-width: 768px)  { :root { --gutter: 32px; } }
@@ -146,6 +154,14 @@
   --elev-2: 0 0 0 1px var(--border), 0 8px 24px rgba(0, 0, 0, .5);
   --elev-3: 0 24px 64px rgba(0, 0, 0, .6);
   --ornament-glow: rgba(214, 255, 77, .22);
+
+  /* Modern Glassmorphic, Sync & Security Tokens (Skill UI + Supabase + Strix) */
+  --glass-bg: rgba(24, 24, 24, .78);
+  --glass-border: rgba(255, 255, 255, .16);
+  --glass-blur: 16px;
+  --crypto-seal: #34d399;
+  --sync-live: #4ade80;
+  --focus-glow: 0 0 0 3px rgba(214, 255, 77, .3);
 }
 
 /* ---------- Alias token lama (jangan hapus sebelum semua inline style dimigrasi) ---------- */

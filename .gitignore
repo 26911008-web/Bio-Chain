@@ -67,4 +67,6 @@ videos/
 
 .vercel
 .env*
-supabase/.temp/
+# Agent & Tool Configs
+.agents/
+.claude/

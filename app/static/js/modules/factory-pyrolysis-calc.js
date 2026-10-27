@@ -52,7 +52,15 @@
     return withBusy($("fx-opt-eval-go"), async () => {
       try {
         const com = $("fx-opt-com").value;
-        const kg = Number($("fx-opt-kg").value) || 10000;
+        const kg = Number($("fx-opt-kg").value);
+        if (!kg || kg <= 0) {
+          return factoryNoticeModal({
+            title: "Kuantitas Umpan Evaluasi Tidak Valid",
+            whatWentWrong: "Jumlah umpan biomassa harus berupa angka positif lebih besar dari 0 kg.",
+            parameterDetails: { "Komoditas": com || "Belum dipilih", "Kuantitas Diinput": `${kg} kg`, "Syarat": "> 0 kg" },
+            resolutionAction: "Masukkan jumlah kuantitas umpan yang ingin disimulasikan (contoh: 10.000 kg)."
+          });
+        }
         const mc = numOrNull($("fx-opt-mc").value);
         const price = numOrNull($("fx-opt-price").value);
 
@@ -109,6 +117,12 @@
           </div>
         `;
       } catch (err) {
+        factoryNoticeModal({
+          title: "Evaluasi Produk Akhir Gagal",
+          whatWentWrong: err.message,
+          parameterDetails: { "Komoditas": $("fx-opt-com").value, "Kuantitas": $("fx-opt-kg").value },
+          resolutionAction: "Periksa kembali spesifikasi komoditas atau konfigurasi solver optimasi."
+        });
         out.innerHTML = `<div class="banner banner-error" role="alert">⚠️ ${H(err.message)}</div>`;
       }
     }, "⏳");
@@ -118,7 +132,14 @@
     const out = $("fx-opt-alloc-out");
     if (!out) return;
     const stocks = getSelectedAllocStocks();
-    if (!stocks.length) return showToast("Pilih minimal satu komoditas dengan stok > 0.", "⚠️");
+    if (!stocks.length) {
+      return factoryNoticeModal({
+        title: "Stok Biomassa Pabrik Belum Dipilih",
+        whatWentWrong: "Tidak ada komoditas biomassa yang dipilih atau semua stok yang dicentang bernilai 0 kg.",
+        parameterDetails: { "Komoditas Dipilih": "0 item", "Status Stok": "Kosong", "Syarat": "Minimal 1 komoditas dengan stok > 0 kg" },
+        resolutionAction: "Centang minimal satu komoditas biomassa pada tabel inventori di atas dan pastikan jumlah stok kg valid sebelum menjalankan solver."
+      });
+    }
 
     return withBusy($("fx-opt-alloc-go"), async () => {
       try {
@@ -134,6 +155,12 @@
         });
 
         if (r.status !== "optimal" && r.status !== "success") {
+          factoryNoticeModal({
+            title: "Solver Alokasi Tidak Optimal",
+            whatWentWrong: `Status solver HiGHS: ${r.status}. Alokasi kapasitas mesin mungkin mengalami kendala kelayakan matematis.`,
+            parameterDetails: { "Status Solver": r.status, "Tujuan": obj, "Jumlah Stok": `${stocks.length} jenis` },
+            resolutionAction: "Periksa kembali batasan kapasitas bulanan mesin pabrik atau tambah volume bahan baku yang tersedia."
+          });
           out.innerHTML = `<div class="banner banner-warning" role="alert">⚠️ Status Solver: ${H(r.status)}. Alokasi mungkin belum konvergen sepenuhnya.</div>`;
           return;
         }

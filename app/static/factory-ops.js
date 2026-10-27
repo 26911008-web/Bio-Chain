@@ -690,12 +690,35 @@
 
   async function runFuelBlend() {
     const out = $("fx-fb-out"), feeds = fbFeeds();
-    if (!feeds.length) return showToast("Pilih minimal satu komoditas.", "⚠️");
+    const targetKg = Number($("fx-fb-target").value);
+    if (!feeds.length) {
+      return factoryNoticeModal({
+        title: "Optimasi Campuran Gagal: Feedstock Kosong",
+        whatWentWrong: "Tidak ada komoditas biomassa yang dicentang untuk perhitungan optimasi bahan bakar.",
+        parameterDetails: { "Komoditas Terpilih": "0 item", "Preset": $("fx-fb-preset").value, "Syarat": "Minimal 1 komoditas dengan stok > 0 kg" },
+        resolutionAction: "Centang kotak pada minimal 1 komoditas biomassa di tabel feedstock sebelum menjalankan optimasi."
+      });
+    }
+    if (!targetKg || targetKg <= 0) {
+      return factoryNoticeModal({
+        title: "Target Produk Tidak Valid",
+        whatWentWrong: "Target kuantitas produk campuran (kg) harus lebih besar dari 0 kg.",
+        parameterDetails: { "Target Diinput": `${targetKg} kg`, "Syarat": "> 0 kg" },
+        resolutionAction: "Masukkan jumlah target produksi dalam kilogram (contoh: 10.000 kg)."
+      });
+    }
+
     return withBusy($("fx-fb-go"), async () => {
       try {
         const r = await api("/api/v1/factory/fuel-blend/optimize", { body: { preset: $("fx-fb-preset").value,
-          target_kg: Number($("fx-fb-target").value), lhv_ar_min_kcal: Number($("fx-fb-kcal").value) || null, feeds } });
+          target_kg: targetKg, lhv_ar_min_kcal: Number($("fx-fb-kcal").value) || null, feeds } });
         if (!r.feasible) {
+          factoryNoticeModal({
+            title: "Optimasi Campuran Bahan Bakar Tidak Layak (Infeasible)",
+            whatWentWrong: r.message || "Campuran bahan baku yang dipilih tidak memenuhi kriteria kalori minimum atau batas abu maksimum.",
+            parameterDetails: { "Preset": $("fx-fb-preset").value, "Target": `${num(targetKg, 0)} kg`, "Keterangan": r.message },
+            resolutionAction: "Tambahkan jenis biomassa dengan kalori lebih tinggi (seperti tempurung kelapa), sesuaikan batas maksimal share, atau sesuaikan target kalori."
+          });
           out.innerHTML = `<div class="banner banner-error" role="alert">⛔ ${H(r.message)}</div>`;
           $("fx-fb-sliders").innerHTML = "";
           return;

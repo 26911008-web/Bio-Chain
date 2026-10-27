@@ -877,6 +877,35 @@ async def route_arrivals(
     } for h, fname, cname in rows]
 
 
+@router.get("/inventory/ddmrp-buffers")
+async def get_factory_ddmrp_buffers(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(_audit_read)],
+):
+    """DDMRP Buffer Stock Status (Ptak & Smith, 2019) untuk Manajemen Persediaan Pabrik."""
+    from ..engines.factory_econ import calculate_ddmrp_buffers
+    from ..models.factory_ops import InboundQC, QCDecision
+    total_stock_kg = (await db.execute(
+        select(func.coalesce(func.sum(InboundQC.remaining_kg), 0.0))
+        .where(InboundQC.remaining_kg > 0, InboundQC.decision != QCDecision.REJECT)
+    )).scalar() or 0.0
+    return calculate_ddmrp_buffers(float(total_stock_kg))
+
+
+@router.post("/quality/spc-check")
+async def quality_spc_check(
+    moisture: float = Query(..., ge=0, le=100),
+    ash: float = Query(..., ge=0, le=100),
+    volatile_matter: float = Query(..., ge=0, le=100),
+    fixed_carbon: float = Query(..., ge=0, le=100),
+    contamination: float = Query(0.0, ge=0, le=100),
+    user: Annotated[User, Depends(_audit_read)] = None,
+):
+    """Six Sigma SPC Shewhart 3-Sigma & Proximate Closure Check."""
+    from ..engines.factory_econ import check_proximate_spc
+    return check_proximate_spc(moisture, ash, volatile_matter, fixed_carbon, contamination)
+
+
 # ---------------------------------------------------------------- retur / karantina
 @router.get("/returns")
 async def list_returns(

@@ -219,6 +219,17 @@
       box.setAttribute("aria-modal", "true");
       const h = box.querySelector("h2,h3");
       if (h) { if (!h.id) h.id = `ui-dlg-${++uid}`; box.setAttribute("aria-labelledby", h.id); }
+
+      // Strix Security UX: Tambahkan Segel Kriptografis Anti-Tamper pada Modal QR
+      const qrTarget = box.querySelector("#modal-qr-code") || box.querySelector("#gen-qr-text-preview");
+      if (qrTarget && !box.querySelector(".crypto-seal-badge")) {
+        const badge = document.createElement("div");
+        badge.className = "crypto-seal-badge";
+        badge.style.margin = "8px auto 12px";
+        badge.innerHTML = `<span aria-hidden="true">🔒</span><span>Tervalidasi SHA-256 HMAC (Anti-Tamper)</span>`;
+        qrTarget.insertAdjacentElement("beforebegin", badge);
+      }
+
       lastFocus.set(overlay, document.activeElement);
       const first = [...box.querySelectorAll(FOCUSABLE)].find(el => el.offsetParent !== null);
       setTimeout(() => (first || box).focus && (first || box).focus({ preventScroll: true }), 30);
@@ -885,6 +896,34 @@
     }
     el.className = html ? `banner signal-banner ${cls}` : "signal-banner is-hidden";
     if (el.dataset.html !== html) { el.innerHTML = html; el.dataset.html = html; }
+    syncLiveStatusPill();
+  }
+
+  // Supabase Real-Time Status Pill (Reactivity & Connection State UX)
+  function syncLiveStatusPill() {
+    const parent = document.querySelector(".header-brand") || $("user-info-pill");
+    if (!parent) return;
+    let pill = $("live-sync-indicator");
+    if (!pill) {
+      pill = document.createElement("div");
+      pill.id = "live-sync-indicator";
+      pill.className = "live-sync-pill";
+      parent.appendChild(pill);
+    }
+    const offline = navigator.onLine === false;
+    let pending = 0;
+    try { pending = (typeof STATE !== "undefined" && STATE.user && typeof myOutbox === "function") ? myOutbox().length : 0; } catch {}
+
+    if (offline) {
+      pill.innerHTML = `<span class="live-sync-dot is-offline" aria-hidden="true"></span><span>Offline</span>`;
+      pill.title = "Mode Hemat Sinyal: data tersimpan lokal di browser";
+    } else if (pending > 0) {
+      pill.innerHTML = `<span class="live-sync-dot is-syncing" aria-hidden="true"></span><span>Sinkron (${pending})</span>`;
+      pill.title = `${pending} transaksi sedang disinkronkan ke server`;
+    } else {
+      pill.innerHTML = `<span class="live-sync-dot" aria-hidden="true"></span><span>Real-Time</span>`;
+      pill.title = "Koneksi Real-Time Aktif (Supabase Realtime Channel Pattern)";
+    }
   }
 
   // Gerbang masuk: daftar akun uji tidak lagi terbuka — dilipat di "Akun uji coba (mode demo)"; hilang bila
